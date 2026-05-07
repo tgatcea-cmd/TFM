@@ -74,7 +74,7 @@ class PredictionNotifier extends StateNotifier<double> {
   PredictionNotifier(this._bridge, this._ref) : super(-1.0);
 
   Future<void> init() async {
-    await _ref.read(tfliteServiceProvider).loadModel('assets/models/gru_food_inflation.tflite');
+    await _ref.read(tfliteServiceProvider).loadModel('assets/models/*.tflite');
   }
 
   Future<void> runRealInference() async {
@@ -305,8 +305,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                 itemCount: results.length,
                 itemBuilder: (context, index) {
                   final r = results[index];
-                  final name = r.advertisementData.localName.isNotEmpty 
-                      ? r.advertisementData.localName 
+                  final name = r.advertisementData.advName.isNotEmpty 
+                      ? r.advertisementData.advName 
                       : r.device.platformName;
                   return ListTile(
                     title: Text(name.isEmpty ? 'Unknown Device' : name),

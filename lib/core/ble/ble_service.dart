@@ -40,7 +40,19 @@ class BleService {
   bool get isConnected => _connectedDevice != null;
 
   Future<void> startScan() async {
-    if (await FlutterBluePlus.isSupported == false) return;
+    if (await FlutterBluePlus.isSupported == false) {
+      print('BLE not supported on this platform');
+      return;
+    }
+    
+    // Check adapter state
+    var state = await FlutterBluePlus.adapterState.first;
+    print('Current adapter state: $state');
+    if (state != BluetoothAdapterState.on) {
+      print('Bluetooth adapter is not ON. State: $state');
+      return;
+    }
+
     await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
   }
 

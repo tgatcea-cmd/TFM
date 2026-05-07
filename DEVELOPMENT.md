@@ -79,8 +79,9 @@ Since testing with real hardware is hardware-dependent:
 - `DailyStats`: Container for statistical aggregates (Min/Max/Mean/StdDev/Sum).
 - `ProcessedWeatherDay`: Daily container for all meteorological variables' stats.
 
-## Implementation Status (2026-05-06)
+## Implementation Status (2026-05-07)
 - [x] BLE Handshake & Connectivity.
+- [x] Linux BLE First-class Support (Verified May 2026).
 - [x] Realm DB Persistence (Soil Humidity, Weather, Predictions).
 - [x] Dashboard UI (Scan, Connect, Sync, Inference).
 - [x] TFLite Infrastructure (Service + Bridge).

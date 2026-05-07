@@ -1,4 +1,6 @@
-import 'dart:typed_data';
+// ignore_for_file: unintended_html_in_doc_comment
+
+// import 'dart:typed_data';
 import 'package:tflite_flutter/tflite_flutter.dart';
 
 class TfliteService {
