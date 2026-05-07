@@ -1,3 +1,4 @@
+import "dart:async";
 import 'package:realm/realm.dart';
 
 part 'soil_humidity_schema.realm.dart';

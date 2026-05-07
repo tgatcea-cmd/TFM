@@ -1,7 +1,7 @@
 name: tfm_app
 description: "Predictive Irrigation System integration for Farmers."
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
-version: 0.1.0+1
+version: 0.2.0+1
 
 environment:
   sdk: ^3.11.5
@@ -14,20 +14,25 @@ dependencies:
   flutter:
     sdk: flutter
 
-  cupertino_icons: ^1.0.8     # Icons font. Use with the CupertinoIcons class for iOS style icons.
-  flutter_blue_plus: ^2.3.1   # BLE interfacing.
-  flutter_blue_plus_linux: ^9.0.0 # Explicitly add linux support.
-  http: ^1.6.0                # HTTP interface. Useful for Open-meteo API transactions.
-  tflite_flutter: ^0.12.1     # Tensorflow for mobile and native flutter execution.
-  realm: ^20.2.0              # Database managing.
-  flutter_riverpod: ^2.6.1    # State manager.
+  cupertino_icons: ^1.0.8           # Icons font. Use with the CupertinoIcons class for iOS style icons.
+  flutter_blue_plus: ^2.3.1         # BLE interfacing.
+  flutter_blue_plus_linux: ^9.0.0       # Explicitly add linux support.
+  http: ^1.6.0                      # HTTP interface. Useful for Open-meteo API transactions.
+  tflite_flutter: ^0.12.1           # Tensorflow for mobile and native flutter execution.
+  realm: ^20.2.0                    # Database managing.
+  flutter_riverpod: ^2.6.1          # State manager.
+  geolocator: ^13.0.1               # Location services.
+  flutter_map: ^8.0.0               # Interactive maps.
+  latlong2: ^0.9.1                  # LatLng types.
 
 
 dev_dependencies:
+  custom_lint: ^0.7.6
+  flutter_lints: ^6.0.0             # Good and Clean coding prsactises.
   flutter_test:
     sdk: flutter
+  riverpod_lint: ^2.6.5
 
-  flutter_lints: ^6.0.0
 
 
 

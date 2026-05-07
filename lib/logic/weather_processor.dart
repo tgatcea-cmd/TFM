@@ -5,10 +5,10 @@ import '../data/models/processed/daily_weather.dart';
 class WeatherProcessor {
   /// Aggregates hourly data into daily statistics.
   static List<ProcessedWeatherDay> process(WeatherData data) {
-    Map<String, List<int>> dailyIndices = {};
+    final Map<String, List<int>> dailyIndices = {};
 
     for (int i = 0; i < data.time.length; i++) {
-      String dayKey = data.time[i].toIso8601String().split('T')[0];
+      final String dayKey = data.time[i].toIso8601String().split('T')[0];
       dailyIndices.putIfAbsent(dayKey, () => []).add(i);
     }
 

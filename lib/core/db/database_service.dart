@@ -2,6 +2,7 @@ import 'package:realm/realm.dart';
 import '../../data/schemas/soil_humidity_schema.dart';
 import '../../data/schemas/weather_schema.dart';
 import '../../data/schemas/prediction_schema.dart';
+import '../../data/schemas/location_schema.dart';
 
 class DatabaseService {
   late Realm _realm;
@@ -11,8 +12,27 @@ class DatabaseService {
       SoilHumidityRecord.schema,
       WeatherRecord.schema,
       PredictionRecord.schema,
+      LocationSettings.schema,
     ]);
     _realm = Realm(config);
+  }
+
+  // Location Settings
+  LocationSettings getLocationSettings() {
+    final settings = _realm.find<LocationSettings>(1);
+    if (settings == null) {
+      // Default to Madrid if not found
+      final defaultSettings = LocationSettings(1, 40.4168, -3.7038, false);
+      _realm.write(() => _realm.add(defaultSettings));
+      return defaultSettings;
+    }
+    return settings;
+  }
+
+  void saveLocationSettings(double lat, double lon, bool isGps) {
+    _realm.write(() {
+      _realm.add(LocationSettings(1, lat, lon, isGps), update: true);
+    });
   }
 
   // Soil Humidity

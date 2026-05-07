@@ -1,4 +1,4 @@
-import 'dart:async';
+import "dart:async";
 import 'dart:typed_data';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'ble_constants.dart';
@@ -46,7 +46,7 @@ class BleService {
     }
     
     // Check adapter state
-    var state = await FlutterBluePlus.adapterState.first;
+    final state = await FlutterBluePlus.adapterState.first;
     print('Current adapter state: $state');
     if (state != BluetoothAdapterState.on) {
       print('Bluetooth adapter is not ON. State: $state');
@@ -66,7 +66,7 @@ class BleService {
       await device.connect(autoConnect: false, license: License.free);
 
       print('Discovering services...');
-      List<BluetoothService> services = await device.discoverServices();
+      final List<BluetoothService> services = await device.discoverServices();
 
       print('Caching characteristics...');
       _cacheCharacteristics(services);
@@ -78,7 +78,7 @@ class BleService {
       }
 
       print('Initiating handshake...');
-      bool authenticated = await handshakeModule.performHandshake(device, _handshakeChar);
+      final bool authenticated = await handshakeModule.performHandshake(device, _handshakeChar);
 
       if (authenticated) {
         print('Handshake successful!');
@@ -110,14 +110,14 @@ class BleService {
 
   void _cacheCharacteristics(List<BluetoothService> services) {
     for (var service in services) {
-      String sUuid = service.uuid.toString().toLowerCase();
+      final String sUuid = service.uuid.toString().toLowerCase();
       print('Found Service: $sUuid');
       
       // Check if it matches our service (handling both short and long formats)
       if (sUuid == BleConstants.serviceUuid.toLowerCase() || sUuid.contains('ffe0')) {
         print('Target Service Matches!');
         for (var char in service.characteristics) {
-          String cUuid = char.uuid.toString().toLowerCase();
+          final String cUuid = char.uuid.toString().toLowerCase();
           print('Found Char: $cUuid');
           
           if (cUuid == BleConstants.handshakeUuid.toLowerCase() || cUuid.contains('ffe1')) {

@@ -1,3 +1,4 @@
+import "dart:async";
 // ignore_for_file: unintended_html_in_doc_comment
 
 // import 'dart:typed_data';
@@ -31,8 +32,8 @@ class TfliteService {
     }
 
     // Prepare input: [1, 10, 1] as seen in Jupyter Notebook
-    var input = [sequence.map((e) => [e]).toList()];
-    var output = List.filled(1 * 1, 0.0).reshape([1, 1]);
+    final input = [sequence.map((e) => [e]).toList()];
+    final output = List.filled(1 * 1, 0.0).reshape([1, 1]);
 
     try {
       _interpreter!.run(input, output);

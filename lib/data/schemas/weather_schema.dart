@@ -1,3 +1,4 @@
+import "dart:async";
 import 'package:realm/realm.dart';
 
 part 'weather_schema.realm.dart';

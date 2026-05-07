@@ -1,3 +1,4 @@
+import "dart:async";
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -9,6 +10,10 @@ import 'logic/weather_processor.dart';
 import 'data/models/processed/daily_weather.dart';
 import 'logic/inference/tflite_service.dart';
 import 'logic/inference/inference_bridge.dart';
+import 'logic/location_service.dart';
+import 'data/schemas/location_schema.dart';
+import 'ui/location_picker_map.dart';
+import 'package:latlong2/latlong.dart' as ll;
 
 // Providers
 final dbProvider = Provider<DatabaseService>((ref) {
@@ -16,6 +21,38 @@ final dbProvider = Provider<DatabaseService>((ref) {
   ref.onDispose(() => db.close());
   return db;
 });
+
+final locationServiceProvider = Provider<LocationService>(
+  (ref) => LocationService(),
+);
+
+final locationProvider =
+    StateNotifierProvider<LocationNotifier, LocationSettings>((ref) {
+      return LocationNotifier(
+        ref.watch(dbProvider),
+        ref.watch(locationServiceProvider),
+      );
+    });
+
+class LocationNotifier extends StateNotifier<LocationSettings> {
+  final DatabaseService _db;
+  final LocationService _service;
+
+  LocationNotifier(this._db, this._service) : super(_db.getLocationSettings());
+
+  Future<void> updateFromGps() async {
+    final pos = await _service.getCurrentPosition();
+    if (pos != null) {
+      _db.saveLocationSettings(pos.latitude, pos.longitude, true);
+      state = _db.getLocationSettings();
+    }
+  }
+
+  void updateManual(double lat, double lon) {
+    _db.saveLocationSettings(lat, lon, false);
+    state = _db.getLocationSettings();
+  }
+}
 
 final bleServiceProvider = Provider<BleService>((ref) {
   return BleService(handshakeModule: PicoHandshakeModule());
@@ -30,18 +67,26 @@ final bleProcessorProvider = Provider<BleDataProcessor>((ref) {
 });
 
 final weatherClientProvider = Provider<OpenMeteoClient>((ref) {
-  return OpenMeteoClient(latitude: 40.4168, longitude: -3.7038);
+  final loc = ref.watch(locationProvider);
+  return OpenMeteoClient(latitude: loc.latitude, longitude: loc.longitude);
 });
 
-final weatherProvider = StateNotifierProvider<WeatherNotifier, ProcessedWeatherDay?>((ref) {
-  return WeatherNotifier(ref.watch(weatherClientProvider));
-});
+final weatherProvider =
+    StateNotifierProvider<WeatherNotifier, ProcessedWeatherDay?>((ref) {
+      return WeatherNotifier(ref.watch(weatherClientProvider));
+    });
 
 class WeatherNotifier extends StateNotifier<ProcessedWeatherDay?> {
   final OpenMeteoClient _client;
-  WeatherNotifier(this._client) : super(null);
+  Timer? _refreshTimer;
+
+  WeatherNotifier(this._client) : super(null) {
+    // Phase 2: Periodic background refresh (every 6 hours)
+    _refreshTimer = Timer.periodic(const Duration(hours: 6), (_) => refresh());
+  }
 
   Future<void> refresh() async {
+    state = null; // Phase 2: Show loading indicator
     try {
       final data = await _client.fetchForecast();
       final processed = WeatherProcessor.process(data);
@@ -52,6 +97,12 @@ class WeatherNotifier extends StateNotifier<ProcessedWeatherDay?> {
       print('Weather fetch error: $e');
     }
   }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
 }
 
 final tfliteServiceProvider = Provider<TfliteService>((ref) {
@@ -61,17 +112,29 @@ final tfliteServiceProvider = Provider<TfliteService>((ref) {
 });
 
 final bridgeProvider = Provider<InferenceBridge>((ref) {
-  return InferenceBridge(ref.watch(dbProvider), ref.watch(tfliteServiceProvider));
+  return InferenceBridge(
+    ref.watch(dbProvider),
+    ref.watch(tfliteServiceProvider),
+  );
 });
 
-final predictionProvider = StateNotifierProvider<PredictionNotifier, double>((ref) {
+final predictionProvider = StateNotifierProvider<PredictionNotifier, double>((
+  ref,
+) {
   return PredictionNotifier(ref.watch(bridgeProvider), ref);
 });
 
 class PredictionNotifier extends StateNotifier<double> {
   final InferenceBridge _bridge;
   final Ref _ref;
-  PredictionNotifier(this._bridge, this._ref) : super(-1.0);
+  StreamSubscription? _dataSub;
+
+  PredictionNotifier(this._bridge, this._ref) : super(-1.0) {
+    // Phase 4: Auto-inference on new data
+    _dataSub = _ref.read(bleProcessorProvider).onDataProcessed.listen((_) {
+      runRealInference();
+    });
+  }
 
   Future<void> init() async {
     await _ref.read(tfliteServiceProvider).loadModel('assets/models/*.tflite');
@@ -80,6 +143,12 @@ class PredictionNotifier extends StateNotifier<double> {
   Future<void> runRealInference() async {
     final weather = _ref.read(weatherProvider);
     state = await _bridge.predictNextHumidity(weather);
+  }
+
+  @override
+  void dispose() {
+    _dataSub?.cancel();
+    super.dispose();
   }
 }
 
@@ -119,6 +188,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
       ref.read(weatherProvider.notifier).refresh();
       ref.read(predictionProvider.notifier).init();
     });
+
+    // Refresh weather when location changes
+    ref.listenManual(locationProvider, (previous, next) {
+      ref.read(weatherProvider.notifier).refresh();
+    });
   }
 
   @override
@@ -128,6 +202,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     final weather = ref.watch(weatherProvider);
     final prediction = ref.watch(predictionProvider);
     final tflite = ref.watch(tfliteServiceProvider);
+    final location = ref.watch(locationProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -142,44 +217,114 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildBleCard(bleService),
-            const SizedBox(height: 16),
-            _buildWeatherCard(bleService, db, weather),
-            const SizedBox(height: 16),
-            _buildPredictionCard(tflite, prediction, db),
-            const SizedBox(height: 16),
-            _buildDataCard(db),
-          ],
+      body: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildBleCard(bleService, weather),
+              const SizedBox(height: 16),
+              _buildLocationCard(location),
+              const SizedBox(height: 16),
+              _buildWeatherCard(bleService, db, weather),
+              const SizedBox(height: 16),
+              _buildPredictionCard(tflite, prediction, db),
+              const SizedBox(height: 16),
+              _buildDataCard(db),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildWeatherCard(BleService bleService, DatabaseService db, ProcessedWeatherDay? weather) {
+  Widget _buildLocationCard(LocationSettings location) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Weather Data Bridge', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text(
+              'Location Management',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const Divider(),
+            Text(
+              'Coordinates: ${location.latitude.toStringAsFixed(4)}, ${location.longitude.toStringAsFixed(4)}',
+            ),
+            Text(
+              'Mode: ${location.isGpsBased ? 'GPS (Auto)' : 'Manual (Map)'}',
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 10,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: () =>
+                      ref.read(locationProvider.notifier).updateFromGps(),
+                  icon: const Icon(Icons.gps_fixed),
+                  label: const Text('Use GPS'),
+                ),
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    final ll.LatLng? result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => LocationPickerMap(
+                          initialLat: location.latitude,
+                          initialLon: location.longitude,
+                        ),
+                      ),
+                    );
+                    if (result != null) {
+                      ref
+                          .read(locationProvider.notifier)
+                          .updateManual(result.latitude, result.longitude);
+                    }
+                  },
+                  icon: const Icon(Icons.map),
+                  label: const Text('Pick on Map'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWeatherCard(
+    BleService bleService,
+    DatabaseService db,
+    ProcessedWeatherDay? weather,
+  ) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Weather Data Bridge',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
             const Divider(),
             if (weather == null)
               const Center(child: CircularProgressIndicator())
             else ...[
               Text('Date: ${weather.date.toString().split(' ')[0]}'),
-              Text('Avg Temp: ${weather.temperature.mean.toStringAsFixed(1)}°C'),
+              Text(
+                'Avg Temp: ${weather.temperature.mean.toStringAsFixed(1)}°C',
+              ),
               Text('Avg Hum: ${weather.humidity.mean.toStringAsFixed(1)}%'),
               const SizedBox(height: 10),
               ElevatedButton.icon(
-                onPressed: bleService.isConnected 
-                  ? () => bleService.sendProcessedWeatherData(weather) 
-                  : null,
+                onPressed: bleService.isConnected
+                    ? () => bleService.sendProcessedWeatherData(weather)
+                    : null,
                 icon: const Icon(Icons.cloud_upload),
                 label: const Text('Send Env Data (0x02)'),
               ),
@@ -190,9 +335,15 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     );
   }
 
-  Widget _buildPredictionCard(TfliteService tflite, double prediction, DatabaseService db) {
+  Widget _buildPredictionCard(
+    TfliteService tflite,
+    double prediction,
+    DatabaseService db,
+  ) {
     final predictions = db.getPredictionHistory();
-    final lastRec = predictions.isNotEmpty ? predictions.last.recommendation : 'None';
+    final lastRec = predictions.isNotEmpty
+        ? predictions.last.recommendation
+        : 'None';
 
     return Card(
       child: Padding(
@@ -200,7 +351,10 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Inference Layer (Phase 4)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text(
+              'Inference Layer (Phase 4)',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
             const Divider(),
             Text('Model Loaded: ${tflite.isLoaded ? 'YES' : 'NO'}'),
             if (prediction != -1.0)
@@ -208,9 +362,10 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
             Text('Recommendation: $lastRec'),
             const SizedBox(height: 10),
             ElevatedButton.icon(
-              onPressed: tflite.isLoaded 
-                ? () => ref.read(predictionProvider.notifier).runRealInference() 
-                : null,
+              onPressed: tflite.isLoaded
+                  ? () =>
+                        ref.read(predictionProvider.notifier).runRealInference()
+                  : null,
               icon: const Icon(Icons.analytics),
               label: const Text('Run Inference (Fusion)'),
             ),
@@ -220,17 +375,23 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     );
   }
 
-  Widget _buildBleCard(BleService bleService) {
+  Widget _buildBleCard(BleService bleService, ProcessedWeatherDay? weather) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('BLE Connection', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text(
+              'BLE Connection',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
             const Divider(),
             if (!bleService.isConnected) ...[
-              const Text('Status: Disconnected', style: TextStyle(color: Colors.red)),
+              const Text(
+                'Status: Disconnected',
+                style: TextStyle(color: Colors.red),
+              ),
               const SizedBox(height: 10),
               ElevatedButton.icon(
                 onPressed: () => _showScanDialog(bleService),
@@ -238,12 +399,21 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                 label: const Text('Scan & Connect'),
               ),
             ] else ...[
-              const Text('Status: Connected to Pico', style: TextStyle(color: Colors.green)),
+              const Text(
+                'Status: Connected to Pico',
+                style: TextStyle(color: Colors.green),
+              ),
               const SizedBox(height: 10),
               Row(
                 children: [
                   ElevatedButton(
-                    onPressed: () => bleService.requestSync(),
+                    onPressed: () async {
+                      await bleService.requestSync();
+                      // Phase 3: Auto-send 0x02 after Sync
+                      if (weather != null) {
+                        await bleService.sendProcessedWeatherData(weather);
+                      }
+                    },
                     child: const Text('Sync Data'),
                   ),
                   const SizedBox(width: 10),
@@ -270,15 +440,22 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Real-time Data', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text(
+              'Real-time Data',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
             const Divider(),
             if (lastVal == null)
               const Text('No data received yet.')
             else
               ListTile(
                 leading: const Icon(Icons.water_drop, color: Colors.blue),
-                title: Text('Soil Humidity: ${lastVal.value.toStringAsFixed(2)}%'),
-                subtitle: Text('Time: ${DateTime.fromMillisecondsSinceEpoch(lastVal.timestamp).toLocal()}'),
+                title: Text(
+                  'Soil Humidity: ${lastVal.value.toStringAsFixed(2)}%',
+                ),
+                subtitle: Text(
+                  'Time: ${DateTime.fromMillisecondsSinceEpoch(lastVal.timestamp).toLocal()}',
+                ),
               ),
             const SizedBox(height: 10),
             Text('History Count: ${history.length}'),
@@ -305,8 +482,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                 itemCount: results.length,
                 itemBuilder: (context, index) {
                   final r = results[index];
-                  final name = r.advertisementData.advName.isNotEmpty 
-                      ? r.advertisementData.advName 
+                  final name = r.advertisementData.advName.isNotEmpty
+                      ? r.advertisementData.advName
                       : r.device.platformName;
                   return ListTile(
                     title: Text(name.isEmpty ? 'Unknown Device' : name),
@@ -314,9 +491,12 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                     onTap: () async {
                       final scaffoldMessenger = ScaffoldMessenger.of(context);
                       Navigator.pop(context);
-                      bleService.stopScan();
-                      bool success = await bleService.connect(r.device);
-                      if (!success) {
+                      unawaited(bleService.stopScan());
+                      final bool success = await bleService.connect(r.device);
+                      if (success) {
+                        // Phase 2: Refresh weather on connection
+                        unawaited(ref.read(weatherProvider.notifier).refresh());
+                      } else {
                         scaffoldMessenger.showSnackBar(
                           const SnackBar(content: Text('Connection failed')),
                         );
@@ -332,7 +512,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
         actions: [
           TextButton(
             onPressed: () {
-              bleService.stopScan();
+              unawaited(bleService.stopScan());
               Navigator.pop(context);
             },
             child: const Text('Cancel'),
