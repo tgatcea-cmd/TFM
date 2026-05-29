@@ -57,6 +57,15 @@ class DatabaseService {
     return _realm.all<WeatherRecord>().toList();
   }
 
+  double getTodayRadiationSum() {
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
+    final records = _realm.all<WeatherRecord>().query('timestamp >= $startOfDay');
+    
+    if (records.isEmpty) return 0.0;
+    return records.map((r) => r.radiation).reduce((a, b) => a + b);
+  }
+
   // Predictions
   void savePrediction(int timestamp, double predictedHumidity, String recommendation) {
     _realm.write(() {

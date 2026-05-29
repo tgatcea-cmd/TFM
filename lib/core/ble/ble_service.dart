@@ -2,7 +2,7 @@ import "dart:async";
 import 'dart:typed_data';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'ble_constants.dart';
-import '../../data/models/processed/daily_weather.dart';
+//import '../../data/models/processed/daily_weather.dart';
 
 /// Abstract interface for Handshake to allow easy replacement.
 abstract class IHandshakeModule {
@@ -163,18 +163,23 @@ class BleService {
     await sendCommand([0x01]); // 0x01 = Sync Request
   }
 
-  /// Send aggregated daily weather data to station
-  /// Protocol: [0x02, ...payload]
-  /// We pack mean values for Temp, Hum, Rad, and sum for Prec as 16-bit uints (scale 100)
-  Future<void> sendProcessedWeatherData(ProcessedWeatherDay day) async {
-    final bd = ByteData(9);
+  /// Send 24h hourly temperature forecast to station (0x02)
+  /// Protocol: [0x02, Temp0, Temp1, ..., Temp23]
+  /// Each temp packed as 16-bit uint (scale 100)
+  Future<void> sendHourlyForecast(List<double> temperatures) async {
+    if (temperatures.length < 24) {
+      print('BleService: Insufficient forecast data (need 24 hours)');
+      return;
+    }
+
+    final bd = ByteData(1 + (24 * 2));
     bd.setUint8(0, 0x02);
-    bd.setUint16(1, (day.temperature.mean * 100).toInt(), Endian.big);
-    bd.setUint16(3, (day.humidity.mean * 100).toInt(), Endian.big);
-    bd.setUint16(5, (day.radiation.mean * 100).toInt(), Endian.big);
-    bd.setUint16(7, (day.precipitation.sum * 100).toInt(), Endian.big);
+    
+    for (int i = 0; i < 24; i++) {
+      bd.setUint16(1 + (i * 2), (temperatures[i] * 100).toInt(), Endian.big);
+    }
 
     await sendCommand(bd.buffer.asUint8List());
-    print('Sent Env Data: T:${day.temperature.mean} H:${day.humidity.mean} R:${day.radiation.mean} P:${day.precipitation.sum}');
+    print('BleService: Sent 24h temperature forecast bridge');
   }
 }

@@ -32,6 +32,9 @@ class BleDataProcessor {
       case 0x11: // Soil Humidity Data packet
         _processSoilHumidity(data.sublist(1));
         break;
+      case 0x12: // Predicted Humidity from CESAR (LSTM)
+        _processPredictedHumidity(data.sublist(1));
+        break;
       default:
         print('Unknown data type: $type');
     }
@@ -51,6 +54,25 @@ class BleDataProcessor {
     final DateTime timestamp = DateTime.now().subtract(Duration(hours: hourOffset));
     
     _dbService.saveSoilHumidity(timestamp.millisecondsSinceEpoch, humidity);
+    _onDataProcessed.add(null);
+  }
+
+  void _processPredictedHumidity(List<int> payload) {
+    // Assuming payload: [humidity_high_byte, humidity_low_byte]
+    if (payload.length < 2) return;
+
+    final int humidityRaw = (payload[0] << 8) | payload[1];
+    final double predictedHumidity = humidityRaw / 100.0;
+
+    print('Received Predicted Humidity from CESAR: $predictedHumidity%');
+    
+    // Save as prediction (with placeholder recommendation for now)
+    _dbService.savePrediction(
+      DateTime.now().millisecondsSinceEpoch, 
+      predictedHumidity, 
+      "Calculating recommendation..."
+    );
+    
     _onDataProcessed.add(null);
   }
 }

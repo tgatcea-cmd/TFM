@@ -9,7 +9,10 @@ import 'core/api/open_meteo_client.dart';
 import 'logic/weather_processor.dart';
 import 'data/models/processed/daily_weather.dart';
 import 'logic/inference/tflite_service.dart';
+import 'logic/inference/rf_service.dart';
 import 'logic/inference/inference_bridge.dart';
+
+// ... (other imports)
 import 'logic/location_service.dart';
 import 'data/schemas/location_schema.dart';
 import 'ui/location_picker_map.dart';
@@ -71,27 +74,44 @@ final weatherClientProvider = Provider<OpenMeteoClient>((ref) {
   return OpenMeteoClient(latitude: loc.latitude, longitude: loc.longitude);
 });
 
+class WeatherState {
+  final ProcessedWeatherDay? daily;
+  final List<double> hourlyForecast;
+  WeatherState({this.daily, this.hourlyForecast = const []});
+}
+
 final weatherProvider =
-    StateNotifierProvider<WeatherNotifier, ProcessedWeatherDay?>((ref) {
+    StateNotifierProvider<WeatherNotifier, WeatherState>((ref) {
       return WeatherNotifier(ref.watch(weatherClientProvider));
     });
 
-class WeatherNotifier extends StateNotifier<ProcessedWeatherDay?> {
+class WeatherNotifier extends StateNotifier<WeatherState> {
   final OpenMeteoClient _client;
   Timer? _refreshTimer;
 
-  WeatherNotifier(this._client) : super(null) {
+  WeatherNotifier(this._client) : super(WeatherState()) {
     // Phase 2: Periodic background refresh (every 6 hours)
     _refreshTimer = Timer.periodic(const Duration(hours: 6), (_) => refresh());
   }
 
   Future<void> refresh() async {
-    state = null; // Phase 2: Show loading indicator
+    state = WeatherState(); // Phase 2: Show loading indicator
     try {
       final data = await _client.fetchForecast();
       final processed = WeatherProcessor.process(data);
+      
+      // Extract next 24h of temperature forecast
+      final now = DateTime.now();
+      final List<double> hourly = [];
+      for (int i = 0; i < data.time.length; i++) {
+        if (data.time[i].isAfter(now) || data.time[i].isAtSameMomentAs(now)) {
+          hourly.add(data.temperature2m[i]);
+          if (hourly.length == 24) break;
+        }
+      }
+
       if (processed.isNotEmpty) {
-        state = processed.first;
+        state = WeatherState(daily: processed.first, hourlyForecast: hourly);
       }
     } catch (e) {
       print('Weather fetch error: $e');
@@ -111,10 +131,15 @@ final tfliteServiceProvider = Provider<TfliteService>((ref) {
   return service;
 });
 
+final rfServiceProvider = Provider<RfService>((ref) {
+  return RfService();
+});
+
 final bridgeProvider = Provider<InferenceBridge>((ref) {
   return InferenceBridge(
     ref.watch(dbProvider),
     ref.watch(tfliteServiceProvider),
+    ref.watch(rfServiceProvider),
   );
 });
 
@@ -137,12 +162,15 @@ class PredictionNotifier extends StateNotifier<double> {
   }
 
   Future<void> init() async {
-    await _ref.read(tfliteServiceProvider).loadModel('assets/models/*.tflite');
+    // Phase 4: Load both models
+    // Note: GRU TFLite still used for local trend prediction if needed, 
+    // but the main PoC verdict now comes from CESAR (FPGA) + App RF.
+    await _ref.read(rfServiceProvider).loadModel('assets/models/irrigation_rf.json');
   }
 
   Future<void> runRealInference() async {
-    final weather = _ref.read(weatherProvider);
-    state = await _bridge.predictNextHumidity(weather);
+    await _bridge.runIrrigationRecommendation();
+    state = 1.0; // Trigger refresh
   }
 
   @override
@@ -201,7 +229,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     final db = ref.watch(dbProvider);
     final weather = ref.watch(weatherProvider);
     final prediction = ref.watch(predictionProvider);
-    final tflite = ref.watch(tfliteServiceProvider);
+    final rf = ref.watch(rfServiceProvider);
     final location = ref.watch(locationProvider);
 
     return Scaffold(
@@ -230,7 +258,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
               const SizedBox(height: 16),
               _buildWeatherCard(bleService, db, weather),
               const SizedBox(height: 16),
-              _buildPredictionCard(tflite, prediction, db),
+              _buildPredictionCard(rf, prediction, db),
               const SizedBox(height: 16),
               _buildDataCard(db),
             ],
@@ -299,7 +327,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
   Widget _buildWeatherCard(
     BleService bleService,
     DatabaseService db,
-    ProcessedWeatherDay? weather,
+    WeatherState weather,
   ) {
     return Card(
       child: Padding(
@@ -312,18 +340,18 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const Divider(),
-            if (weather == null)
+            if (weather.daily == null)
               const Center(child: CircularProgressIndicator())
             else ...[
-              Text('Date: ${weather.date.toString().split(' ')[0]}'),
+              Text('Date: ${weather.daily!.date.toString().split(' ')[0]}'),
               Text(
-                'Avg Temp: ${weather.temperature.mean.toStringAsFixed(1)}°C',
+                'Avg Temp: ${weather.daily!.temperature.mean.toStringAsFixed(1)}°C',
               ),
-              Text('Avg Hum: ${weather.humidity.mean.toStringAsFixed(1)}%'),
+              Text('Avg Hum: ${weather.daily!.humidity.mean.toStringAsFixed(1)}%'),
               const SizedBox(height: 10),
               ElevatedButton.icon(
-                onPressed: bleService.isConnected
-                    ? () => bleService.sendProcessedWeatherData(weather)
+                onPressed: bleService.isConnected && weather.hourlyForecast.isNotEmpty
+                    ? () => bleService.sendHourlyForecast(weather.hourlyForecast)
                     : null,
                 icon: const Icon(Icons.cloud_upload),
                 label: const Text('Send Env Data (0x02)'),
@@ -336,7 +364,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
   }
 
   Widget _buildPredictionCard(
-    TfliteService tflite,
+    RfService rf,
     double prediction,
     DatabaseService db,
   ) {
@@ -356,18 +384,18 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const Divider(),
-            Text('Model Loaded: ${tflite.isLoaded ? 'YES' : 'NO'}'),
+            Text('RF Model Loaded: ${rf.isLoaded ? 'YES' : 'NO'}'),
             if (prediction != -1.0)
-              Text('Last Prediction: ${prediction.toStringAsFixed(4)}'),
+              const Text('Inference Status: Active'),
             Text('Recommendation: $lastRec'),
             const SizedBox(height: 10),
             ElevatedButton.icon(
-              onPressed: tflite.isLoaded
+              onPressed: rf.isLoaded
                   ? () =>
                         ref.read(predictionProvider.notifier).runRealInference()
                   : null,
               icon: const Icon(Icons.analytics),
-              label: const Text('Run Inference (Fusion)'),
+              label: const Text('Run RF Inference (Fusion)'),
             ),
           ],
         ),
@@ -375,7 +403,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     );
   }
 
-  Widget _buildBleCard(BleService bleService, ProcessedWeatherDay? weather) {
+  Widget _buildBleCard(BleService bleService, WeatherState weather) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -410,8 +438,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                     onPressed: () async {
                       await bleService.requestSync();
                       // Phase 3: Auto-send 0x02 after Sync
-                      if (weather != null) {
-                        await bleService.sendProcessedWeatherData(weather);
+                      if (weather.hourlyForecast.isNotEmpty) {
+                        await bleService.sendHourlyForecast(weather.hourlyForecast);
                       }
                     },
                     child: const Text('Sync Data'),

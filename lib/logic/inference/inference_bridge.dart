@@ -2,12 +2,14 @@ import "dart:async";
 import '../../core/db/database_service.dart';
 import '../../data/models/processed/daily_weather.dart';
 import 'tflite_service.dart';
+import 'rf_service.dart';
 
 class InferenceBridge {
   final DatabaseService _db;
   final TfliteService _tflite;
+  final RfService _rf;
 
-  InferenceBridge(this._db, this._tflite);
+  InferenceBridge(this._db, this._tflite, this._rf);
 
   /// Prepares data and runs inference
   /// Target: Predict next soil humidity based on last 10 readings + weather context
@@ -47,6 +49,45 @@ class InferenceBridge {
     }
 
     return result;
+  }
+
+  /// Runs the Random Forest classifier based on CESAR's prediction and today's radiation
+  Future<void> runIrrigationRecommendation() async {
+    if (!_rf.isLoaded) {
+      print('InferenceBridge: RF Model not loaded.');
+      return;
+    }
+
+    // 1. Fetch historical radiation for today
+    final radSum = _db.getTodayRadiationSum();
+
+    // 2. Fetch the latest predicted humidity (from CESAR via 0x12)
+    final predictions = _db.getPredictionHistory();
+    if (predictions.isEmpty) return;
+
+    final latestPrediction = predictions.last;
+    final predHum = latestPrediction.predictedHumidity;
+
+    // 3. Run Random Forest Inference (Native Dart)
+    final resultClass = _rf.runInference(radSum, predHum);
+
+    // 4. Update the recommendation in DB
+    final recommendation = _generateRecommendationFromClass(resultClass);
+    _db.savePrediction(
+      latestPrediction.timestamp, 
+      predHum, 
+      recommendation
+    );
+    
+    print('InferenceBridge: RF result Class $resultClass -> $recommendation');
+  }
+
+  String _generateRecommendationFromClass(int resultClass) {
+    if (resultClass == 1) {
+      return 'STRESS DETECTED: Irrigation recommended.';
+    } else {
+      return 'HEALTHY: No irrigation required.';
+    }
   }
 
   String _generateRecommendation(double predictedHumidity) {
