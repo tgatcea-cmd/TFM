@@ -2,6 +2,7 @@ import "dart:async";
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:signals/signals_flutter.dart';
 import 'core/ble/ble_service.dart';
 import 'core/db/database_service.dart';
 import 'logic/ble_data_processor.dart';
@@ -9,7 +10,6 @@ import 'core/api/open_meteo_client.dart';
 import 'logic/weather_processor.dart';
 import 'data/models/processed/daily_weather.dart';
 import 'logic/inference/tflite_service.dart';
-import 'logic/inference/rf_service.dart';
 import 'logic/inference/inference_bridge.dart';
 
 // ... (other imports)
@@ -131,15 +131,10 @@ final tfliteServiceProvider = Provider<TfliteService>((ref) {
   return service;
 });
 
-final rfServiceProvider = Provider<RfService>((ref) {
-  return RfService();
-});
-
 final bridgeProvider = Provider<InferenceBridge>((ref) {
   return InferenceBridge(
     ref.watch(dbProvider),
     ref.watch(tfliteServiceProvider),
-    ref.watch(rfServiceProvider),
   );
 });
 
@@ -162,10 +157,9 @@ class PredictionNotifier extends StateNotifier<double> {
   }
 
   Future<void> init() async {
-    // Phase 4: Load both models
-    // Note: GRU TFLite still used for local trend prediction if needed, 
-    // but the main PoC verdict now comes from CESAR (FPGA) + App RF.
-    await _ref.read(rfServiceProvider).loadModel('assets/models/irrigation_rf.json');
+    final tflite = _ref.read(tfliteServiceProvider);
+    // await tflite.loadLstmModel('assets/models/irrigation_gru.tflite'); 
+    await tflite.loadRfModel('assets/models/rf_irrigation.tflite');
   }
 
   Future<void> runRealInference() async {
@@ -229,7 +223,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     final db = ref.watch(dbProvider);
     final weather = ref.watch(weatherProvider);
     final prediction = ref.watch(predictionProvider);
-    final rf = ref.watch(rfServiceProvider);
+    final tflite = ref.watch(tfliteServiceProvider);
     final location = ref.watch(locationProvider);
 
     return Scaffold(
@@ -258,7 +252,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
               const SizedBox(height: 16),
               _buildWeatherCard(bleService, db, weather),
               const SizedBox(height: 16),
-              _buildPredictionCard(rf, prediction, db),
+              _buildPredictionCard(tflite, prediction, db),
               const SizedBox(height: 16),
               _buildDataCard(db),
             ],
@@ -364,10 +358,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
   }
 
   Widget _buildPredictionCard(
-    RfService rf,
+    TfliteService tflite,
     double prediction,
     DatabaseService db,
   ) {
+    final bridge = ref.watch(bridgeProvider);
     final predictions = db.getPredictionHistory();
     final lastRec = predictions.isNotEmpty
         ? predictions.last.recommendation
@@ -379,18 +374,69 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Inference Layer (Phase 4)',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Inference Layer (Phase 4)',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                if (bridge.isRunning.watch(context))
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+              ],
             ),
             const Divider(),
-            Text('RF Model Loaded: ${rf.isLoaded ? 'YES' : 'NO'}'),
-            if (prediction != -1.0)
-              const Text('Inference Status: Active'),
-            Text('Recommendation: $lastRec'),
+            
+            // Status & Timing
+            Row(
+              children: [
+                const Icon(Icons.info_outline, size: 16, color: Colors.blue),
+                const SizedBox(width: 8),
+                Text(
+                  'Status: ${bridge.status.watch(context)}',
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ],
+            ),
+            if (bridge.lastInferenceTime.watch(context) != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'Last Run: ${bridge.lastInferenceTime.watch(context)!.toLocal().toString().split('.')[0]}',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+              ),
+            
+            const SizedBox(height: 12),
+            
+            // Progress Bar
+            if (bridge.isRunning.watch(context) || (bridge.progress.watch(context) > 0 && bridge.progress.watch(context) < 1.0))
+              Column(
+                children: [
+                  LinearProgressIndicator(
+                    value: bridge.progress.watch(context),
+                    backgroundColor: Colors.grey.shade200,
+                    valueColor: const AlwaysStoppedAnimation<Color>(Colors.blue),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ),
+
+            Text('RF Model Loaded: ${tflite.isRfLoaded ? 'YES' : 'NO'}'),
+            Text('Recommendation: $lastRec', 
+              style: TextStyle(
+                color: lastRec.contains('SATURATION') ? Colors.red : Colors.green,
+                fontWeight: FontWeight.bold
+              ),
+            ),
+            
             const SizedBox(height: 10),
             ElevatedButton.icon(
-              onPressed: rf.isLoaded
+              onPressed: tflite.isRfLoaded && !bridge.isRunning.watch(context)
                   ? () =>
                         ref.read(predictionProvider.notifier).runRealInference()
                   : null,
@@ -443,6 +489,14 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                       }
                     },
                     child: const Text('Sync Data'),
+                  ),
+                  const SizedBox(width: 10),
+                  ElevatedButton(
+                    onPressed: () => bleService.toggleDebugMode(),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange.shade100,
+                    ),
+                    child: const Text('Debug (0x09)'),
                   ),
                   const SizedBox(width: 10),
                   OutlinedButton(

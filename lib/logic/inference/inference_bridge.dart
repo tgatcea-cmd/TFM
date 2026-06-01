@@ -1,45 +1,53 @@
 import "dart:async";
+import 'package:signals/signals.dart';
 import '../../core/db/database_service.dart';
 import '../../data/models/processed/daily_weather.dart';
 import 'tflite_service.dart';
-import 'rf_service.dart';
 
 class InferenceBridge {
   final DatabaseService _db;
   final TfliteService _tflite;
-  final RfService _rf;
 
-  InferenceBridge(this._db, this._tflite, this._rf);
+  // Signals for UI
+  final status = signal<String>("Idle");
+  final progress = signal<double>(0.0);
+  final lastInferenceTime = signal<DateTime?>(null);
+  final isRunning = signal<bool>(false);
+
+  InferenceBridge(this._db, this._tflite);
 
   /// Prepares data and runs inference
   /// Target: Predict next soil humidity based on last 10 readings + weather context
   Future<double> predictNextHumidity(ProcessedWeatherDay? weather) async {
-    if (!_tflite.isLoaded) {
-      print('InferenceBridge: Model not loaded, skipping.');
+    if (!_tflite.isLstmLoaded) {
+      status.value = "Error: LSTM Model Not Loaded";
       return -1.0;
     }
 
-    // 1. Fetch last 10 soil humidity readings from Realm
+    isRunning.value = true;
+    progress.value = 0.1;
+    status.value = "Fetching History...";
+
     final history = _db.getSoilHumidityHistory();
     if (history.length < 10) {
-      print('InferenceBridge: Insufficient data (need 10, have ${history.length}).');
+      status.value = "Error: Insufficient Data";
+      isRunning.value = false;
       return -1.0;
     }
 
-    // Take the 10 most recent and sort by timestamp ascending
+    progress.value = 0.4;
+    status.value = "Preparing Sequence...";
+
     final last10 = history.sublist(history.length - 10)
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
     final sequence = last10.map((e) => e.value).toList();
 
-    // 2. Data Fusion (Simplified PoC)
-    // In a production model, weather means would be concatenated or used as exogenous features.
-    // For now, we follow the [1, 10, 1] structure defined in the notebooks.
+    progress.value = 0.7;
+    status.value = "Running LSTM...";
+
+    final result = _tflite.runLstmInference(sequence);
     
-    print('InferenceBridge: Running inference on sequence: $sequence');
-    final result = _tflite.runInference(sequence);
-    
-    // 3. Save prediction to DB
     if (result != -1.0) {
       _db.savePrediction(
         DateTime.now().millisecondsSinceEpoch, 
@@ -48,28 +56,45 @@ class InferenceBridge {
       );
     }
 
+    progress.value = 1.0;
+    status.value = "Prediction Complete";
+    lastInferenceTime.value = DateTime.now();
+    isRunning.value = false;
+
     return result;
   }
 
   /// Runs the Random Forest classifier based on CESAR's prediction and today's radiation
   Future<void> runIrrigationRecommendation() async {
-    if (!_rf.isLoaded) {
-      print('InferenceBridge: RF Model not loaded.');
+    if (!_tflite.isRfLoaded) {
+      status.value = "Error: RF Model Not Loaded";
       return;
     }
 
-    // 1. Fetch historical radiation for today
+    isRunning.value = true;
+    progress.value = 0.2;
+    status.value = "Calculating Radiation Sum...";
+
     final radSum = _db.getTodayRadiationSum();
 
-    // 2. Fetch the latest predicted humidity (from CESAR via 0x12)
+    progress.value = 0.5;
+    status.value = "Fetching CESAR Prediction...";
+
     final predictions = _db.getPredictionHistory();
-    if (predictions.isEmpty) return;
+    if (predictions.isEmpty) {
+      status.value = "Error: No Prediction Found";
+      isRunning.value = false;
+      return;
+    }
 
     final latestPrediction = predictions.last;
     final predHum = latestPrediction.predictedHumidity;
 
-    // 3. Run Random Forest Inference (Native Dart)
-    final resultClass = _rf.runInference(radSum, predHum);
+    progress.value = 0.8;
+    status.value = "Running RF TFLite...";
+
+    // Run Random Forest Inference (TFLite)
+    final resultClass = _tflite.runRfInference(radSum, predHum);
 
     // 4. Update the recommendation in DB
     final recommendation = _generateRecommendationFromClass(resultClass);
@@ -79,14 +104,19 @@ class InferenceBridge {
       recommendation
     );
     
-    print('InferenceBridge: RF result Class $resultClass -> $recommendation');
+    progress.value = 1.0;
+    status.value = "Verdict: ${resultClass == 1 ? 'Perjudicial' : 'Healthy'}";
+    lastInferenceTime.value = DateTime.now();
+    isRunning.value = false;
+
+    print('InferenceBridge: RF TFLite result Class $resultClass -> $recommendation');
   }
 
   String _generateRecommendationFromClass(int resultClass) {
     if (resultClass == 1) {
-      return 'STRESS DETECTED: Irrigation recommended.';
+      return 'SATURATION RISK: Irrigation perjudicial tomorrow. DO NOT IRRIGATE.';
     } else {
-      return 'HEALTHY: No irrigation required.';
+      return 'HEALTHY: Irrigation safe / Not perjudicial.';
     }
   }
 

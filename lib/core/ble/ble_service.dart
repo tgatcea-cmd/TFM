@@ -163,6 +163,11 @@ class BleService {
     await sendCommand([0x01]); // 0x01 = Sync Request
   }
 
+  /// Toggle Pico debug cycle (0x09)
+  Future<void> toggleDebugMode() async {
+    await sendCommand([0x09]);
+  }
+
   /// Send 24h hourly temperature forecast to station (0x02)
   /// Protocol: [0x02, Temp0, Temp1, ..., Temp23]
   /// Each temp packed as 16-bit uint (scale 100)

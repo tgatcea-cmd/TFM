@@ -4,9 +4,9 @@
 - **Framework**: Flutter 3.41.9 (Dart 3.11.5)
 - **BLE**: `flutter_blue_plus` (Station comms)
 - **HTTP**: `http` (Open-Meteo API)
-- **ML**: `tflite_flutter` (LSTM/GRU Inference)
+- **ML**: `tflite_flutter` (LSTM + RF Inference)
 - **Database**: `realm` (Device local sync)
-- **State Mgmt**: `flutter_riverpod`
+- **State Mgmt**: `flutter_riverpod` + `signals` (Reactive UX)
 
 ## Data Layer: Open-Meteo Integration
 ### Implementation: `OpenMeteoClient`
@@ -25,67 +25,49 @@
 - **Target Variables**: Temperature (2m), Humidity (2m), Shortwave Radiation, Precipitation.
 
 ## Communication: BLE Protocol
-### PoC v1.0 Results (2026-05-06)
+### PoC Results (Verified May 2026)
 - **Status**: SUCCESS. Verified bidirectional flow with RPi Pico 2 W.
-- **Service UUID**: `ffe0` (normalized by Android/FBP).
-- **Handshake (ffe1)**: App writes `0xDEADBEEF`. Verified authorized state in Pico.
+- **Service UUID**: `ffe0`.
+- **Handshake (ffe1)**: App writes `0xDEADBEEF`.
 - **Commands (ffe2)**:
     - `0x01` (Sync): Triggers Pico to send historical/sample data.
-    - `0x02` (Env): Sends environmental data to station (Aggregated stats).
+    - `0x02` (Weather Bridge): Sends 24h temperature forecast sequence (49 bytes).
+    - `0x09` (Debug): Toggles Pico simulation cycle.
 - **Data (ffe3 - Notify)**:
-    - `0x11` (Soil Humidity): `[0x11, hour_offset, hum_hi, hum_lo]`. Parsed and persisted to Realm.
+    - `0x11` (Soil Humidity): History data packets.
+    - `0x12` (FPGA Prediction): Trigger for App RF inference.
 
-### Implementation: `BleService`
-- **Location**: `lib/core/ble/ble_service.dart`
-- **Architecture**: Modular and interface-based to facilitate replacement of handshake logic.
-- **Components**:
-    - `IHandshakeModule`: Interface for authentication protocols.
-    - `PicoHandshakeModule`: Target implementation for Raspberry Pi Pico 2 W.
-    - `BleConstants`: UUID definitions for Services and Characteristics.
-    - `BleService`: Handles scanning, connection, characteristic caching, and command sending.
-    - `BleDataProcessor`: Parses incoming byte streams (e.g., Soil Humidity) and persists to DB.
+## Inference Layer (Phase 4 COMPLETE)
+### Architecture: Collaborative ML
+- **Infrastructure**: `TfliteService` manages multiple interpreters (LSTM + RF).
+- **Reactive State**: `signals` package used for real-time inference tracking (`status`, `progress`, `isRunning`).
+- **Data Fusion**: 
+    - IoT Station (FPGA): Runs LSTM for soil humidity prediction (`HS30_min_t+1`).
+    - App: Receives prediction via BLE `0x12`.
+    - App: Runs Random Forest (`rf_irrigation.tflite`) using `radiacion_sum_t0` (Meteo) + FPGA result.
+- **Conversion Path**: Sklearn -> Hummingbird (Torch) -> ONNX -> TFLite (`onnx2tf`).
+- **Verdict Logic**: 
+    - `Class 1`: Saturation Risk (Perjudicial). Recommendation: **DO NOT IRRIGATE**.
+    - `Class 0`: Healthy. Recommendation: **Irrigation Safe**.
 
-## Inference Layer (Phase 4)
-- **Infrastructure**: `TfliteService` manages the interpreter lifecycle.
-- **Data Fusion**: `InferenceBridge` gathers last 10 soil humidity records from Realm.
-- **Input Pipeline**: Normalizes/Packs into `[1, 10, 1]` Float32 tensor.
-- **Output**: Predicts next humidity value and generates irrigation recommendations.
-- **Status**: Model-ready logic; requires real `.tflite` weights to replace placeholders.
+### Implementation: `TfliteService`
+- **Output Handling**: Supports multi-output models (label + probabilities) and `Int64` tensor types (required by Hummingbird models).
 
 ## Data Persistence: Realm DB
 - **Location**: `lib/data/schemas/` and `lib/core/db/`
-- **Schemas**: `SoilHumidityRecord`, `WeatherRecord`, `PredictionRecord`.
-- **Service**: `DatabaseService` manages the Realm instance and provides type-safe CRUD.
-- **Generation**: Run `dart run realm generate` after schema changes.
-
-## Testing Strategy
-
-### 1. BLE & Protocol Verification
-Since testing with real hardware is hardware-dependent:
-- **Mocking**: Use `mockito` to mock `BluetoothDevice` and `BluetoothCharacteristic`.
-- **Parser Isolation**: Test `BleDataProcessor._handleData` with raw byte arrays to verify correct conversion to `double` and `DateTime`.
-- **Handshake**: Verify `PicoHandshakeModule` writes the expected auth bytes (`0xDEADBEEF`) on connection.
-
-### 2. Database Tests
-- **Integrity**: Ensure `DatabaseService` handles Primary Key conflicts (using `update: true`).
-- **Timestamp Handling**: Verify millisecond precision when saving/retrieving history.
-
-### 3. Integration flow
-- **Meteo -> DB**: Verify `OpenMeteoClient` data reaches `DatabaseService`.
-- **BLE -> DB**: Verify `BleDataProcessor` saves records correctly upon receiving characteristic notifications.
-
-## Data Models
-- `WeatherData`: Raw hourly response from Open-Meteo.
-- `DailyStats`: Container for statistical aggregates (Min/Max/Mean/StdDev/Sum).
-- `ProcessedWeatherDay`: Daily container for all meteorological variables' stats.
+- **Schemas**: `SoilHumidityRecord`, `WeatherRecord`, `PredictionRecord`, `LocationSettings`.
+- **Service**: `DatabaseService` manages the Realm instance.
 
 ## Implementation Status (2026-05-07)
 - [x] BLE Handshake & Connectivity.
 - [x] Linux BLE First-class Support (Verified May 2026).
-- [x] Realm DB Persistence (Soil Humidity, Weather, Predictions).
+- [x] Realm DB Persistence (Soil Humidity, Weather, Predictions, Location).
 - [x] Dashboard UI (Scan, Connect, Sync, Inference).
-- [x] TFLite Infrastructure (Service + Bridge).
-- [x] Automated Weather Data bridge (0x02).
+- [x] TFLite Infrastructure (LSTM + RF).
+- [x] Automated Weather Data bridge (0x02 - 24h temperature sequence).
+- [x] Automated Inference Triggering (0x12 -> RF -> Verdict).
+- [x] Location Management (GPS + OSM Picker).
+- [x] Signals Integration (Reactive UX).
 
 ## Directory Structure
 - `lib/core/`: API clients, BLE service, TFLite wrapper.

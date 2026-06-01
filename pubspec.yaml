@@ -21,6 +21,8 @@ dependencies:
   tflite_flutter: ^0.12.1           # Tensorflow for mobile and native flutter execution.
   realm: ^20.2.0                    # Database managing.
   flutter_riverpod: ^2.6.1          # State manager.
+  signals: ^3.0.0                   # Reactive signals.
+  fl_chart: ^0.71.0                 # Powerful charting library.
   geolocator: ^13.0.1               # Location services.
   flutter_map: ^8.0.0               # Interactive maps.
   latlong2: ^0.9.1                  # LatLng types.

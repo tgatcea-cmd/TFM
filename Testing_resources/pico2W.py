@@ -26,14 +26,13 @@ SERVICE = (
     ),
 )
 
-# Realistic test scenarios from datasets
-# Format: (HS30_min_t+1, Expected_Recommendation)
-# Note: Recommendation depends on RadSum, but these are good probe points
+# Realistic test scenarios (0.0 to 100.0 scale)
+# 1 = Saturation Risk (Perjudicial), 0 = Healthy (Safe to irrigate)
 TEST_SCENARIOS = [
-    (80.5, "HEALTHY"),   # High humidity
-    (42.0, "WARNING"),   # Moderate humidity
-    (25.0, "CRITICAL"),  # Low humidity
-    (15.0, "STRESS"),    # Very low (Stress class in RF)
+    (92.0, "SATURATION RISK (1)"), # High humidity -> Should be 1
+    (75.0, "SATURATION RISK (1)"), # High humidity -> Should be 1
+    (45.0, "HEALTHY (0)"),         # Safe
+    (30.0, "HEALTHY (0)"),         # Safe
 ]
 
 class PicoBLE:
