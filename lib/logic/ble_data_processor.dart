@@ -1,7 +1,8 @@
 import "dart:async";
-// import 'dart:typed_data';
 import '../core/ble/ble_service.dart';
+import '../core/ble/cbor_helper.dart';
 import '../core/db/database_service.dart';
+import '../data/schemas/soil_humidity_schema.dart';
 
 class BleDataProcessor {
   final BleService _bleService;
@@ -10,6 +11,9 @@ class BleDataProcessor {
   
   final _onDataProcessed = StreamController<void>.broadcast();
   Stream<void> get onDataProcessed => _onDataProcessed.stream;
+
+  final _onPredictedHumidityProcessed = StreamController<double>.broadcast();
+  Stream<double> get onPredictedHumidityProcessed => _onPredictedHumidityProcessed.stream;
 
   BleDataProcessor(this._bleService, this._dbService);
 
@@ -21,58 +25,97 @@ class BleDataProcessor {
     _subscription?.cancel();
   }
 
-  void _handleData(List<int> data) {
-    if (data.isEmpty) return;
+  void _handleData(Object data) {
+    if (data is Map) {
+      final map = CborHelper.asMap(data);
+      if (map != null) {
+        _processMapPayload(map);
+      }
+    } else if (data is List) {
+      final List<Map<String, dynamic>> soilHumidityRecords = [];
+      final List<Map<String, dynamic>> predictionRecords = [];
 
-    // Protocol interpretation:
-    // First byte could be data type
-    final int type = data[0];
-    
-    switch (type) {
-      case 0x11: // Soil Humidity Data packet
-        _processSoilHumidity(data.sublist(1));
-        break;
-      case 0x12: // Predicted Humidity from CESAR (LSTM)
-        _processPredictedHumidity(data.sublist(1));
-        break;
-      default:
-        print('Unknown data type: $type');
+      for (var item in data) {
+        final map = CborHelper.asMap(item);
+        if (map == null) continue;
+        
+        final String? kind = map['kind'] as String?;
+        if (kind == 'soil_moisture') {
+          soilHumidityRecords.add(map);
+        } else if (kind == 'hs30_forecast') {
+          predictionRecords.add(map);
+        }
+      }
+
+      if (soilHumidityRecords.isNotEmpty) {
+        _processSoilMoistureBatch(soilHumidityRecords);
+      }
+      if (predictionRecords.isNotEmpty) {
+        _processPredictionBatch(predictionRecords);
+      }
     }
   }
 
-  void _processSoilHumidity(List<int> payload) {
-    // Assuming payload: [hour_offset, humidity_high_byte, humidity_low_byte]
-    if (payload.length < 3) return;
-
-    final int hourOffset = payload[0];
-    final int humidityRaw = (payload[1] << 8) | payload[2];
-    final double humidity = humidityRaw / 100.0; // Example: scaling
-
-    print('Received Soil Humidity: $humidity% (Offset: $hourOffset)');
-    
-    // Calculate timestamp based on current time minus offset
-    final DateTime timestamp = DateTime.now().subtract(Duration(hours: hourOffset));
-    
-    _dbService.saveSoilHumidity(timestamp.millisecondsSinceEpoch, humidity);
-    _onDataProcessed.add(null);
+  void _processMapPayload(Map<String, dynamic> map) {
+    final String? op = map['op'] as String?;
+    if (op == 'infer_done') {
+      final bool ok = map['ok'] as bool? ?? false;
+      if (ok) {
+        final double? hs30Min = (map['hs30_min'] as num?)?.toDouble();
+        if (hs30Min != null) {
+          final double predictedHumidity = hs30Min * 100.0;
+          print('BleDataProcessor: Real-time inference complete. Predicted: $predictedHumidity%');
+          _dbService.savePrediction(
+            DateTime.now().millisecondsSinceEpoch,
+            predictedHumidity,
+            "Calculating recommendation..."
+          );
+          _onPredictedHumidityProcessed.add(predictedHumidity);
+          _onDataProcessed.add(null);
+        }
+      } else {
+        print('BleDataProcessor: Real-time inference failed on Pico!');
+      }
+    }
   }
 
-  void _processPredictedHumidity(List<int> payload) {
-    // Assuming payload: [humidity_high_byte, humidity_low_byte]
-    if (payload.length < 2) return;
+  void _processSoilMoistureBatch(List<Map<String, dynamic>> records) {
+    final List<SoilHumidityRecord> dbRecords = [];
+    for (var r in records) {
+      final int? tsMs = r['ts_ms'] as int?;
+      final double? val = (r['value'] as num?)?.toDouble();
+      if (tsMs != null && val != null) {
+        // Convert fraction (0-1) to percentage (0-100)
+        dbRecords.add(SoilHumidityRecord(tsMs, val * 100.0));
+      }
+    }
 
-    final int humidityRaw = (payload[0] << 8) | payload[1];
-    final double predictedHumidity = humidityRaw / 100.0;
+    if (dbRecords.isNotEmpty) {
+      print('BleDataProcessor: Batch writing ${dbRecords.length} soil moisture readings to Realm...');
+      _dbService.saveSoilHumidityBatch(dbRecords);
+      _onDataProcessed.add(null);
+    }
+  }
 
-    print('Received Predicted Humidity from CESAR: $predictedHumidity%');
-    
-    // Save as prediction (with placeholder recommendation for now)
-    _dbService.savePrediction(
-      DateTime.now().millisecondsSinceEpoch, 
-      predictedHumidity, 
-      "Calculating recommendation..."
-    );
-    
-    _onDataProcessed.add(null);
+  void _processPredictionBatch(List<Map<String, dynamic>> records) {
+    double? latestVal;
+    for (var r in records) {
+      final int? tsMs = r['ts_ms'] as int?;
+      final double? val = (r['value'] as num?)?.toDouble();
+      if (tsMs != null && val != null) {
+        final double predictedHumidity = val * 100.0;
+        latestVal = predictedHumidity;
+        _dbService.savePrediction(
+          tsMs,
+          predictedHumidity,
+          "Calculating recommendation..."
+        );
+      }
+    }
+
+    if (latestVal != null) {
+      _onPredictedHumidityProcessed.add(latestVal);
+      _onDataProcessed.add(null);
+    }
   }
 }

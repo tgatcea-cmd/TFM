@@ -42,6 +42,12 @@ class DatabaseService {
     });
   }
 
+  void saveSoilHumidityBatch(List<SoilHumidityRecord> records) {
+    _realm.write(() {
+      _realm.addAll(records, update: true);
+    });
+  }
+
   List<SoilHumidityRecord> getSoilHumidityHistory() {
     return _realm.all<SoilHumidityRecord>().toList();
   }

@@ -24,18 +24,17 @@
 - **Statistics calculated**: Min, Max, Mean, StdDev, Sum (for accumulated variables).
 - **Target Variables**: Temperature (2m), Humidity (2m), Shortwave Radiation, Precipitation.
 
-## Communication: BLE Protocol
-### PoC Results (Verified May 2026)
-- **Status**: SUCCESS. Verified bidirectional flow with RPi Pico 2 W.
-- **Service UUID**: `ffe0`.
-- **Handshake (ffe1)**: App writes `0xDEADBEEF`.
-- **Commands (ffe2)**:
-    - `0x01` (Sync): Triggers Pico to send historical/sample data.
-    - `0x02` (Weather Bridge): Sends 24h temperature forecast sequence (49 bytes).
-    - `0x09` (Debug): Toggles Pico simulation cycle.
-- **Data (ffe3 - Notify)**:
-    - `0x11` (Soil Humidity): History data packets.
-    - `0x12` (FPGA Prediction): Trigger for App RF inference.
+## Communication: BLE Protocol (Cesar's Protocol v=1)
+- **Status**: SUCCESS. Implementation aligned with Cesar's Protocol and secure authentication.
+- **Service UUID**: `5a71a000-0000-0000-0000-000000000001`
+- **Characteristics**:
+    - `0x10` (Status, Read/Notify): Firmware version, uptime, and 16-byte random Challenge Nonce.
+    - `0x11` (Time Sync, Write): App writes current epoch milliseconds to sync station's RTC.
+    - `0x12` (Weather, Write): Pushes 24-48h Open-Meteo temperature forecast array.
+    - `0x20` (Data Request, Write): Command interface for authentication (`auth` with 32-byte HMAC), data requests (`get`), and inference triggers (`infer`).
+    - `0x21` (Data Response, Notify): Returns reassembled sliced chunks containing raw readings, statistics, or predictions.
+- **Data Encoding**: CBOR (Concise Binary Object Representation).
+- **Security Handshake**: HMAC-SHA256 Challenge-Response validation using a 128-bit Shared Secret.
 
 ## Inference Layer (Phase 4 COMPLETE)
 ### Architecture: Collaborative ML

@@ -61,6 +61,15 @@ final bleServiceProvider = Provider<BleService>((ref) {
   return BleService(handshakeModule: PicoHandshakeModule());
 });
 
+final bleConnectedProvider = StateProvider<bool>((ref) {
+  final ble = ref.watch(bleServiceProvider);
+  final sub = ble.connectionStateStream.listen((connected) {
+    ref.controller.state = connected;
+  });
+  ref.onDispose(() => sub.cancel());
+  return ble.isConnected;
+});
+
 final bleProcessorProvider = Provider<BleDataProcessor>((ref) {
   final ble = ref.watch(bleServiceProvider);
   final db = ref.watch(dbProvider);
@@ -77,7 +86,17 @@ final weatherClientProvider = Provider<OpenMeteoClient>((ref) {
 class WeatherState {
   final ProcessedWeatherDay? daily;
   final List<double> hourlyForecast;
-  WeatherState({this.daily, this.hourlyForecast = const []});
+  final bool isLoading;
+  final String? errorMessage;
+
+  bool get hasError => errorMessage != null;
+
+  WeatherState({
+    this.daily,
+    this.hourlyForecast = const [],
+    this.isLoading = false,
+    this.errorMessage,
+  });
 }
 
 final weatherProvider =
@@ -95,7 +114,7 @@ class WeatherNotifier extends StateNotifier<WeatherState> {
   }
 
   Future<void> refresh() async {
-    state = WeatherState(); // Phase 2: Show loading indicator
+    state = WeatherState(isLoading: true); // Show loading indicator
     try {
       final data = await _client.fetchForecast();
       final processed = WeatherProcessor.process(data);
@@ -111,10 +130,23 @@ class WeatherNotifier extends StateNotifier<WeatherState> {
       }
 
       if (processed.isNotEmpty) {
-        state = WeatherState(daily: processed.first, hourlyForecast: hourly);
+        state = WeatherState(
+          daily: processed.first,
+          hourlyForecast: hourly,
+          isLoading: false,
+        );
+      } else {
+        state = WeatherState(
+          isLoading: false,
+          errorMessage: 'No forecast data available from API',
+        );
       }
     } catch (e) {
       print('Weather fetch error: $e');
+      state = WeatherState(
+        isLoading: false,
+        errorMessage: e.toString().replaceFirst('Exception: ', ''),
+      );
     }
   }
 
@@ -150,8 +182,8 @@ class PredictionNotifier extends StateNotifier<double> {
   StreamSubscription? _dataSub;
 
   PredictionNotifier(this._bridge, this._ref) : super(-1.0) {
-    // Phase 4: Auto-inference on new data
-    _dataSub = _ref.read(bleProcessorProvider).onDataProcessed.listen((_) {
+    // Phase 7: Isolate RF trigger to run only on 0x12 predicted humidity event
+    _dataSub = _ref.read(bleProcessorProvider).onPredictedHumidityProcessed.listen((_) {
       runRealInference();
     });
   }
@@ -220,6 +252,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
   @override
   Widget build(BuildContext context) {
     final bleService = ref.watch(bleServiceProvider);
+    final isConnected = ref.watch(bleConnectedProvider);
     final db = ref.watch(dbProvider);
     final weather = ref.watch(weatherProvider);
     final prediction = ref.watch(predictionProvider);
@@ -234,7 +267,6 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
             icon: const Icon(Icons.refresh),
             onPressed: () {
               ref.read(weatherProvider.notifier).refresh();
-              setState(() {});
             },
           ),
         ],
@@ -246,11 +278,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildBleCard(bleService, weather),
+              _buildBleCard(bleService, isConnected, weather),
               const SizedBox(height: 16),
               _buildLocationCard(location),
               const SizedBox(height: 16),
-              _buildWeatherCard(bleService, db, weather),
+              _buildWeatherCard(bleService, isConnected, weather),
               const SizedBox(height: 16),
               _buildPredictionCard(tflite, prediction, db),
               const SizedBox(height: 16),
@@ -320,7 +352,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
 
   Widget _buildWeatherCard(
     BleService bleService,
-    DatabaseService db,
+    bool isConnected,
     WeatherState weather,
   ) {
     return Card(
@@ -334,8 +366,34 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const Divider(),
-            if (weather.daily == null)
-              const Center(child: CircularProgressIndicator())
+            if (weather.isLoading)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else if (weather.hasError) ...[
+              Row(
+                children: [
+                  const Icon(Icons.error_outline, color: Colors.red),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      weather.errorMessage ?? 'Error loading weather data',
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              ElevatedButton.icon(
+                onPressed: () => ref.read(weatherProvider.notifier).refresh(),
+                icon: const Icon(Icons.refresh),
+                label: const Text('Retry Fetch'),
+              ),
+            ] else if (weather.daily == null)
+              const Center(child: Text('No weather data available'))
             else ...[
               Text('Date: ${weather.daily!.date.toString().split(' ')[0]}'),
               Text(
@@ -344,7 +402,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
               Text('Avg Hum: ${weather.daily!.humidity.mean.toStringAsFixed(1)}%'),
               const SizedBox(height: 10),
               ElevatedButton.icon(
-                onPressed: bleService.isConnected && weather.hourlyForecast.isNotEmpty
+                onPressed: isConnected && weather.hourlyForecast.isNotEmpty
                     ? () => bleService.sendHourlyForecast(weather.hourlyForecast)
                     : null,
                 icon: const Icon(Icons.cloud_upload),
@@ -449,7 +507,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     );
   }
 
-  Widget _buildBleCard(BleService bleService, WeatherState weather) {
+  Widget _buildBleCard(BleService bleService, bool isConnected, WeatherState weather) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -461,7 +519,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const Divider(),
-            if (!bleService.isConnected) ...[
+            if (!isConnected) ...[
               const Text(
                 'Status: Disconnected',
                 style: TextStyle(color: Colors.red),
@@ -573,7 +631,6 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                     onTap: () async {
                       final scaffoldMessenger = ScaffoldMessenger.of(context);
                       Navigator.pop(context);
-                      unawaited(bleService.stopScan());
                       final bool success = await bleService.connect(r.device);
                       if (success) {
                         // Phase 2: Refresh weather on connection
@@ -583,7 +640,6 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                           const SnackBar(content: Text('Connection failed')),
                         );
                       }
-                      setState(() {});
                     },
                   );
                 },
@@ -594,13 +650,14 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
         actions: [
           TextButton(
             onPressed: () {
-              unawaited(bleService.stopScan());
               Navigator.pop(context);
             },
             child: const Text('Cancel'),
           ),
         ],
       ),
-    );
+    ).then((_) {
+      unawaited(bleService.stopScan());
+    });
   }
 }
