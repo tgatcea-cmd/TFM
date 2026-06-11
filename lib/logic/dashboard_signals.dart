@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:signals/signals.dart';
 import '../core/db/database_service.dart';
 import '../data/schemas/soil_humidity_schema.dart';

@@ -1,149 +1,424 @@
 import bluetooth
 import struct
 import time
-import math
-from micropython import const
+import random
+import hashlib
+import hmac
 
-# BLE Event Codes
+# Cross-platform compatibility shims for standard Python (PC)
+try:
+    from micropython import const
+    IS_PC = False
+except ImportError:
+    const = lambda x: x
+    IS_PC = True
+
+if not hasattr(time, 'sleep_ms'):
+    time.sleep_ms = lambda ms: time.sleep(ms / 1000.0)
+if not hasattr(time, 'ticks_ms'):
+    time.ticks_ms = lambda: int(time.time() * 1000)
+if not hasattr(time, 'ticks_diff'):
+    time.ticks_diff = lambda t1, t2: t1 - t2
+
+# --- Lightweight CBOR Encoder & Decoder for MicroPython ---
+
+def encode_cbor(obj):
+    if obj is None:
+        return b'\xf6'
+    elif isinstance(obj, bool):
+        return b'\xf5' if obj else b'\xf4'
+    elif isinstance(obj, int):
+        if obj >= 0:
+            if obj < 24:
+                return bytes([obj])
+            elif obj < 256:
+                return b'\x18' + struct.pack('>B', obj)
+            elif obj < 65536:
+                return b'\x19' + struct.pack('>H', obj)
+            elif obj < 4294967296:
+                return b'\x1a' + struct.pack('>I', obj)
+            else:
+                return b'\x1b' + struct.pack('>Q', obj)
+        else:
+            val = -1 - obj
+            if val < 24:
+                return bytes([0x20 + val])
+            elif val < 256:
+                return b'\x38' + struct.pack('>B', val)
+            elif val < 65536:
+                return b'\x39' + struct.pack('>H', val)
+            elif val < 4294967296:
+                return b'\x3a' + struct.pack('>I', val)
+            else:
+                return b'\x3b' + struct.pack('>Q', val)
+    elif isinstance(obj, float):
+        return b'\xfb' + struct.pack('>d', obj)
+    elif isinstance(obj, (bytes, bytearray)):
+        l = len(obj)
+        if l < 24:
+            header = bytes([0x40 + l])
+        elif l < 256:
+            header = b'\x58' + struct.pack('>B', l)
+        elif l < 65536:
+            header = b'\x59' + struct.pack('>H', l)
+        else:
+            header = b'\x5a' + struct.pack('>I', l)
+        return header + obj
+    elif isinstance(obj, str):
+        data = obj.encode('utf-8')
+        l = len(data)
+        if l < 24:
+            header = bytes([0x60 + l])
+        elif l < 256:
+            header = b'\x78' + struct.pack('>B', l)
+        elif l < 65536:
+            header = b'\x79' + struct.pack('>H', l)
+        else:
+            header = b'\x7a' + struct.pack('>I', l)
+        return header + data
+    elif isinstance(obj, list):
+        l = len(obj)
+        if l < 24:
+            header = bytes([0x80 + l])
+        elif l < 256:
+            header = b'\x98' + struct.pack('>B', l)
+        elif l < 65536:
+            header = b'\x99' + struct.pack('>H', l)
+        else:
+            header = b'\x9a' + struct.pack('>I', l)
+        return header + b''.join(encode_cbor(x) for x in obj)
+    elif isinstance(obj, dict):
+        l = len(obj)
+        if l < 24:
+            header = bytes([0xa0 + l])
+        elif l < 256:
+            header = b'\xb8' + struct.pack('>B', l)
+        elif l < 65536:
+            header = b'\xb9' + struct.pack('>H', l)
+        else:
+            header = b'\xba' + struct.pack('>I', l)
+        return header + b''.join(encode_cbor(k) + encode_cbor(v) for k, v in obj.items())
+    else:
+        raise TypeError("Unsupported type: %s" % type(obj))
+
+def decode_cbor(data, offset=0):
+    if offset >= len(data):
+        return None, offset
+    
+    b = data[offset]
+    major = b >> 5
+    val = b & 0x1f
+    
+    # Read value length/arg
+    if major < 6:
+        if val < 24:
+            info = val
+            offset += 1
+        elif val == 24:
+            info = data[offset+1]
+            offset += 2
+        elif val == 25:
+            info = struct.unpack('>H', data[offset+1:offset+3])[0]
+            offset += 3
+        elif val == 26:
+            info = struct.unpack('>I', data[offset+1:offset+5])[0]
+            offset += 5
+        elif val == 27:
+            info = struct.unpack('>Q', data[offset+1:offset+9])[0]
+            offset += 9
+        else:
+            info = None
+    
+    if major == 0: # positive int
+        return info, offset
+    elif major == 1: # negative int
+        return -1 - info, offset
+    elif major == 2: # byte string
+        res = data[offset:offset+info]
+        return res, offset + info
+    elif major == 3: # utf-8 string
+        res = data[offset:offset+info].decode('utf-8')
+        return res, offset + info
+    elif major == 4: # array
+        res = []
+        for _ in range(info):
+            item, offset = decode_cbor(data, offset)
+            res.append(item)
+        return res, offset
+    elif major == 5: # map
+        res = {}
+        for _ in range(info):
+            k, offset = decode_cbor(data, offset)
+            v, offset = decode_cbor(data, offset)
+            res[k] = v
+        return res, offset
+    elif major == 7: # float/simple
+        if b == 0xf4:
+            return False, offset + 1
+        elif b == 0xf5:
+            return True, offset + 1
+        elif b == 0xf6:
+            return None, offset + 1
+        elif b == 0xfb:
+            res = struct.unpack('>d', data[offset+1:offset+9])[0]
+            return res, offset + 9
+        
+    raise ValueError("Unsupported major type: %d" % major)
+    
+def decode_cbor_full(data):
+    res, _ = decode_cbor(data)
+    return res
+
+# --- BLE Configuration & Protocol ---
+
 _IRQ_CENTRAL_CONNECT = const(1)
 _IRQ_CENTRAL_DISCONNECT = const(2)
 _IRQ_GATTS_WRITE = const(3)
 
-# UUIDs
-SERVICE_UUID = bluetooth.UUID("0000ffe0-0000-1000-8000-00805f9b34fb")
-HANDSHAKE_UUID = bluetooth.UUID("0000ffe1-0000-1000-8000-00805f9b34fb")
-COMMAND_UUID = bluetooth.UUID("0000ffe2-0000-1000-8000-00805f9b34fb")
-DATA_UUID = bluetooth.UUID("0000ffe3-0000-1000-8000-00805f9b34fb")
+# Cesar's UUIDs
+SERVICE_UUID = bluetooth.UUID("5a71a000-0000-0000-0000-000000000001")
+STATUS_UUID = bluetooth.UUID("5a71a000-0000-0000-0000-000000000010")
+TIME_SYNC_UUID = bluetooth.UUID("5a71a000-0000-0000-0000-000000000011")
+WEATHER_UUID = bluetooth.UUID("5a71a000-0000-0000-0000-000000000012")
+DATA_REQUEST_UUID = bluetooth.UUID("5a71a000-0000-0000-0000-000000000020")
+DATA_RESPONSE_UUID = bluetooth.UUID("5a71a000-0000-0000-0000-000000000021")
 
+_READ = const(0x0002)
 _WRITE = const(0x0008)
 _NOTIFY = const(0x0010)
 
 SERVICE = (
     SERVICE_UUID,
     (
-        (HANDSHAKE_UUID, _WRITE),
-        (COMMAND_UUID, _WRITE),
-        (DATA_UUID, _NOTIFY),
+        (STATUS_UUID, _READ | _NOTIFY),
+        (TIME_SYNC_UUID, _WRITE),
+        (WEATHER_UUID, _WRITE),
+        (DATA_REQUEST_UUID, _WRITE),
+        (DATA_RESPONSE_UUID, _NOTIFY),
     ),
 )
+
+SHARED_SECRET = b"TFM_CESAR_PICO_SECRET_KEY_2026"
+
+# Test scenarios (VWC 0.0 to 1.0)
+TEST_SCENARIOS = [
+    (0.92, "SATURATION RISK (1)"),
+    (0.75, "SATURATION RISK (1)"),
+    (0.45, "HEALTHY (0)"),
+    (0.30, "HEALTHY (0)"),
+]
 
 class PicoBLE:
     def __init__(self, ble):
         self._ble = ble
         self._ble.active(True)
         self._ble.irq(self._irq)
-        ((self._h_handshake, self._h_command, self._h_data),) = self._ble.gatts_register_services((SERVICE,))
+        ((self._h_status, self._h_time_sync, self._h_weather, self._h_data_request, self._h_data_response),) = self._ble.gatts_register_services((SERVICE,))
+        
         self._connections = set()
         self._authenticated = False
         self._debug_mode = False
+        self._scenario_idx = 0
+        
+        if IS_PC:
+            try:
+                import socket
+                import uuid
+                hostname = socket.gethostname()
+                mac_num = uuid.getnode()
+                mac_str = ':'.join(['{:02x}'.format((mac_num >> ele) & 0xff) for ele in range(0, 8*6, 8)][::-1])
+                print(f"[PC Emulator] Windows Name: {hostname}")
+                print(f"[PC Emulator] MAC Address:   {mac_str}")
+            except Exception as e:
+                print(f"[PC Emulator] Error resolving host info: {e}")
+
+        # Security challenge
+        self._challenge = bytes([random.randint(0, 255) for _ in range(16)])
+        self._update_status()
         self._advertise()
+
+    def _update_status(self):
+        status_map = {
+            "v": 1,
+            "authenticated": self._authenticated,
+            "challenge": self._challenge,
+            "firmware": "1.2.0-Cesar",
+            "uptime": time.ticks_ms() // 1000
+        }
+        self._ble.gatts_write(self._h_status, encode_cbor(status_map))
 
     def _irq(self, event, data):
         if event == _IRQ_CENTRAL_CONNECT:
             conn_handle, _, _ = data
             self._connections.add(conn_handle)
-            print("Connected")
+            print("Connected. Generating new challenge.")
+            self._authenticated = False
+            self._challenge = bytes([random.randint(0, 255) for _ in range(16)])
+            self._update_status()
         elif event == _IRQ_CENTRAL_DISCONNECT:
             conn_handle, _, _ = data
-            self._connections.remove(conn_handle)
+            if conn_handle in self._connections:
+                self._connections.remove(conn_handle)
             self._authenticated = False
             print("Disconnected")
             self._advertise()
         elif event == _IRQ_GATTS_WRITE:
             conn_handle, value_handle = data
             value = self._ble.gatts_read(value_handle)
-            if value_handle == self._h_handshake:
-                self._handle_handshake(value)
-            elif value_handle == self._h_command:
-                if self._authenticated:
-                    self._handle_command(value)
-
-    def _handle_handshake(self, value):
-        if value == b'\xde\xad\xbe\xef':
-            self._authenticated = True
-            print("Handshake Success!")
-        else:
-            print("Handshake Failed")
-
-    def _handle_command(self, value):
-        if not value: return
-        cmd = value[0]
-        if cmd == 0x01: # Sync
-            print("Sync Request -> Sending realistic 48h history")
-            self.send_realistic_history()
-        elif cmd == 0x02: # Env Data (Weather Bridge)
-            print(f"Received Weather Bridge (24h sequence)")
-        elif cmd == 0x09: # Toggle LSTM Probe
-            self._debug_mode = not self._debug_mode
-            print(f"LSTM Debug Probe: {'ON' if self._debug_mode else 'OFF'}")
-
-    def send_0x11_soil_hum(self, offset, val):
-        raw = int(val * 100)
-        payload = struct.pack(">BBH", 0x11, offset, raw)
-        self._notify(payload)
-
-    def send_0x12_predicted_hum(self, val):
-        """Sends Predicted Humidity (from FPGA/LSTM)"""
-        raw = int(val * 100)
-        payload = struct.pack(">BH", 0x12, raw)
-        self._notify(payload)
-
-    def _notify(self, data):
-        for conn in self._connections:
-            self._ble.gatts_notify(conn, self._h_data, data)
-
-    def generate_hum_at_hour(self, hour_offset):
-        """
-        Simulates humidity: 
-        - Peak at sunrise (irrigation)
-        - Drop during day (sunlight/radiation)
-        - Slow recovery/stability at night
-        """
-        # Current local hour (approximate relative to Now)
-        current_hour = (time.localtime()[3] - hour_offset) % 24
-        
-        # Base level
-        hum = 45.0 
-        
-        # Irrigation peak around 7 AM
-        if 7 <= current_hour <= 9:
-            hum += 25.0 * math.exp(-(current_hour - 7)**2)
-        
-        # Sunlight drop (Min at 3 PM)
-        if 10 <= current_hour <= 19:
-            drop = 15.0 * math.sin((current_hour - 10) * math.pi / 9)
-            hum -= drop
             
-        return max(15.0, min(95.0, hum))
+            if value_handle == self._h_time_sync:
+                self._handle_time_sync(value)
+            elif value_handle == self._h_weather:
+                self._handle_weather(value)
+            elif value_handle == self._h_data_request:
+                self._handle_data_request(value)
 
-    def send_realistic_history(self):
-        """Sends 48 samples (one per hour) of historical data"""
-        for i in range(48, -1, -1):
-            val = self.generate_hum_at_hour(i)
-            self.send_0x11_soil_hum(i, val)
-            time.sleep_ms(20) # Avoid flooding
-        
-        # Also send current LSTM prediction (Trend if no irrigation)
-        # Assuming current state is t=0, predict t+24
-        current_hum = self.generate_hum_at_hour(0)
-        print(f"History Sent. Current Hum: {current_hum}%. Sending LSTM prediction...")
-        
-        # Predict a decay (loss of 0.8% per hour if no water)
-        prediction = current_hum - 15.0 # Predicted drop over 24h
-        self.send_0x12_predicted_hum(max(10.0, prediction))
+    def _handle_time_sync(self, value):
+        try:
+            data = decode_cbor_full(value)
+            if data and data.get("op") == "set":
+                ms = data.get("ms")
+                print("Time Sync Command received: RTC set to %d ms UTC" % ms)
+        except Exception as e:
+            print("Error parsing time sync: %s" % e)
 
-    def run_debug_probe(self):
-        """Simulation of real-time LSTM output updates"""
-        if not self._authenticated or not self._debug_mode: return
+    def _handle_weather(self, value):
+        try:
+            data = decode_cbor_full(value)
+            if data:
+                temps = data.get("temps", [])
+                avg_temp = sum(temps) / len(temps) if temps else 0.0
+                print("Received Weather Forecast: 24h temperature data. Avg Temp: %.1f C" % avg_temp)
+        except Exception as e:
+            print("Error parsing weather forecast: %s" % e)
+
+    def _handle_data_request(self, value):
+        try:
+            data = decode_cbor_full(value)
+            if not data:
+                return
+
+            op = data.get("op")
+            
+            # 1. Authentication Operation
+            if op == "auth":
+                resp = data.get("resp")
+                # Secure HMAC-SHA256 check
+                expected = hmac.new(SHARED_SECRET, self._challenge, hashlib.sha256).digest()
+                
+                # Constant-time comparison to mitigate timing attacks
+                if len(resp) == len(expected) and hmac.compare_digest(resp, expected):
+                    self._authenticated = True
+                    print("HMAC Challenge Auth SUCCESS!")
+                else:
+                    self._authenticated = False
+                    print("HMAC Challenge Auth FAILED!")
+                
+                self._update_status()
+                return
+
+            # Lock other commands if not authenticated
+            if not self._authenticated:
+                print("Request Blocked: Unauthenticated client attempted operation %s" % op)
+                return
+
+            # 2. Get Data Operation
+            if op == "get":
+                kind = data.get("kind")
+                print("Get request received for kind: %s" % kind)
+                if kind == "raw":
+                    self.send_raw_humidity_history()
+                elif kind == "pred":
+                    self.send_prediction_history()
+            
+            # 3. Force Real-time Inference Operation
+            elif op == "infer":
+                print("Real-time inference forced by client.")
+                self.run_real_time_inference()
+
+            # 4. Debug Mode Toggle
+            elif op == "debug_toggle":
+                self._debug_mode = not self._debug_mode
+                print("Debug Mode: %s" % ("ON" if self._debug_mode else "OFF"))
+
+        except Exception as e:
+            print("Error processing data request: %s" % e)
+
+    def _notify(self, handle, payload):
+        for conn in self._connections:
+            self._ble.gatts_notify(conn, handle, payload)
+
+    def send_chunks(self, payload_bytes, chunk_size=128):
+        """Slices CBOR payload into chunked packets and notifies the client"""
+        total_chunks = (len(payload_bytes) + chunk_size - 1) // chunk_size
+        print("Slicing payload into %d chunks..." % total_chunks)
         
-        # Cycle through some realistic LSTM outputs
-        # 1. High Hum (Saturation Risk)
-        # 2. Critical (Water Stress)
-        scenarios = [92.0, 30.0, 75.0, 45.0]
-        val = scenarios[int(time.time() / 10) % len(scenarios)]
+        for s in range(total_chunks):
+            chunk_data = payload_bytes[s*chunk_size : (s+1)*chunk_size]
+            chunk_map = {
+                "v": 1,
+                "op": "chunk",
+                "s": s,
+                "t": total_chunks,
+                "eof": (s == total_chunks - 1),
+                "p": chunk_data
+            }
+            self._notify(self._h_data_response, encode_cbor(chunk_map))
+            time.sleep_ms(30) # small delay to avoid congestion
+
+    def send_raw_humidity_history(self):
+        # Generate 10 mock readings for the LSTM sequence
+        base_time = time.time() * 1000
+        readings = []
+        for i in range(10):
+            readings.append({
+                "ts_ms": int(base_time - (9 - i) * 3600000),
+                "port": 1,
+                "kind": "soil_moisture",
+                "value": (45.0 - i * 0.5) / 100.0, # Values between 0.0 and 1.0 (VWC)
+                "depth_cm": 30
+            })
         
-        print(f"LSTM Probe -> Sending Predicted: {val}%")
-        self.send_0x12_predicted_hum(val)
+        payload = encode_cbor(readings)
+        self.send_chunks(payload)
+
+    def send_prediction_history(self):
+        base_time = time.time() * 1000
+        predictions = [{
+            "ts_ms": int(base_time),
+            "model": "lstm-hs30",
+            "kind": "hs30_forecast",
+            "port": None,
+            "value": 0.45,
+            "confidence": None
+        }]
+        payload = encode_cbor(predictions)
+        self.send_chunks(payload)
+
+    def run_real_time_inference(self):
+        val, label = TEST_SCENARIOS[self._scenario_idx]
+        print("Running FPGA LSTM inference. Verdict: %s (%.2f VWC)" % (label, val))
+        
+        # Simulate LSTM execution latency
+        time.sleep_ms(400)
+        
+        # Return infer_done response
+        response = {
+            "v": 1,
+            "op": "infer_done",
+            "ok": True,
+            "hs30_min": val
+        }
+        
+        # Send response via chunk channel
+        self.send_chunks(encode_cbor(response))
+        self._scenario_idx = (self._scenario_idx + 1) % len(TEST_SCENARIOS)
+
+    def run_debug_cycle(self):
+        if not self._authenticated or not self._debug_mode:
+            return
+        # In debug mode, automatically trigger real-time predictions every 5 seconds
+        self.run_real_time_inference()
 
     def _advertise(self, interval_us=500000):
         name = "Pico2W_Station"

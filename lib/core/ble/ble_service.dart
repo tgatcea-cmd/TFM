@@ -1,24 +1,95 @@
 import "dart:async";
-import 'dart:typed_data';
+import 'dart:convert';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:crypto/crypto.dart';
 import 'ble_constants.dart';
-//import '../../data/models/processed/daily_weather.dart';
+import 'cbor_helper.dart';
+import 'ble_chunk_assembler.dart';
 
-/// Abstract interface for Handshake to allow easy replacement.
+/// Abstract interface for Handshake/Authentication.
 abstract class IHandshakeModule {
-  Future<bool> performHandshake(BluetoothDevice device, BluetoothCharacteristic? handshakeChar);
+  Future<bool> performHandshake(
+    BluetoothDevice device,
+    BluetoothCharacteristic? statusChar,
+    BluetoothCharacteristic? requestChar,
+  );
 }
 
-/// Initial implementation for RPi Pico 2 W (placeholder logic).
+/// HMAC-SHA256 Challenge-Response Authentication.
 class PicoHandshakeModule implements IHandshakeModule {
+  final String sharedSecret;
+  PicoHandshakeModule({this.sharedSecret = "TFM_CESAR_PICO_SECRET_KEY_2026"});
+
   @override
-  Future<bool> performHandshake(BluetoothDevice device, BluetoothCharacteristic? handshakeChar) async {
-    if (handshakeChar == null) return false;
-    // TODO: Implement actual challenge-response with Pico 2 W
-    print('Performing handshake with Pico 2 W...');
-    // Example: Write an app ID to verify
-    await handshakeChar.write([0xDE, 0xAD, 0xBE, 0xEF]);
-    return true; 
+  Future<bool> performHandshake(
+    BluetoothDevice device,
+    BluetoothCharacteristic? statusChar,
+    BluetoothCharacteristic? requestChar,
+  ) async {
+    if (statusChar == null || requestChar == null) {
+      print('Handshake Error: Missing status or request characteristic!');
+      return false;
+    }
+
+    try {
+      print('PicoHandshakeModule: Reading challenge nonce from Status (0x10)...');
+      final statusBytes = await statusChar.read();
+      final decoded = CborHelper.decode(statusBytes);
+      final statusMap = CborHelper.asMap(decoded);
+      
+      if (statusMap == null || !statusMap.containsKey('challenge')) {
+        print('Handshake Error: Status payload does not contain challenge! Status Map: $statusMap');
+        return false;
+      }
+
+      final challengeRaw = statusMap['challenge'];
+      final List<int> challenge;
+      if (challengeRaw is List) {
+        challenge = List<int>.from(challengeRaw);
+      } else {
+        print('Handshake Error: Challenge field is not a List!');
+        return false;
+      }
+
+      print('PicoHandshakeModule: Challenge nonce received: $challenge');
+
+      // Compute HMAC-SHA256
+      final keyBytes = utf8.encode(sharedSecret);
+      final hmac = Hmac(sha256, keyBytes);
+      final digest = hmac.convert(challenge);
+      final responseBytes = digest.bytes;
+
+      print('PicoHandshakeModule: Computed HMAC-SHA256 response: $responseBytes');
+
+      // Write authentication command to Request (0x20)
+      final authPayload = {
+        'v': 1,
+        'op': 'auth',
+        'resp': responseBytes,
+      };
+      final authBytes = CborHelper.encode(authPayload);
+
+      print('PicoHandshakeModule: Writing auth payload (size: ${authBytes.length} bytes)...');
+      await requestChar.write(authBytes);
+      
+      // Wait briefly for authentication to register on Pico
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      // Read status again to confirm authentication success
+      final confirmBytes = await statusChar.read();
+      final confirmDecoded = CborHelper.decode(confirmBytes);
+      final confirmMap = CborHelper.asMap(confirmDecoded);
+      if (confirmMap != null && confirmMap['authenticated'] == true) {
+        print('PicoHandshakeModule: Handshake successful & authenticated!');
+        return true;
+      } else {
+        print('PicoHandshakeModule: Handshake failed (not marked as authenticated)! Status: $confirmMap');
+        return false;
+      }
+    } catch (e) {
+      print('PicoHandshakeModule Handshake Exception: $e');
+      return false;
+    }
   }
 }
 
@@ -27,14 +98,33 @@ class BleService {
   BluetoothDevice? _connectedDevice;
   StreamSubscription<BluetoothConnectionState>? _stateSubscription;
   
-  BluetoothCharacteristic? _handshakeChar;
-  BluetoothCharacteristic? _commandChar;
-  BluetoothCharacteristic? _dataChar;
+  BluetoothCharacteristic? _statusChar;
+  BluetoothCharacteristic? _timeSyncChar;
+  BluetoothCharacteristic? _weatherChar;
+  BluetoothCharacteristic? _dataRequestChar;
+  BluetoothCharacteristic? _dataResponseChar;
 
-  final _dataController = StreamController<List<int>>.broadcast();
-  Stream<List<int>> get dataStream => _dataController.stream;
+  final BleChunkAssembler _chunkAssembler = BleChunkAssembler();
 
-  BleService({required this.handshakeModule});
+  final _dataController = StreamController<Object>.broadcast();
+  Stream<Object> get dataStream => _dataController.stream;
+
+  final _connectionStateController = StreamController<bool>.broadcast();
+  Stream<bool> get connectionStateStream => _connectionStateController.stream;
+
+  BleService({required this.handshakeModule}) {
+    // Listen to assembled completed payloads from the chunk assembler
+    _chunkAssembler.completedStream.listen((fullPayloadBytes) {
+      try {
+        final decoded = CborHelper.decode(fullPayloadBytes);
+        if (decoded != null) {
+          _dataController.add(decoded);
+        }
+      } catch (e) {
+        print('BleService: Error decoding assembled payload: $e');
+      }
+    });
+  }
 
   Stream<List<ScanResult>> get scanResults => FlutterBluePlus.scanResults;
   bool get isConnected => _connectedDevice != null;
@@ -66,7 +156,16 @@ class BleService {
   Future<bool> connect(BluetoothDevice device) async {
     try {
       print('Connecting to ${device.platformName}...');
-      await device.connect(autoConnect: false, license: License.free);
+      await device.connect(autoConnect: false, license: License.nonprofit);
+
+      // Protocol Robustness: Negotiate MTU of 256 bytes
+      try {
+        print('Negotiating MTU of 256 bytes...');
+        await device.requestMtu(256);
+        print('MTU negotiation successful');
+      } catch (e) {
+        print('MTU negotiation failed or not supported: $e');
+      }
 
       print('Discovering services...');
       final List<BluetoothService> services = await device.discoverServices();
@@ -74,20 +173,25 @@ class BleService {
       print('Caching characteristics...');
       _cacheCharacteristics(services);
 
-      if (_handshakeChar == null) {
-        print('Error: Handshake characteristic not found!');
+      if (_statusChar == null || _dataRequestChar == null) {
+        print('Error: Status or Data Request characteristics not found!');
         await device.disconnect();
         return false;
       }
 
-      print('Initiating handshake...');
-      final bool authenticated = await handshakeModule.performHandshake(device, _handshakeChar);
+      print('Initiating cryptographic handshake...');
+      final bool authenticated = await handshakeModule.performHandshake(device, _statusChar, _dataRequestChar);
 
       if (authenticated) {
         print('Handshake successful!');
         _connectedDevice = device;
         _setupStateListener(device);
         await _setupDataNotifications();
+        _connectionStateController.add(true);
+        
+        // Auto-sync RTC clock with Pico
+        await syncTime();
+
         return true;
       } else {
         print('Handshake failed!');
@@ -100,13 +204,12 @@ class BleService {
     }
   }
 
-
   Future<void> _setupDataNotifications() async {
-    if (_dataChar == null) return;
-    await _dataChar!.setNotifyValue(true);
-    _dataChar!.lastValueStream.listen((value) {
+    if (_dataResponseChar == null) return;
+    await _dataResponseChar!.setNotifyValue(true);
+    _dataResponseChar!.lastValueStream.listen((value) {
       if (value.isNotEmpty) {
-        _dataController.add(value);
+        _chunkAssembler.processChunkBytes(value);
       }
     });
   }
@@ -116,22 +219,27 @@ class BleService {
       final String sUuid = service.uuid.toString().toLowerCase();
       print('Found Service: $sUuid');
       
-      // Check if it matches our service (handling both short and long formats)
-      if (sUuid == BleConstants.serviceUuid.toLowerCase() || sUuid.contains('ffe0')) {
+      if (sUuid == BleConstants.serviceUuid.toLowerCase() || sUuid.contains('5a71a000')) {
         print('Target Service Matches!');
         for (var char in service.characteristics) {
           final String cUuid = char.uuid.toString().toLowerCase();
           print('Found Char: $cUuid');
           
-          if (cUuid == BleConstants.handshakeUuid.toLowerCase() || cUuid.contains('ffe1')) {
-            print('Handshake Char Found');
-            _handshakeChar = char;
-          } else if (cUuid == BleConstants.commandUuid.toLowerCase() || cUuid.contains('ffe2')) {
-            print('Command Char Found');
-            _commandChar = char;
-          } else if (cUuid == BleConstants.dataUuid.toLowerCase() || cUuid.contains('ffe3')) {
-            print('Data Char Found');
-            _dataChar = char;
+          if (cUuid == BleConstants.statusUuid.toLowerCase() || cUuid.contains('0010')) {
+            print('Status Char Found');
+            _statusChar = char;
+          } else if (cUuid == BleConstants.timeSyncUuid.toLowerCase() || cUuid.contains('0011')) {
+            print('Time Sync Char Found');
+            _timeSyncChar = char;
+          } else if (cUuid == BleConstants.weatherUuid.toLowerCase() || cUuid.contains('0012')) {
+            print('Weather Char Found');
+            _weatherChar = char;
+          } else if (cUuid == BleConstants.dataRequestUuid.toLowerCase() || cUuid.contains('0020')) {
+            print('Data Request Char Found');
+            _dataRequestChar = char;
+          } else if (cUuid == BleConstants.dataResponseUuid.toLowerCase() || cUuid.contains('0021')) {
+            print('Data Response Char Found');
+            _dataResponseChar = char;
           }
         }
       }
@@ -142,9 +250,12 @@ class BleService {
     _stateSubscription = device.connectionState.listen((state) {
       if (state == BluetoothConnectionState.disconnected) {
         _connectedDevice = null;
-        _handshakeChar = null;
-        _commandChar = null;
-        _dataChar = null;
+        _statusChar = null;
+        _timeSyncChar = null;
+        _weatherChar = null;
+        _dataRequestChar = null;
+        _dataResponseChar = null;
+        _connectionStateController.add(false);
         _stateSubscription?.cancel();
       }
     });
@@ -153,41 +264,74 @@ class BleService {
   Future<void> disconnect() async {
     await _connectedDevice?.disconnect();
     _connectedDevice = null;
+    _connectionStateController.add(false);
   }
 
-  /// Sends a command byte and waits for response (simplified).
-  Future<void> sendCommand(List<int> bytes) async {
-    if (_commandChar == null) return;
-    await _commandChar!.write(bytes);
+  /// Synchronize RTC clock with Pico
+  Future<void> syncTime() async {
+    if (_timeSyncChar == null) return;
+    final payload = {
+      'v': 1,
+      'op': 'set',
+      'ms': DateTime.now().millisecondsSinceEpoch,
+    };
+    await _timeSyncChar!.write(CborHelper.encode(payload));
+    print('BleService: Time synchronized with station');
   }
 
-  /// Request soil humidity sync from station
-  Future<void> requestSync() async {
-    await sendCommand([0x01]); // 0x01 = Sync Request
-  }
-
-  /// Toggle Pico debug cycle (0x09)
-  Future<void> toggleDebugMode() async {
-    await sendCommand([0x09]);
-  }
-
-  /// Send 24h hourly temperature forecast to station (0x02)
-  /// Protocol: [0x02, Temp0, Temp1, ..., Temp23]
-  /// Each temp packed as 16-bit uint (scale 100)
+  /// Send hourly temperature forecast to station
   Future<void> sendHourlyForecast(List<double> temperatures) async {
-    if (temperatures.length < 24) {
-      print('BleService: Insufficient forecast data (need 24 hours)');
-      return;
-    }
+    if (_weatherChar == null) return;
+    final payload = {
+      'v': 1,
+      'temps': temperatures,
+    };
+    await _weatherChar!.write(CborHelper.encode(payload));
+    print('BleService: Sent weather forecast bridge to characteristic (0x12)');
+  }
 
-    final bd = ByteData(1 + (24 * 2));
-    bd.setUint8(0, 0x02);
+  /// Request database data from station (raw, agg, or pred)
+  Future<void> requestData(String kind, {int? from, int? to}) async {
+    if (_dataRequestChar == null) return;
+    _chunkAssembler.reset();
     
-    for (int i = 0; i < 24; i++) {
-      bd.setUint16(1 + (i * 2), (temperatures[i] * 100).toInt(), Endian.big);
-    }
+    final Map<String, dynamic> payload = {
+      'v': 1,
+      'op': 'get',
+      'kind': kind,
+    };
+    if (from != null) payload['from'] = from;
+    if (to != null) payload['to'] = to;
 
-    await sendCommand(bd.buffer.asUint8List());
-    print('BleService: Sent 24h temperature forecast bridge');
+    await _dataRequestChar!.write(CborHelper.encode(payload));
+    print('BleService: Requested $kind data from station');
+  }
+
+  /// Request soil humidity sync (backward compatible UI helper)
+  Future<void> requestSync() async {
+    await requestData('raw');
+  }
+
+  /// Request station to trigger real-time LSTM inference
+  Future<void> triggerInference() async {
+    if (_dataRequestChar == null) return;
+    _chunkAssembler.reset();
+    final payload = {
+      'v': 1,
+      'op': 'infer',
+    };
+    await _dataRequestChar!.write(CborHelper.encode(payload));
+    print('BleService: Sent infer trigger command');
+  }
+
+  /// Toggle Pico debug cycle (0x09 equivalent for debug command in request char)
+  Future<void> toggleDebugMode() async {
+    if (_dataRequestChar == null) return;
+    final payload = {
+      'v': 1,
+      'op': 'debug_toggle',
+    };
+    await _dataRequestChar!.write(CborHelper.encode(payload));
+    print('BleService: Toggled debug mode on station');
   }
 }
