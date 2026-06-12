@@ -77,6 +77,14 @@ class DatabaseService {
     return _realm.all<PredictionRecord>().toList();
   }
 
+  void clearDatabase() {
+    _realm.write(() {
+      _realm.deleteAll<SoilHumidityRecord>();
+      _realm.deleteAll<WeatherRecord>();
+      _realm.deleteAll<PredictionRecord>();
+    });
+  }
+
   void close() {
     _realm.close();
   }

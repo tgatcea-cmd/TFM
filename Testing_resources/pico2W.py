@@ -1,6 +1,7 @@
 import bluetooth
 import struct
 import time
+import math
 from micropython import const
 
 # BLE Event Codes
@@ -26,15 +27,6 @@ SERVICE = (
     ),
 )
 
-# Realistic test scenarios (0.0 to 100.0 scale)
-# 1 = Saturation Risk (Perjudicial), 0 = Healthy (Safe to irrigate)
-TEST_SCENARIOS = [
-    (92.0, "SATURATION RISK (1)"), # High humidity -> Should be 1
-    (75.0, "SATURATION RISK (1)"), # High humidity -> Should be 1
-    (45.0, "HEALTHY (0)"),         # Safe
-    (30.0, "HEALTHY (0)"),         # Safe
-]
-
 class PicoBLE:
     def __init__(self, ble):
         self._ble = ble
@@ -44,7 +36,6 @@ class PicoBLE:
         self._connections = set()
         self._authenticated = False
         self._debug_mode = False
-        self._scenario_idx = 0
         self._advertise()
 
     def _irq(self, event, data):
@@ -78,13 +69,13 @@ class PicoBLE:
         if not value: return
         cmd = value[0]
         if cmd == 0x01: # Sync
-            print("Sync Request -> Sending history")
-            self.send_test_history()
+            print("Sync Request -> Sending realistic 48h history")
+            self.send_realistic_history()
         elif cmd == 0x02: # Env Data (Weather Bridge)
-            print(f"Received Weather Bridge (24h sequence, len: {len(value)-1})")
-        elif cmd == 0x09: # CUSTOM DEBUG COMMAND
+            print(f"Received Weather Bridge (24h sequence)")
+        elif cmd == 0x09: # Toggle LSTM Probe
             self._debug_mode = not self._debug_mode
-            print(f"Debug Mode: {'ON' if self._debug_mode else 'OFF'}")
+            print(f"LSTM Debug Probe: {'ON' if self._debug_mode else 'OFF'}")
 
     def send_0x11_soil_hum(self, offset, val):
         raw = int(val * 100)
@@ -92,31 +83,67 @@ class PicoBLE:
         self._notify(payload)
 
     def send_0x12_predicted_hum(self, val):
-        """Sends Predicted Humidity (from FPGA/LSTM) to trigger RF on App"""
+        """Sends Predicted Humidity (from FPGA/LSTM)"""
         raw = int(val * 100)
         payload = struct.pack(">BH", 0x12, raw)
         self._notify(payload)
-        print(f"Sent 0x12 (Predicted): {val}%")
 
     def _notify(self, data):
         for conn in self._connections:
             self._ble.gatts_notify(conn, self._h_data, data)
 
-    def send_test_history(self):
-        # Send 10 samples to satisfy InferenceBridge requirement
-        base_hum = 45.0
-        for i in range(10):
-            self.send_0x11_soil_hum(i, base_hum - i*0.5)
-            time.sleep_ms(50)
+    def generate_hum_at_hour(self, hour_offset):
+        """
+        Simulates humidity: 
+        - Peak at sunrise (irrigation)
+        - Drop during day (sunlight/radiation)
+        - Slow recovery/stability at night
+        """
+        # Current local hour (approximate relative to Now)
+        current_hour = (time.localtime()[3] - hour_offset) % 24
+        
+        # Base level
+        hum = 45.0 
+        
+        # Irrigation peak around 7 AM
+        if 7 <= current_hour <= 9:
+            hum += 25.0 * math.exp(-(current_hour - 7)**2)
+        
+        # Sunlight drop (Min at 3 PM)
+        if 10 <= current_hour <= 19:
+            drop = 15.0 * math.sin((current_hour - 10) * math.pi / 9)
+            hum -= drop
+            
+        return max(15.0, min(95.0, hum))
 
-    def run_debug_cycle(self):
+    def send_realistic_history(self):
+        """Sends 48 samples (one per hour) of historical data"""
+        for i in range(48, -1, -1):
+            val = self.generate_hum_at_hour(i)
+            self.send_0x11_soil_hum(i, val)
+            time.sleep_ms(20) # Avoid flooding
+        
+        # Also send current LSTM prediction (Trend if no irrigation)
+        # Assuming current state is t=0, predict t+24
+        current_hum = self.generate_hum_at_hour(0)
+        print(f"History Sent. Current Hum: {current_hum}%. Sending LSTM prediction...")
+        
+        # Predict a decay (loss of 0.8% per hour if no water)
+        prediction = current_hum - 15.0 # Predicted drop over 24h
+        self.send_0x12_predicted_hum(max(10.0, prediction))
+
+    def run_debug_probe(self):
+        """Simulation of real-time LSTM output updates"""
         if not self._authenticated or not self._debug_mode: return
         
-        val, label = TEST_SCENARIOS[self._scenario_idx]
-        print(f"Probing Scenario: {label} ({val}%)")
-        self.send_0x12_predicted_hum(val)
+        # Cycle through some realistic LSTM outputs
+        # 1. High Hum (Saturation Risk)
+        # 2. Critical (Water Stress)
+        scenarios = [92.0, 30.0, 75.0, 45.0]
+        val = scenarios[int(time.time() / 10) % len(scenarios)]
         
-        self._scenario_idx = (self._scenario_idx + 1) % len(TEST_SCENARIOS)
+        print(f"LSTM Probe -> Sending Predicted: {val}%")
+        self.send_0x12_predicted_hum(val)
 
     def _advertise(self, interval_us=500000):
         name = "Pico2W_Station"
@@ -129,11 +156,11 @@ def main():
     ble = bluetooth.BLE()
     pico = PicoBLE(ble)
     
-    last_debug = time.ticks_ms()
+    last_probe = time.ticks_ms()
     while True:
-        if pico._debug_mode and time.ticks_diff(time.ticks_ms(), last_debug) > 5000:
-            pico.run_debug_cycle()
-            last_debug = time.ticks_ms()
+        if pico._debug_mode and time.ticks_diff(time.ticks_ms(), last_probe) > 10000:
+            pico.run_debug_probe()
+            last_probe = time.ticks_ms()
         time.sleep_ms(100)
 
 if __name__ == "__main__":

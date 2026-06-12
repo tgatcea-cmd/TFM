@@ -53,7 +53,10 @@ class BleService {
       return;
     }
 
-    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
+    await FlutterBluePlus.startScan(
+      timeout: const Duration(seconds: 15),
+      continuousUpdates: true,
+    );
   }
 
   Future<void> stopScan() async {

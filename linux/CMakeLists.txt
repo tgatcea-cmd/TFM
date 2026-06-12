@@ -112,8 +112,10 @@ install(DIRECTORY "${NATIVE_ASSETS_DIR}"
    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
    COMPONENT Runtime)
 
+set(INSTALL_BUNDLE_BLOBS_DIR "${CMAKE_INSTALL_PREFIX}/blobs")
+
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/libtensorflowlite_c-linux.so"
-  DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+  DESTINATION "${INSTALL_BUNDLE_BLOBS_DIR}"
   COMPONENT Runtime)
 
 # Fully re-copy the assets directory on each build to avoid having stale files

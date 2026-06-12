@@ -11,11 +11,12 @@ import 'logic/weather_processor.dart';
 import 'data/models/processed/daily_weather.dart';
 import 'logic/inference/tflite_service.dart';
 import 'logic/inference/inference_bridge.dart';
-
-// ... (other imports)
+import 'logic/dashboard_signals.dart';
+import 'logic/sample_data_seeder.dart';
 import 'logic/location_service.dart';
 import 'data/schemas/location_schema.dart';
 import 'ui/location_picker_map.dart';
+import 'ui/charts/unified_chart.dart';
 import 'package:latlong2/latlong.dart' as ll;
 
 // Providers
@@ -131,6 +132,10 @@ final tfliteServiceProvider = Provider<TfliteService>((ref) {
   return service;
 });
 
+final dashboardSignalsProvider = Provider<DashboardSignals>((ref) {
+  return DashboardSignals(ref.watch(dbProvider));
+});
+
 final bridgeProvider = Provider<InferenceBridge>((ref) {
   return InferenceBridge(
     ref.watch(dbProvider),
@@ -152,6 +157,7 @@ class PredictionNotifier extends StateNotifier<double> {
   PredictionNotifier(this._bridge, this._ref) : super(-1.0) {
     // Phase 4: Auto-inference on new data
     _dataSub = _ref.read(bleProcessorProvider).onDataProcessed.listen((_) {
+      _ref.read(dashboardSignalsProvider).refresh();
       runRealInference();
     });
   }
@@ -225,39 +231,140 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     final prediction = ref.watch(predictionProvider);
     final tflite = ref.watch(tfliteServiceProvider);
     final location = ref.watch(locationProvider);
+    final signals = ref.watch(dashboardSignalsProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('TFM PoC Dashboard'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              ref.read(weatherProvider.notifier).refresh();
-              setState(() {});
-            },
-          ),
-        ],
-      ),
-      body: SafeArea(
-        top: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildBleCard(bleService, weather),
-              const SizedBox(height: 16),
-              _buildLocationCard(location),
-              const SizedBox(height: 16),
-              _buildWeatherCard(bleService, db, weather),
-              const SizedBox(height: 16),
-              _buildPredictionCard(tflite, prediction, db),
-              const SizedBox(height: 16),
-              _buildDataCard(db),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('TFM Predictive Dashboard'),
+          bottom: const TabBar(
+            tabs: [
+              Tab(icon: Icon(Icons.analytics), text: 'Analytics'),
+              Tab(icon: Icon(Icons.settings_remote), text: 'System'),
             ],
           ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.settings),
+              onPressed: () => _showSettingsDialog(),
+            ),
+          ],
         ),
+        body: TabBarView(
+          children: [
+            // Tab 1: Analytics
+            RefreshIndicator(
+              onRefresh: () async {
+                await ref.read(weatherProvider.notifier).refresh();
+                ref.read(dashboardSignalsProvider).refresh();
+              },
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    UnifiedAnalyticalChart(signals: signals),
+                    const SizedBox(height: 16),
+                    _buildPredictionCard(tflite, prediction, db),
+                    const SizedBox(height: 16),
+                    _buildWeatherCard(bleService, db, weather),
+                  ],
+                ),
+              ),
+            ),
+            // Tab 2: System
+            RefreshIndicator(
+              onRefresh: () async {
+                ref.read(dashboardSignalsProvider).refresh();
+              },
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    _buildBleCard(bleService, weather),
+                    const SizedBox(height: 16),
+                    _buildLocationCard(location),
+                    const SizedBox(height: 16),
+                    _buildDataCard(db),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showSettingsDialog() {
+    final db = ref.read(dbProvider);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Dashboard Settings'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              leading: Icon(Icons.timer),
+              title: Text('Sync Interval'),
+              subtitle: Text('Currently 6 hours (Fixed in PoC)'),
+            ),
+            const Divider(),
+            const Text('Thresholds (Visualization only)', style: TextStyle(fontWeight: FontWeight.bold)),
+            _buildThresholdRow('Critical', '< 30%', Colors.red),
+            _buildThresholdRow('Warning', '< 45%', Colors.orange),
+            _buildThresholdRow('Optimal', '> 45%', Colors.green),
+            const Divider(),
+            const Text('Database Management', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                ElevatedButton(
+                  onPressed: () {
+                    db.clearDatabase();
+                    ref.read(dashboardSignalsProvider).refresh();
+                    Navigator.pop(context);
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade100),
+                  child: const Text('Clear DB', style: TextStyle(color: Colors.red)),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    SampleDataSeeder.seed(db);
+                    ref.read(dashboardSignalsProvider).refresh();
+                    Navigator.pop(context);
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade100),
+                  child: const Text('Load Demo Data'),
+                ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildThresholdRow(String label, String val, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(10)),
+            child: Text(val, style: const TextStyle(color: Colors.white, fontSize: 12)),
+          ),
+        ],
       ),
     );
   }
