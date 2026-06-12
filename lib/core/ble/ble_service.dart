@@ -97,6 +97,7 @@ class BleService {
   final IHandshakeModule handshakeModule;
   BluetoothDevice? _connectedDevice;
   StreamSubscription<BluetoothConnectionState>? _stateSubscription;
+  StreamSubscription<List<ScanResult>>? _scanSubscription;
   
   BluetoothCharacteristic? _statusChar;
   BluetoothCharacteristic? _timeSyncChar;
@@ -113,6 +114,9 @@ class BleService {
   Stream<bool> get connectionStateStream => _connectionStateController.stream;
 
   BleService({required this.handshakeModule}) {
+    // Enable verbose BLE logs for debugging Linux BlueZ D-Bus transactions
+    FlutterBluePlus.setLogLevel(LogLevel.verbose, color: true);
+
     // Listen to assembled completed payloads from the chunk assembler
     _chunkAssembler.completedStream.listen((fullPayloadBytes) {
       try {
@@ -123,6 +127,15 @@ class BleService {
       } catch (e) {
         print('BleService: Error decoding assembled payload: $e');
       }
+    });
+
+    // Continuous debug logging for BLE adapter state and scanning state
+    FlutterBluePlus.adapterState.listen((state) {
+      print('BleService: Continuous Monitor - BluetoothAdapterState: $state');
+    });
+
+    FlutterBluePlus.isScanning.listen((isScanning) {
+      print('BleService: Continuous Monitor - isScanning: $isScanning');
     });
   }
 
@@ -137,17 +150,36 @@ class BleService {
     
     // Check adapter state
     final state = await FlutterBluePlus.adapterState.first;
-    print('Current adapter state: $state');
+    print('BleService: startScan check - adapterState: $state');
     if (state != BluetoothAdapterState.on) {
-      print('Bluetooth adapter is not ON. State: $state');
+      print('BleService: Bluetooth adapter is not ON. Cannot start scan.');
       return;
     }
+
+    print('BleService: Starting BLE scan (timeout: 15s)...');
+    
+    // Cancel existing scan results subscription if any
+    await _scanSubscription?.cancel();
+    
+    // Subscribe to scan results and print debug logs
+    _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
+      print('BleService: Scan results updated. Discovered devices count: ${results.length}');
+      for (final r in results) {
+        final name = r.advertisementData.advName.isNotEmpty
+            ? r.advertisementData.advName
+            : r.device.platformName;
+        print('  - Found: "$name" [ID: ${r.device.remoteId}], RSSI: ${r.rssi}, Connectable: ${r.advertisementData.connectable}');
+      }
+    });
 
     await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
   }
 
   Future<void> stopScan() async {
+    print('BleService: Stopping BLE scan...');
     await FlutterBluePlus.stopScan();
+    await _scanSubscription?.cancel();
+    _scanSubscription = null;
   }
 
   Future<bool> connect(BluetoothDevice device) async {

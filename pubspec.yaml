@@ -48,3 +48,7 @@ flutter:
 
   assets:
     - assets/models/
+
+dependency_overrides:
+  flutter_blue_plus_linux:
+    path: ./packages/flutter_blue_plus_linux

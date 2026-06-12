@@ -3,25 +3,10 @@ import 'dart:typed_data';
 import 'package:tflite_flutter/tflite_flutter.dart';
 
 class TfliteService {
-  Interpreter? _lstmInterpreter;
   Interpreter? _rfInterpreter;
-  
-  bool _lstmLoaded = false;
   bool _rfLoaded = false;
 
-  bool get isLstmLoaded => _lstmLoaded;
   bool get isRfLoaded => _rfLoaded;
-
-  Future<void> loadLstmModel(String modelPath) async {
-    try {
-      print('TfliteService: Loading LSTM model: $modelPath');
-      _lstmInterpreter = await Interpreter.fromAsset(modelPath);
-      _lstmLoaded = true;
-    } catch (e) {
-      print('TfliteService: Error loading LSTM model: $e');
-      _lstmLoaded = false;
-    }
-  }
 
   Future<void> loadRfModel(String modelPath) async {
     try {
@@ -40,23 +25,6 @@ class TfliteService {
     } catch (e) {
       print('TfliteService: Error loading RF model: $e');
       _rfLoaded = false;
-    }
-  }
-
-  /// Runs inference for a GRU sequence
-  double runLstmInference(List<double> sequence) {
-    final interpreter = _lstmInterpreter;
-    if (interpreter == null || !_lstmLoaded) return -1.0;
-
-    final input = [sequence.map((e) => [e]).toList()];
-    final output = List.filled(1 * 1, 0.0).reshape([1, 1]);
-
-    try {
-      interpreter.run(input, output);
-      return output[0][0];
-    } catch (e) {
-      print('TfliteService: LSTM Inference error: $e');
-      return -1.0;
     }
   }
 
@@ -104,7 +72,6 @@ class TfliteService {
   }
 
   void dispose() {
-    _lstmInterpreter?.close();
     _rfInterpreter?.close();
   }
 }

@@ -531,35 +531,120 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                 label: const Text('Scan & Connect'),
               ),
             ] else ...[
-              const Text(
-                'Status: Connected to Pico',
-                style: TextStyle(color: Colors.green),
-              ),
-              const SizedBox(height: 10),
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  ElevatedButton(
+                  const Text(
+                    'Status: Connected to Pico',
+                    style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => bleService.disconnect(),
+                    icon: const Icon(Icons.power_settings_new),
+                    label: const Text('Disconnect'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
+                      side: const BorderSide(color: Colors.red),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+              const Text(
+                'GATT API Debug Console',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ElevatedButton.icon(
                     onPressed: () async {
-                      await bleService.requestSync();
-                      // Phase 3: Auto-send 0x02 after Sync
-                      if (weather.hourlyForecast.isNotEmpty) {
-                        await bleService.sendHourlyForecast(weather.hourlyForecast);
+                      await bleService.syncTime();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Time Sync Command Sent (0x11)')),
+                        );
                       }
                     },
-                    child: const Text('Sync Data'),
+                    icon: const Icon(Icons.access_time),
+                    label: const Text('Sync Time'),
                   ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    onPressed: () => bleService.toggleDebugMode(),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      final forecast = weather.hourlyForecast.isNotEmpty
+                          ? weather.hourlyForecast
+                          : List<double>.generate(24, (i) => 15.0 + i % 5);
+                      await bleService.sendHourlyForecast(forecast);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              weather.hourlyForecast.isNotEmpty
+                                  ? 'Real Weather Forecast Sent (0x12)'
+                                  : 'Mock Weather Forecast Sent (0x12)',
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.cloud_queue),
+                    label: const Text('Send Weather'),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      await bleService.requestData('raw');
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Request Raw History Sent (0x20)')),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.history),
+                    label: const Text('Get Raw History'),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      await bleService.requestData('pred');
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Request Predictions Sent (0x20)')),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.online_prediction),
+                    label: const Text('Get Pred History'),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      await bleService.triggerInference();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Trigger FPGA LSTM Inference (0x20)')),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.bolt),
+                    label: const Text('Trigger LSTM'),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      await bleService.toggleDebugMode();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Toggle Station Debug Mode (0x20)')),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.bug_report),
+                    label: const Text('Toggle Station Debug'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange.shade100,
+                      foregroundColor: Colors.orange.shade900,
                     ),
-                    child: const Text('Debug (0x09)'),
-                  ),
-                  const SizedBox(width: 10),
-                  OutlinedButton(
-                    onPressed: () => bleService.disconnect(),
-                    child: const Text('Disconnect'),
                   ),
                 ],
               ),

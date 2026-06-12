@@ -1,7 +1,6 @@
 import "dart:async";
 import 'package:signals/signals.dart';
 import '../../core/db/database_service.dart';
-import '../../data/models/processed/daily_weather.dart';
 import 'tflite_service.dart';
 
 class InferenceBridge {
@@ -16,53 +15,7 @@ class InferenceBridge {
 
   InferenceBridge(this._db, this._tflite);
 
-  /// Prepares data and runs inference
-  /// Target: Predict next soil humidity based on last 10 readings + weather context
-  Future<double> predictNextHumidity(ProcessedWeatherDay? weather) async {
-    if (!_tflite.isLstmLoaded) {
-      status.value = "Error: LSTM Model Not Loaded";
-      return -1.0;
-    }
 
-    isRunning.value = true;
-    progress.value = 0.1;
-    status.value = "Fetching History...";
-
-    final history = _db.getSoilHumidityHistory();
-    if (history.length < 10) {
-      status.value = "Error: Insufficient Data";
-      isRunning.value = false;
-      return -1.0;
-    }
-
-    progress.value = 0.4;
-    status.value = "Preparing Sequence...";
-
-    final last10 = history.sublist(history.length - 10)
-      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-
-    final sequence = last10.map((e) => e.value).toList();
-
-    progress.value = 0.7;
-    status.value = "Running LSTM...";
-
-    final result = _tflite.runLstmInference(sequence);
-    
-    if (result != -1.0) {
-      _db.savePrediction(
-        DateTime.now().millisecondsSinceEpoch, 
-        result, 
-        _generateRecommendation(result)
-      );
-    }
-
-    progress.value = 1.0;
-    status.value = "Prediction Complete";
-    lastInferenceTime.value = DateTime.now();
-    isRunning.value = false;
-
-    return result;
-  }
 
   /// Runs the Random Forest classifier based on CESAR's prediction and today's radiation
   Future<void> runIrrigationRecommendation() async {
@@ -120,13 +73,5 @@ class InferenceBridge {
     }
   }
 
-  String _generateRecommendation(double predictedHumidity) {
-    if (predictedHumidity < 30.0) {
-      return 'CRITICAL: Irrigation required immediately.';
-    } else if (predictedHumidity < 45.0) {
-      return 'WARNING: Low humidity trend. Scheduled irrigation recommended.';
-    } else {
-      return 'OPTIMAL: No irrigation needed.';
-    }
-  }
+
 }

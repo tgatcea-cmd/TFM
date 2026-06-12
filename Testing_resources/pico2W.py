@@ -3,7 +3,50 @@ import struct
 import time
 import random
 import hashlib
-import hmac
+try:
+    import hmac
+except ImportError:
+    class MockHMAC:
+        def __init__(self, key, msg=None, digestmod=None):
+            self.key = key
+            self.msg = msg or b''
+            self.digestmod = digestmod or hashlib.sha256
+        
+        def update(self, msg):
+            self.msg += msg
+            
+        def digest(self):
+            block_size = 64
+            k = self.key
+            if len(k) > block_size:
+                k = hashlib.sha256(k).digest()
+            if len(k) < block_size:
+                k = k + b'\x00' * (block_size - len(k))
+            
+            ipad = bytes(x ^ 0x36 for x in k)
+            opad = bytes(x ^ 0x5c for x in k)
+            
+            inner = hashlib.sha256(ipad + self.msg).digest()
+            return hashlib.sha256(opad + inner).digest()
+            
+        def hexdigest(self):
+            return self.digest().hex()
+
+    class hmac_fallback:
+        @staticmethod
+        def new(key, msg=None, digestmod=None):
+            return MockHMAC(key, msg, digestmod)
+            
+        @staticmethod
+        def compare_digest(a, b):
+            if len(a) != len(b):
+                return False
+            result = 0
+            for x, y in zip(a, b):
+                result |= x ^ y
+            return result == 0
+
+    hmac = hmac_fallback
 
 # Cross-platform compatibility shims for standard Python (PC)
 try:
@@ -162,6 +205,22 @@ def decode_cbor(data, offset=0):
         elif b == 0xfb:
             res = struct.unpack('>d', data[offset+1:offset+9])[0]
             return res, offset + 9
+        elif b == 0xfa:
+            res = struct.unpack('>f', data[offset+1:offset+5])[0]
+            return res, offset + 5
+        elif b == 0xf9:
+            val_bytes = data[offset+1:offset+3]
+            h = struct.unpack('>H', val_bytes)[0]
+            s = (h >> 15) & 1
+            e = (h >> 10) & 0x1f
+            m = h & 0x3ff
+            if e == 0:
+                res = (-1.0)**s * (2.0**-14) * (m / 1024.0)
+            elif e == 31:
+                res = float('nan') if m != 0 else (float('-inf') if s else float('inf'))
+            else:
+                res = (-1.0)**s * (2.0**(e - 15)) * (1.0 + m / 1024.0)
+            return res, offset + 3
         
     raise ValueError("Unsupported major type: %d" % major)
     
@@ -214,6 +273,13 @@ class PicoBLE:
         self._ble.active(True)
         self._ble.irq(self._irq)
         ((self._h_status, self._h_time_sync, self._h_weather, self._h_data_request, self._h_data_response),) = self._ble.gatts_register_services((SERVICE,))
+        
+        # Set buffer size to 256 bytes for all characteristics to avoid default 20-byte truncation
+        self._ble.gatts_set_buffer(self._h_status, 256)
+        self._ble.gatts_set_buffer(self._h_time_sync, 256)
+        self._ble.gatts_set_buffer(self._h_weather, 256)
+        self._ble.gatts_set_buffer(self._h_data_request, 256)
+        self._ble.gatts_set_buffer(self._h_data_response, 256)
         
         self._connections = set()
         self._authenticated = False
@@ -303,8 +369,15 @@ class PicoBLE:
             # 1. Authentication Operation
             if op == "auth":
                 resp = data.get("resp")
+                if resp is not None:
+                    resp = bytes(resp)
+                else:
+                    resp = b""
                 # Secure HMAC-SHA256 check
                 expected = hmac.new(SHARED_SECRET, self._challenge, hashlib.sha256).digest()
+                
+                print("[Pico BLE] Received Auth Response: %s" % resp.hex())
+                print("[Pico BLE] Expected Auth Response: %s" % expected.hex())
                 
                 # Constant-time comparison to mitigate timing attacks
                 if len(resp) == len(expected) and hmac.compare_digest(resp, expected):
