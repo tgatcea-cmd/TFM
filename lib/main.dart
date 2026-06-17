@@ -1,8 +1,10 @@
 import "dart:async";
+import 'dart:ui' show PlatformDispatcher;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:signals/signals_flutter.dart';
+import 'package:tfm_app/ui/unified_chart.dart';
 import 'core/ble/ble_service.dart';
 import 'core/db/database_service.dart';
 import 'logic/ble_data_processor.dart';
@@ -45,6 +47,7 @@ class LocationNotifier extends StateNotifier<LocationSettings> {
 
   Future<void> updateFromGps() async {
     final pos = await _service.getCurrentPosition();
+    if (!mounted) return;
     if (pos != null) {
       _db.saveLocationSettings(pos.latitude, pos.longitude, true);
       state = _db.getLocationSettings();
@@ -58,7 +61,10 @@ class LocationNotifier extends StateNotifier<LocationSettings> {
 }
 
 final bleServiceProvider = Provider<BleService>((ref) {
-  return BleService(handshakeModule: PicoHandshakeModule());
+  final service = BleService(handshakeModule: PicoHandshakeModule());
+  // ponytail: disconnect BLE when provider is disposed
+  ref.onDispose(() => service.disconnect());
+  return service;
 });
 
 final bleConnectedProvider = StateProvider<bool>((ref) {
@@ -86,6 +92,7 @@ final weatherClientProvider = Provider<OpenMeteoClient>((ref) {
 class WeatherState {
   final ProcessedWeatherDay? daily;
   final List<double> hourlyForecast;
+  final List<double> hourlyRadiationForecast;
   final bool isLoading;
   final String? errorMessage;
 
@@ -94,6 +101,7 @@ class WeatherState {
   WeatherState({
     this.daily,
     this.hourlyForecast = const [],
+    this.hourlyRadiationForecast = const [],
     this.isLoading = false,
     this.errorMessage,
   });
@@ -117,14 +125,17 @@ class WeatherNotifier extends StateNotifier<WeatherState> {
     state = WeatherState(isLoading: true); // Show loading indicator
     try {
       final data = await _client.fetchForecast();
+      if (!mounted) return;
       final processed = WeatherProcessor.process(data);
       
-      // Extract next 24h of temperature forecast
+      // Extract next 24h of temperature and radiation forecast
       final now = DateTime.now();
       final List<double> hourly = [];
+      final List<double> hourlyRad = [];
       for (int i = 0; i < data.time.length; i++) {
         if (data.time[i].isAfter(now) || data.time[i].isAtSameMomentAs(now)) {
           hourly.add(data.temperature2m[i]);
+          hourlyRad.add(data.shortwaveRadiation[i]);
           if (hourly.length == 24) break;
         }
       }
@@ -133,6 +144,7 @@ class WeatherNotifier extends StateNotifier<WeatherState> {
         state = WeatherState(
           daily: processed.first,
           hourlyForecast: hourly,
+          hourlyRadiationForecast: hourlyRad,
           isLoading: false,
         );
       } else {
@@ -143,6 +155,7 @@ class WeatherNotifier extends StateNotifier<WeatherState> {
       }
     } catch (e) {
       print('Weather fetch error: $e');
+      if (!mounted) return;
       state = WeatherState(
         isLoading: false,
         errorMessage: e.toString().replaceFirst('Exception: ', ''),
@@ -196,6 +209,7 @@ class PredictionNotifier extends StateNotifier<double> {
 
   Future<void> runRealInference() async {
     await _bridge.runIrrigationRecommendation();
+    if (!mounted) return;
     state = 1.0; // Trigger refresh
   }
 
@@ -207,6 +221,14 @@ class PredictionNotifier extends StateNotifier<double> {
 }
 
 void main() {
+  // ponytail: disconnect BLE on sudden uncaught crashes
+  PlatformDispatcher.instance.onError = (error, stack) {
+    try {
+      BleService.instance?.disconnect();
+    } catch (_) {}
+    return false;
+  };
+
   runApp(const ProviderScope(child: MyApp()));
 }
 
@@ -234,6 +256,8 @@ class DashboardPage extends ConsumerStatefulWidget {
 }
 
 class _DashboardPageState extends ConsumerState<DashboardPage> {
+  late final AppLifecycleListener _lifecycleListener;
+
   @override
   void initState() {
     super.initState();
@@ -247,6 +271,19 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     ref.listenManual(locationProvider, (previous, next) {
       ref.read(weatherProvider.notifier).refresh();
     });
+
+    // ponytail: disconnect BLE when the app is detached (terminated)
+    _lifecycleListener = AppLifecycleListener(
+      onDetach: () {
+        ref.read(bleServiceProvider).disconnect();
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _lifecycleListener.dispose();
+    super.dispose();
   }
 
   @override
@@ -282,6 +319,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
               const SizedBox(height: 16),
               _buildLocationCard(location),
               const SizedBox(height: 16),
+              _buildUnifiedChart(db, weather),
+              const SizedBox(height: 16),
               _buildWeatherCard(bleService, isConnected, weather),
               const SizedBox(height: 16),
               _buildPredictionCard(tflite, prediction, db),
@@ -289,6 +328,37 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
               _buildDataCard(db),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUnifiedChart(
+    DatabaseService db,
+    WeatherState weather,
+  ) {
+    final history = db.getSoilHumidityHistory();
+    final predictions = db.getPredictionHistory();
+    final radiationForecast = weather.hourlyRadiationForecast;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Unified Data Chart',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const Divider(),
+            const SizedBox(height: 10),
+            UnifiedChart(
+              history: history,
+              predictions: predictions,
+              radiationForecast: radiationForecast,
+            ),
+          ],
         ),
       ),
     );

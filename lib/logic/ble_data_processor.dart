@@ -9,8 +9,7 @@ class BleDataProcessor {
   final DatabaseService _dbService;
   StreamSubscription? _subscription;
   
-  final _onDataProcessed = StreamController<void>.broadcast();
-  Stream<void> get onDataProcessed => _onDataProcessed.stream;
+
 
   final _onPredictedHumidityProcessed = StreamController<double>.broadcast();
   Stream<double> get onPredictedHumidityProcessed => _onPredictedHumidityProcessed.stream;
@@ -71,7 +70,6 @@ class BleDataProcessor {
             "Calculating recommendation..."
           );
           _onPredictedHumidityProcessed.add(predictedHumidity);
-          _onDataProcessed.add(null);
         }
       } else {
         print('BleDataProcessor: Real-time inference failed on Pico!');
@@ -93,7 +91,6 @@ class BleDataProcessor {
     if (dbRecords.isNotEmpty) {
       print('BleDataProcessor: Batch writing ${dbRecords.length} soil moisture readings to Realm...');
       _dbService.saveSoilHumidityBatch(dbRecords);
-      _onDataProcessed.add(null);
     }
   }
 
@@ -115,7 +112,6 @@ class BleDataProcessor {
 
     if (latestVal != null) {
       _onPredictedHumidityProcessed.add(latestVal);
-      _onDataProcessed.add(null);
     }
   }
 }

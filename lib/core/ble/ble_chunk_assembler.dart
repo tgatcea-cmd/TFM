@@ -6,9 +6,6 @@ class BleChunkAssembler {
   int _totalChunks = 0;
   bool _isAssembled = false;
 
-  final _progressController = StreamController<double>.broadcast();
-  Stream<double> get progressStream => _progressController.stream;
-
   final _completedController = StreamController<List<int>>.broadcast();
   Stream<List<int>> get completedStream => _completedController.stream;
 
@@ -16,7 +13,6 @@ class BleChunkAssembler {
     _chunks.clear();
     _totalChunks = 0;
     _isAssembled = false;
-    _progressController.add(0.0);
   }
 
   /// Processes an incoming raw chunk packet (bytes)
@@ -60,7 +56,6 @@ class BleChunkAssembler {
 
       // Update progress
       final double progress = _totalChunks > 0 ? _chunks.length / _totalChunks : 0.0;
-      _progressController.add(progress);
       print('BleChunkAssembler: Received chunk $s/$t (progress: ${(progress * 100).toStringAsFixed(1)}%)');
 
       // Check if all chunks received
@@ -93,7 +88,6 @@ class BleChunkAssembler {
   }
 
   void dispose() {
-    _progressController.close();
     _completedController.close();
   }
 }

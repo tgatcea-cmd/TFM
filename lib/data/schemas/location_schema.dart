@@ -1,4 +1,3 @@
-import "dart:async";
 import 'package:realm/realm.dart';
 
 part 'location_schema.realm.dart';

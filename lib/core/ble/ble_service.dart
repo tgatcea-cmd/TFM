@@ -6,21 +6,11 @@ import 'ble_constants.dart';
 import 'cbor_helper.dart';
 import 'ble_chunk_assembler.dart';
 
-/// Abstract interface for Handshake/Authentication.
-abstract class IHandshakeModule {
-  Future<bool> performHandshake(
-    BluetoothDevice device,
-    BluetoothCharacteristic? statusChar,
-    BluetoothCharacteristic? requestChar,
-  );
-}
-
 /// HMAC-SHA256 Challenge-Response Authentication.
-class PicoHandshakeModule implements IHandshakeModule {
+class PicoHandshakeModule {
   final String sharedSecret;
   PicoHandshakeModule({this.sharedSecret = "TFM_CESAR_PICO_SECRET_KEY_2026"});
 
-  @override
   Future<bool> performHandshake(
     BluetoothDevice device,
     BluetoothCharacteristic? statusChar,
@@ -94,7 +84,8 @@ class PicoHandshakeModule implements IHandshakeModule {
 }
 
 class BleService {
-  final IHandshakeModule handshakeModule;
+  static BleService? instance;
+  final PicoHandshakeModule handshakeModule;
   BluetoothDevice? _connectedDevice;
   StreamSubscription<BluetoothConnectionState>? _stateSubscription;
   StreamSubscription<List<ScanResult>>? _scanSubscription;
@@ -114,6 +105,7 @@ class BleService {
   Stream<bool> get connectionStateStream => _connectionStateController.stream;
 
   BleService({required this.handshakeModule}) {
+    instance = this;
     // Enable verbose BLE logs for debugging Linux BlueZ D-Bus transactions
     FlutterBluePlus.setLogLevel(LogLevel.verbose, color: true);
 
@@ -336,10 +328,7 @@ class BleService {
     print('BleService: Requested $kind data from station');
   }
 
-  /// Request soil humidity sync (backward compatible UI helper)
-  Future<void> requestSync() async {
-    await requestData('raw');
-  }
+
 
   /// Request station to trigger real-time LSTM inference
   Future<void> triggerInference() async {
