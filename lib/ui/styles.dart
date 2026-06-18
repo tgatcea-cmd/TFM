@@ -1,21 +1,24 @@
-// ponytail: Centralized stylesheet with reduced, unified color palette
+// ponytail: Centralized stylesheet with dynamic system colors and theme accents
 import 'package:flutter/material.dart';
 
 class AppStyles {
-  // Brand & Semantic Colors (Reduced to 4 key colors)
-  static const Color primaryTeal = Colors.teal;
-  static const Color darkSlate = Color(0xFF0F172A);
-  static const Color accentOrange = Colors.orange;
-  static const Color dangerRed = Color(0xFFD32F2F); // Red 700
+  // Brand & Semantic Colors - Dynamically resolved from Theme (System Settings)
+  static Color primaryTeal(BuildContext context) => Theme.of(context).colorScheme.primary;
   
-  // Light tints for containers
-  static const Color bgTealLight = Color(0xFFE0F2F1); // Teal 50
-  static const Color borderTealLight = Color(0xFF80CBC4); // Teal 200
+  static Color darkSlate(BuildContext context) => Theme.of(context).colorScheme.onSurface;
   
-  static const Color dangerRedBg = Color(0xFFFFEBEE); // Red 50
-  static const Color dangerRedBorder = Color(0xFFEF9A9A); // Red 200
+  static Color accentOrange(BuildContext context) => Theme.of(context).colorScheme.secondary;
+  
+  static Color dangerRed(BuildContext context) => Theme.of(context).colorScheme.error;
+  
+  // Light tints for containers dynamically adapted
+  static Color bgTealLight(BuildContext context) => Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.15);
+  static Color borderTealLight(BuildContext context) => Theme.of(context).colorScheme.primary.withValues(alpha: 0.3);
+  
+  static Color dangerRedBg(BuildContext context) => Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.15);
+  static Color dangerRedBorder(BuildContext context) => Theme.of(context).colorScheme.error.withValues(alpha: 0.3);
 
-  // Border Radii
+  // Border Radii (Remain constant layout metrics)
   static const double radiusLarge = 36.0;
   static const double radiusMedium = 12.0;
   static const double radiusSmall = 8.0;
@@ -37,54 +40,54 @@ class AppStyles {
     ),
   ];
 
-  // Premium Typography TextStyles
-  static const TextStyle appBarTitleStyle = TextStyle(
+  // Premium Typography TextStyles (Dynamic based on theme)
+  static TextStyle appBarTitleStyle(BuildContext context) => TextStyle(
     fontSize: 20,
     fontWeight: FontWeight.bold,
-    color: darkSlate,
+    color: darkSlate(context),
   );
 
-  static const TextStyle headerLabelStyle = TextStyle(
+  static TextStyle headerLabelStyle(BuildContext context) => TextStyle(
     fontSize: 16,
     fontWeight: FontWeight.bold,
-    color: primaryTeal,
+    color: primaryTeal(context),
   );
 
-  static const TextStyle titleStyle = TextStyle(
+  static TextStyle titleStyle(BuildContext context) => TextStyle(
     fontSize: 18,
     fontWeight: FontWeight.bold,
-    color: darkSlate,
+    color: darkSlate(context),
   );
 
-  static const TextStyle subTitleStyle = TextStyle(
+  static TextStyle subTitleStyle(BuildContext context) => TextStyle(
     fontSize: 14,
     fontWeight: FontWeight.w500,
-    color: Colors.black87,
+    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.87),
   );
 
-  static const TextStyle bodyStyle = TextStyle(
+  static TextStyle bodyStyle(BuildContext context) => TextStyle(
     fontSize: 13,
-    color: Colors.black54,
+    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
   );
 
   // Recommendations use brand colors directly
-  static const TextStyle recSafeStyle = TextStyle(
+  static TextStyle recSafeStyle(BuildContext context) => TextStyle(
     fontSize: 13,
     fontWeight: FontWeight.bold,
-    color: primaryTeal,
+    color: primaryTeal(context),
   );
 
-  static const TextStyle recDangerStyle = TextStyle(
+  static TextStyle recDangerStyle(BuildContext context) => TextStyle(
     fontSize: 13,
     fontWeight: FontWeight.bold,
-    color: dangerRed,
+    color: dangerRed(context),
   );
 
   // Cards & Containers Custom Decoration
-  static BoxDecoration get headerDecoration => BoxDecoration(
-    color: bgTealLight,
+  static BoxDecoration headerDecoration(BuildContext context) => BoxDecoration(
+    color: bgTealLight(context),
     borderRadius: BorderRadius.circular(radiusMedium),
-    border: Border.all(color: borderTealLight),
+    border: Border.all(color: borderTealLight(context)),
   );
 
   static BoxDecoration dropdownDecoration(Color bgColor, Color borderColor) => BoxDecoration(

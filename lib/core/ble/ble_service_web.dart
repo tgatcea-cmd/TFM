@@ -43,8 +43,16 @@ class PicoHandshakeModule {
   Future<bool> performHandshake(
     BluetoothDevice device,
     dynamic statusChar,
-    dynamic requestChar,
-  ) async {
+    dynamic requestChar, {
+    void Function(double progress, String message)? onProgress,
+  }) async {
+    onProgress?.call(0.1, 'Requesting challenge nonce...');
+    await Future.delayed(const Duration(milliseconds: 150));
+    onProgress?.call(0.5, 'Computing cryptographic HMAC...');
+    await Future.delayed(const Duration(milliseconds: 150));
+    onProgress?.call(0.8, 'Verifying authentication credentials...');
+    await Future.delayed(const Duration(milliseconds: 150));
+    onProgress?.call(1.0, 'Authentication successful.');
     return true;
   }
 }
@@ -112,8 +120,29 @@ class BleService {
     print('BleServiceWeb: Stopping mock BLE scan...');
   }
 
-  Future<bool> connect(BluetoothDevice device) async {
+  Future<bool> connect(
+    BluetoothDevice device, {
+    void Function(double progress, String message)? onConnectingProgress,
+    void Function(double progress, String message)? onPairingProgress,
+  }) async {
     print('BleServiceWeb: Connecting to mock device: ${device.platformName}...');
+    onConnectingProgress?.call(0.1, 'Connecting to device...');
+    await Future.delayed(const Duration(milliseconds: 150));
+    onConnectingProgress?.call(0.4, 'Negotiating MTU...');
+    await Future.delayed(const Duration(milliseconds: 150));
+    onConnectingProgress?.call(0.7, 'Discovering services...');
+    await Future.delayed(const Duration(milliseconds: 150));
+    onConnectingProgress?.call(0.9, 'Caching characteristics...');
+    await Future.delayed(const Duration(milliseconds: 150));
+    onConnectingProgress?.call(1.0, 'Device connected.');
+
+    await handshakeModule.performHandshake(
+      device,
+      null,
+      null,
+      onProgress: onPairingProgress,
+    );
+
     _isConnected = true;
     _connectionStateController.add(true);
     return true;

@@ -33,8 +33,9 @@ class PicoHandshakeModule {
   Future<bool> performHandshake(
     BluetoothDevice device,
     BluetoothCharacteristic? statusChar,
-    BluetoothCharacteristic? requestChar,
-  ) async {
+    BluetoothCharacteristic? requestChar, {
+    void Function(double progress, String message)? onProgress,
+  }) async {
     if (statusChar == null || requestChar == null) {
       print('Handshake Error: Missing status or request characteristic!');
       return false;
@@ -42,7 +43,9 @@ class PicoHandshakeModule {
 
     try {
       print('PicoHandshakeModule: Reading challenge nonce from Status (0x10)...');
+      onProgress?.call(0.1, 'Requesting challenge nonce...');
       final statusBytes = await _readCharacteristicRobust(statusChar);
+      onProgress?.call(0.3, 'Reading challenge nonce...');
       final decoded = CborHelper.decode(statusBytes);
       final statusMap = CborHelper.asMap(decoded);
       
@@ -61,6 +64,7 @@ class PicoHandshakeModule {
       }
 
       print('PicoHandshakeModule: Challenge nonce received: $challenge');
+      onProgress?.call(0.5, 'Computing cryptographic HMAC...');
 
       // Compute HMAC-SHA256
       final keyBytes = utf8.encode(sharedSecret);
@@ -69,6 +73,7 @@ class PicoHandshakeModule {
       final responseBytes = digest.bytes;
 
       print('PicoHandshakeModule: Computed HMAC-SHA256 response: $responseBytes');
+      onProgress?.call(0.7, 'Sending challenge response...');
 
       // Write authentication command to Request (0x20)
       final authPayload = {
@@ -81,6 +86,7 @@ class PicoHandshakeModule {
       print('PicoHandshakeModule: Writing auth payload (size: ${authBytes.length} bytes)...');
       await requestChar.write(authBytes);
       
+      onProgress?.call(0.8, 'Verifying authentication credentials...');
       // Wait briefly for authentication to register on Pico
       await Future.delayed(const Duration(milliseconds: 300));
 
@@ -90,6 +96,7 @@ class PicoHandshakeModule {
       final confirmMap = CborHelper.asMap(confirmDecoded);
       if (confirmMap != null && confirmMap['authenticated'] == true) {
         print('PicoHandshakeModule: Handshake successful & authenticated!');
+        onProgress?.call(1.0, 'Authentication successful.');
         return true;
       } else {
         print('PicoHandshakeModule: Handshake failed (not marked as authenticated)! Status: $confirmMap');
@@ -208,14 +215,20 @@ class BleService {
     _scanSubscription = null;
   }
 
-  Future<bool> connect(BluetoothDevice device) async {
+  Future<bool> connect(
+    BluetoothDevice device, {
+    void Function(double progress, String message)? onConnectingProgress,
+    void Function(double progress, String message)? onPairingProgress,
+  }) async {
     try {
       print('Connecting to ${device.platformName}...');
+      onConnectingProgress?.call(0.1, 'Connecting to device...');
       await device.connect(autoConnect: false, license: License.nonprofit);
 
       // Protocol Robustness: Negotiate MTU of 256 bytes
       try {
         print('Negotiating MTU of 256 bytes...');
+        onConnectingProgress?.call(0.4, 'Negotiating MTU...');
         await device.requestMtu(256);
         print('MTU negotiation successful');
       } catch (e) {
@@ -223,9 +236,11 @@ class BleService {
       }
 
       print('Discovering services...');
+      onConnectingProgress?.call(0.7, 'Discovering services...');
       final List<BluetoothService> services = await device.discoverServices();
 
       print('Caching characteristics...');
+      onConnectingProgress?.call(0.9, 'Caching characteristics...');
       _cacheCharacteristics(services);
 
       if (_statusChar == null || _dataRequestChar == null) {
@@ -234,8 +249,15 @@ class BleService {
         return false;
       }
 
+      onConnectingProgress?.call(1.0, 'Connection established.');
+
       print('Initiating cryptographic handshake...');
-      final bool authenticated = await handshakeModule.performHandshake(device, _statusChar, _dataRequestChar);
+      final bool authenticated = await handshakeModule.performHandshake(
+        device,
+        _statusChar,
+        _dataRequestChar,
+        onProgress: onPairingProgress,
+      );
 
       if (authenticated) {
         print('Handshake successful!');

@@ -103,7 +103,7 @@ class UnifiedChart extends StatelessWidget {
                   lineTouchData: LineTouchData(
                     touchTooltipData: LineTouchTooltipData(
                       getTooltipColor: (LineBarSpot touchedSpot) =>
-                          AppStyles.darkSlate.withValues(alpha: 0.9),
+                          AppStyles.darkSlate(context).withValues(alpha: 0.9),
                       getTooltipItems: (List<LineBarSpot> touchedSpots) {
                         if (touchedSpots.isEmpty) return [];
 
@@ -243,13 +243,13 @@ class UnifiedChart extends StatelessWidget {
                       LineChartBarData(
                         spots: historySpots,
                         isCurved: true,
-                        color: AppStyles.primaryTeal,
+                        color: AppStyles.primaryTeal(context),
                         barWidth: 3.0,
                         isStrokeCapRound: true,
                         dotData: const FlDotData(show: false),
                         belowBarData: BarAreaData(
                           show: true,
-                          color: AppStyles.primaryTeal.withValues(
+                          color: AppStyles.primaryTeal(context).withValues(
                             alpha: 0.1,
                           ),
                         ),
@@ -259,14 +259,14 @@ class UnifiedChart extends StatelessWidget {
                       LineChartBarData(
                         spots: pastRadiationSpots,
                         isCurved: true,
-                        color: AppStyles.dangerRed,
+                        color: AppStyles.dangerRed(context),
                         barWidth: 2.0,
                         dashArray: const [4, 4],
                         isStrokeCapRound: true,
                         dotData: const FlDotData(show: false),
                         belowBarData: BarAreaData(
                           show: true,
-                          color: AppStyles.dangerRed.withValues(
+                          color: AppStyles.dangerRed(context).withValues(
                             alpha: 0.05,
                           ),
                         ),
@@ -276,14 +276,14 @@ class UnifiedChart extends StatelessWidget {
                       LineChartBarData(
                         spots: predSpots,
                         isCurved: true,
-                        color: AppStyles.accentOrange,
+                        color: AppStyles.accentOrange(context),
                         barWidth: 2.0,
                         dashArray: const [5, 5],
                         isStrokeCapRound: true,
                         dotData: const FlDotData(show: false),
                         belowBarData: BarAreaData(
                           show: true,
-                          color: AppStyles.accentOrange.withValues(
+                          color: AppStyles.accentOrange(context).withValues(
                             alpha: 0.05,
                           ),
                         ),
@@ -293,13 +293,13 @@ class UnifiedChart extends StatelessWidget {
                       LineChartBarData(
                         spots: radiationSpots,
                         isCurved: true,
-                        color: AppStyles.accentOrange,
+                        color: AppStyles.accentOrange(context),
                         barWidth: 2.0,
                         isStrokeCapRound: true,
                         dotData: const FlDotData(show: false),
                         belowBarData: BarAreaData(
                           show: true,
-                          color: AppStyles.accentOrange.withValues(
+                          color: AppStyles.accentOrange(context).withValues(
                             alpha: 0.08,
                           ),
                         ),
@@ -318,22 +318,22 @@ class UnifiedChart extends StatelessWidget {
             children: [
               _buildLegendItem(
                 'Humidity %',
-                AppStyles.primaryTeal,
+                AppStyles.primaryTeal(context),
                 isDashed: false,
               ),
               _buildLegendItem(
                 'Past Radiation W/m²',
-                AppStyles.dangerRed,
+                AppStyles.dangerRed(context),
                 isDashed: true,
               ),
               _buildLegendItem(
                 'Prediction %',
-                AppStyles.accentOrange,
+                AppStyles.accentOrange(context),
                 isDashed: true,
               ),
               _buildLegendItem(
                 'Radiation Forecast W/m²',
-                AppStyles.accentOrange,
+                AppStyles.accentOrange(context),
                 isDashed: false,
               ),
             ],

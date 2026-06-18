@@ -6,6 +6,7 @@ import '../../core/ble/ble_service.dart';
 import '../../main.dart';
 import '../../ui/styles.dart';
 import '../../ui/unified_chart.dart';
+import 'sync_progress_dialog.dart';
 
 class TelemetryView extends ConsumerStatefulWidget {
   const TelemetryView({super.key});
@@ -15,7 +16,6 @@ class TelemetryView extends ConsumerStatefulWidget {
 }
 
 class _TelemetryViewState extends ConsumerState<TelemetryView> {
-  bool _showHistoryTable = false;
 
   Future<void> _connectToDevice(
     BuildContext context,
@@ -23,37 +23,31 @@ class _TelemetryViewState extends ConsumerState<TelemetryView> {
   ) async {
     final bleService = ref.read(bleServiceProvider);
     final scaffoldMessenger = ScaffoldMessenger.of(context);
-    if (bleService.isConnected) {
-      await bleService.disconnect();
-    }
 
+    BluetoothDevice? targetDevice;
     if (device.scanResult != null) {
-      final success = await bleService.connect(device.scanResult!.device);
-      if (success) {
-        unawaited(ref.read(weatherProvider.notifier).refresh());
-      } else {
-        scaffoldMessenger.showSnackBar(
-          const SnackBar(duration: Duration(milliseconds: 200), content: Text('BLE Connection failed')),
-        );
-      }
+      targetDevice = device.scanResult!.device;
     } else {
-      ScanResult? cached;
       for (final d in bleService.cachedDevices) {
         if (d.device.remoteId.toString() == device.id) {
-          cached = d;
+          targetDevice = d.device;
           break;
         }
       }
-      if (cached != null) {
-        final success = await bleService.connect(cached.device);
-        if (success) {
-          unawaited(ref.read(weatherProvider.notifier).refresh());
-          return;
-        }
-      }
+    }
+
+    if (targetDevice != null) {
+      // Show progress bars overlay dialog
+      SyncProgressDialog.show(context);
+      
+      // Start connection/pairing/refresh sequence
+      await ref
+          .read(connectionSyncProgressProvider.notifier)
+          .startSequence(targetDevice);
+    } else {
       scaffoldMessenger.showSnackBar(
         SnackBar(
-          duration: const Duration(milliseconds: 200),
+          duration: const Duration(milliseconds: 600),
           content: Text('Device ${device.name} is offline or out of range'),
         ),
       );
@@ -157,7 +151,14 @@ class _TelemetryViewState extends ConsumerState<TelemetryView> {
         label: Text(bleService.connectedDevice?.platformName ?? "Cesar IoT Station"),
       ),
       body: RefreshIndicator(
-        onRefresh: () => ref.read(weatherProvider.notifier).refresh(),
+        onRefresh: () async {
+          if (ref.read(bleServiceProvider).isConnected) {
+            SyncProgressDialog.show(context);
+            await ref.read(connectionSyncProgressProvider.notifier).startRefreshOnly();
+          } else {
+            await ref.read(weatherProvider.notifier).refresh();
+          }
+        },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16),
@@ -171,27 +172,32 @@ class _TelemetryViewState extends ConsumerState<TelemetryView> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
-                        color: lastRec.contains('SATURATION') ? AppStyles.dangerRedBg : AppStyles.bgTealLight,
+                        color: lastRec.contains('SATURATION')
+                            ? AppStyles.dangerRedBg(context)
+                            : AppStyles.bgTealLight(context),
                         borderRadius: BorderRadius.circular(AppStyles.radiusSmall),
                         border: Border.all(
-                          color: lastRec.contains('SATURATION') ? AppStyles.dangerRedBorder : AppStyles.borderTealLight,
+                          color: lastRec.contains('SATURATION')
+                              ? AppStyles.dangerRedBorder(context)
+                              : AppStyles.borderTealLight(context),
                         ),
                       ),
                       child: Text(
-                        lastRec.contains('SATURATION') ? 'Overwatering risk | Irrigation not recommended' : 'Follow usual irrigation schedule',
-                        style: lastRec.contains('SATURATION') ? AppStyles.recDangerStyle : AppStyles.recSafeStyle,
+                        lastRec.contains('SATURATION')
+                            ? 'Overwatering risk | Irrigation not recommended'
+                            : 'Follow usual irrigation schedule',
+                        style: lastRec.contains('SATURATION')
+                            ? AppStyles.recDangerStyle(context)
+                            : AppStyles.recSafeStyle(context),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    onPressed: () => setState(() => _showHistoryTable = !_showHistoryTable),
-                    icon: Icon(_showHistoryTable ? Icons.show_chart : Icons.history),
                   ),
                 ],
               ),
               const SizedBox(height: 16),
-              _showHistoryTable ? _buildHistoryTableView(db) : _buildUnifiedChart(db, weather, isConnected),
+              _buildUnifiedChart(db, weather, isConnected),
+              const SizedBox(height: 16),
+              _buildHistoryTableView(db),
               const SizedBox(height: 80), // Space for FAB
             ],
           ),
