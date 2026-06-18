@@ -1,5 +1,6 @@
 import "dart:async";
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:crypto/crypto.dart';
 import 'ble_constants.dart';
@@ -13,6 +14,22 @@ class PicoHandshakeModule {
   final String sharedSecret;
   PicoHandshakeModule({this.sharedSecret = "TFM_CESAR_PICO_SECRET_KEY_2026"});
 
+  Future<List<int>> _readCharacteristicRobust(BluetoothCharacteristic char) async {
+    for (int i = 0; i < 3; i++) {
+      try {
+        print('ble_service_native: Attempting read on ${char.uuid.toString()} (attempt ${i + 1})...');
+        return await char.read().timeout(const Duration(seconds: 3));
+      } catch (e) {
+        print('ble_service_native: Read failed or timed out: $e');
+        if (i == 2) {
+          rethrow;
+        }
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+    }
+    throw Exception('Failed to read characteristic');
+  }
+
   Future<bool> performHandshake(
     BluetoothDevice device,
     BluetoothCharacteristic? statusChar,
@@ -25,7 +42,7 @@ class PicoHandshakeModule {
 
     try {
       print('PicoHandshakeModule: Reading challenge nonce from Status (0x10)...');
-      final statusBytes = await statusChar.read();
+      final statusBytes = await _readCharacteristicRobust(statusChar);
       final decoded = CborHelper.decode(statusBytes);
       final statusMap = CborHelper.asMap(decoded);
       
@@ -57,7 +74,7 @@ class PicoHandshakeModule {
       final authPayload = {
         'v': 1,
         'op': 'auth',
-        'resp': responseBytes,
+        'resp': Uint8List.fromList(responseBytes),
       };
       final authBytes = CborHelper.encode(authPayload);
 
@@ -68,7 +85,7 @@ class PicoHandshakeModule {
       await Future.delayed(const Duration(milliseconds: 300));
 
       // Read status again to confirm authentication success
-      final confirmBytes = await statusChar.read();
+      final confirmBytes = await _readCharacteristicRobust(statusChar);
       final confirmDecoded = CborHelper.decode(confirmBytes);
       final confirmMap = CborHelper.asMap(confirmDecoded);
       if (confirmMap != null && confirmMap['authenticated'] == true) {

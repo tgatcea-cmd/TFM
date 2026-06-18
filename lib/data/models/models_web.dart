@@ -37,3 +37,10 @@ class WeatherRecord {
     this.precipitation,
   );
 }
+
+class SavedDevice {
+  String id;
+  String name;
+
+  SavedDevice(this.id, this.name);
+}

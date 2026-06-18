@@ -4,12 +4,20 @@ class DatabaseService {
   final List<SoilHumidityRecord> _soilHumidityHistory = [];
   final List<WeatherRecord> _weatherHistory = [];
   final List<PredictionRecord> _predictionHistory = [];
+  final List<SavedDevice> _savedDevices = [];
   late LocationSettings _locationSettings;
   late LocationSettings _gpsConfig;
 
   DatabaseService() {
     _locationSettings = LocationSettings(1, 40.4168, -3.7038, false);
     _gpsConfig = LocationSettings(3, 40.4168, -3.7038, true);
+    
+    // Seed default stations
+    _savedDevices.add(SavedDevice("00:11:22:33:44:01", "Cesar's IoT Station (0x01)"));
+    _savedDevices.add(SavedDevice("00:11:22:33:44:02", "Madrid Station Alpha"));
+    _savedDevices.add(SavedDevice("00:11:22:33:44:03", "Valencia Station Beta"));
+    _savedDevices.add(SavedDevice("00:11:22:33:44:04", "Sevilla Station Gamma"));
+    
     _seedData();
   }
 
@@ -115,6 +123,20 @@ class DatabaseService {
     _soilHumidityHistory.clear();
     _weatherHistory.clear();
     _predictionHistory.clear();
+  }
+
+  // Saved Devices
+  List<SavedDevice> getSavedDevices() {
+    return List.from(_savedDevices);
+  }
+
+  void saveDevice(String id, String name) {
+    _savedDevices.removeWhere((d) => d.id == id);
+    _savedDevices.add(SavedDevice(id, name));
+  }
+
+  void deleteDevice(String id) {
+    _savedDevices.removeWhere((d) => d.id == id);
   }
 
   void close() {}

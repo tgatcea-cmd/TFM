@@ -3,6 +3,7 @@ import '../../data/schemas/soil_humidity_schema.dart';
 import '../../data/schemas/weather_schema.dart';
 import '../../data/schemas/prediction_schema.dart';
 import '../../data/schemas/location_schema.dart';
+import '../../data/schemas/device_schema.dart';
 
 class DatabaseService {
   late Realm _realm;
@@ -13,9 +14,20 @@ class DatabaseService {
       WeatherRecord.schema,
       PredictionRecord.schema,
       LocationSettings.schema,
+      SavedDevice.schema,
     ]);
     _realm = Realm(config);
     
+    // Seed default stations if empty
+    if (_realm.all<SavedDevice>().isEmpty) {
+      _realm.write(() {
+        _realm.add(SavedDevice("00:11:22:33:44:01", "Cesar's IoT Station (0x01)"));
+        _realm.add(SavedDevice("00:11:22:33:44:02", "Madrid Station Alpha"));
+        _realm.add(SavedDevice("00:11:22:33:44:03", "Valencia Station Beta"));
+        _realm.add(SavedDevice("00:11:22:33:44:04", "Sevilla Station Gamma"));
+      });
+    }
+
     // Seed demo data if database is empty to ensure unified chart works
     if (_realm.all<SoilHumidityRecord>().isEmpty) {
       _seedData();
@@ -144,6 +156,26 @@ class DatabaseService {
       _realm.deleteAll<SoilHumidityRecord>();
       _realm.deleteAll<WeatherRecord>();
       _realm.deleteAll<PredictionRecord>();
+    });
+  }
+
+  // Saved Devices
+  List<SavedDevice> getSavedDevices() {
+    return _realm.all<SavedDevice>().toList();
+  }
+
+  void saveDevice(String id, String name) {
+    _realm.write(() {
+      _realm.add(SavedDevice(id, name), update: true);
+    });
+  }
+
+  void deleteDevice(String id) {
+    _realm.write(() {
+      final dev = _realm.find<SavedDevice>(id);
+      if (dev != null) {
+        _realm.delete(dev);
+      }
     });
   }
 

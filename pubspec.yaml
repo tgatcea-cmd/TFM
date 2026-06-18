@@ -24,8 +24,6 @@ dependencies:
   signals: ^3.0.0                   # Reactive signals.
   fl_chart: ^0.71.0                 # Powerful charting library.
   geolocator: ^13.0.1               # Location services.
-  flutter_map: ^8.0.0               # Interactive maps.
-  latlong2: ^0.9.1                  # LatLng types.
   cbor: ^6.5.1                      # CBOR encoding/decoding.
   crypto: ^3.0.3                    # HMAC-SHA256 cryptography.
   tflite_web: ^0.4.0
