@@ -11,38 +11,40 @@ El objetivo principal de este proyecto es desarrollar un sistema de riego inteli
 El usuario es responsable de la decisión final.
 
 # 2. Fundamentos y arquitectura
-  - "Mobile First": se eligió Flutter (Dart) por su compatibilidad multiplataforma, y Riverpod se encarga de la gestión del estado.
-  - Edge AI: TensorFlow Lite permite la inferencia en el dispositivo, lo que reduce la dependencia de una conectividad constante a la nube y los costes de servidor.
-  - Base de datos con capacidad offline: Realm proporciona una persistencia local rápida para el historial meteorológico, los datos de los sensores y las predicciones.
-  - Comunicación modular: El handshake y el protocolo BLE se han abstraído (IHandshakeModule), lo que permite desarrollar el firmware de IoT (Cesar) de forma independiente mientras que la aplicación móvil utiliza marcadores de posición.
+  - **Soporte multiplataforma**: La aplicación se ejecuta de forma nativa (Android, Linux, iOS, macOS, Windows) y en la Web (Flutter Web) mediante el uso de exportaciones condicionales en Dart durante la compilación:
+    - **Base de datos (`DatabaseService`)**: Utiliza Realm DB (`default.realm`) en plataformas nativas para soporte offline, y una base de datos en memoria en la Web para eludir las limitaciones de Realm en el navegador.
+    - **BLE (`BleService`)**: Utiliza `flutter_blue_plus` en nativo, y un servicio BLE simulado (Mock) en la Web para recrear los flujos de emparejamiento, sincronización horaria, transferencia de datos e inferencia.
+    - **Intérprete ML (`TfliteService`)**: Utiliza `tflite_flutter` en nativo, y `tflite_web` (inicializando TFLite JS WebAssembly vía CDN) en la Web para inferencias en el navegador. Incluye una lógica heurística pura de Dart como respaldo (fallback).
+  - **Edge AI**: El modelo de recomendación de riego Random Forest se ejecuta localmente en el dispositivo. El modelo de predicción de humedad LSTM se ejecuta en la estación IoT.
+  - **Gestión de estado y localización**: Riverpod gestiona de manera reactiva el estado de la aplicación. Se incluye traducción multiidioma dinámica (inglés y español) controlada mediante `localeProvider` y un diccionario de traducciones.
 
 # 3. Desarrollo
-El desarrollo se llevó a cabo de forma incremental a través de fases establecidas:
-  - Fase 1: Infraestructura. Se planificó y configuró la inicialización del proyecto, los permisos y las dependencias (BLE, ML, DB).
-  - Fase 2: Adquisición de datos. Se implementó OpenMeteoClient para obtener el historial de las últimas 24 horas y la previsión para las próximas 48 horas. Se añadieron herramientas de estadística.
-  - Fase 3: Puente BLE. Se estableció BleService. Se verificó con éxito el flujo bidireccional con un script de prueba de concepto de Micropython ejecutado sobre una Raspberry Pi Pico 2W. Se verificó la compatibilidad en Android y Linux.
-  
-  [!] Fase 4: Inferencia. Dado que el entrenamiento sigue en curso, se han creado flujos de trabajo teóricos para normalizar el historial de la base de datos en tensores [1, 10, 1] para futuros modelos (¿GRU/LSTM?). 
+El desarrollo se llevó a cabo de forma incremental a través de fases:
+  - **Fase 1: Infraestructura**: Inicialización del proyecto, gestión de permisos y configuración de dependencias básicas.
+  - **Fase 2: Adquisición de datos**: Implementación de OpenMeteoClient (historial de 24h y previsión de 48h). Gestión de ubicación mediante GPS automático (intervalo de 30s) y selector manual interactivo basado en OpenStreetMap.
+  - **Fase 3: Puente BLE**: Protocolo BLE seguro de autenticación HMAC-SHA256 (Protocolo de Cesar v=1). Sincronización horaria automática (`0x11`) y carga de la previsión de temperatura de 24h (`0x12`) al conectar.
+  - **Fase 4: Capa de inferencia**: Inferencia cruzada. La estación calcula la humedad futura (LSTM) y la app ejecuta la decisión de riego (Random Forest en TFLite) combinando la predicción con la radiación solar.
+  - **Fase 5: UI/UX y Gráfico Analítico**: Diseño de panel analítico integrado con un gráfico único y scrollable que visualiza humedad histórica, predicción LSTM y pronóstico de radiación.
+  - **Fase 7: Optimización y confiabilidad**: Batching de escritura de Realm, negociación de MTU, respuesta de UI reactiva a la desconexión BLE, aislamiento del trigger de RF y reintentos para peticiones HTTP.
 
 # 4. Estado actual
-A día de hoy, la aplicación se encuentra en una fase de prueba de concepto (PoC) con el modelo listo y con una automatización completa del flujo de datos:
-  - Interfaz de usuario: un panel de control para desarrolladores funcional que incluye monitorización en tiempo real, controles BLE y un conjunto de herramientas de gestión de la ubicación.
-  - Canalización BLE: totalmente verificada y automatizada.
-    - ffe1: protocolo de enlace verificado.
-    - ffe2: 0x01 (sincronización) y 0x02 (puente de datos ambientales) están operativos.
-    - ffe3: 0x11 (recepción de datos de humedad del suelo) analiza correctamente y almacena los datos en Realm.
-  - Gestión de la ubicación: Se ha implementado la adquisición dinámica de GPS y el selector interactivo de OpenStreetMap. Las coordenadas se almacenan en Realm y controlan el cliente Open-Meteo.
-  - Estrategia de automatización:
-    - Fase 2: La actualización meteorológica se activa al conectarse y cada 6 horas.
-    - Fase 3: El puente meteorológico Auto-0x02 envía datos tras una solicitud de sincronización.
-    - Fase 4: La inferencia automática se activa al recibir datos 0x11.
+La aplicación se encuentra en un estado funcional de Prueba de Concepto (PoC) con flujo de datos completamente automatizado y optimizado:
+  - **Interfaz de usuario rediseñada**: Adaptada a especificaciones técnicas simplificadas:
+    - **Estado 0 (Sin Sensor)**: Pantalla con menú inferior de pestañas (Telemetría / Ajustes) y botón central para buscar estaciones IoT.
+    - **Estado 1 (Sensor Emparejado)**: Visualización de fecha/ubicación, gráfico analítico interactivo, recomendación visible de riego (Random Forest), y lista vertical con lazy loading del historial.
+    - **Vista de Ajustes**: Selector de idioma, estado de permisos (Internet, BLE, GPS), interruptor de ubicación automática/manual, y limpiador de base de datos por dispositivo.
+  - **Flujo de comunicación BLE**:
+    - Lectura de nonce de desafío (`0x10`), autenticación HMAC en `0x20`, sincronización horaria (`0x11`), envío de clima (`0x12`), descarga de telemetría (`0x20` kind `raw`/`pred`), y disparo de inferencia LSTM (`0x20` op `infer`).
+    - Las respuestas largas (`0x21`) se dividen en fragmentos de 128 bytes y se reensamblan en la app.
+  - **Corrección de compilación y parches de sistema**:
+    - Alineación JVM en Android y configuración de `compileSdkVersion` a 34 para compatibilidad del plugin de Realm con Java 26.
+    - Instalación de `libtensorflowlite_c-linux.so` en blobs del bundle Linux.
+    - Parche en el paquete local `flutter_blue_plus_linux` para corregir la actualización de dispositivos en caché.
+    - Soporte completo para HMAC y decodificación CBOR en el simulador MicroPython (`pico_mock.py` / `pico2W.py`).
 
 # 5. Trabajo futuro
-  - Fase 5: Mejoras en la interfaz de usuario y la experiencia de usuario.
-    - Implementar gráficos históricos (sincronizando los datos de Realm con los gráficos).
-    - Panel de configuración para umbrales e intervalos de sincronización.
-    - Rework apto para usuario final.
-  - Seguridad y protocolo: Sustituir 0xDEADBEEF por el protocolo de handshake definitivo desarrollado con César.
-  - Integración de ML: Integrar modelos .tflite de producción, perfeccionar la normalización de InferenceBridge, y ajustar el pipeline según sea necesario.
-  - Validación: Realizar pruebas de integración de extremo a extremo (Meteo -> App -> Pico -> Predicción) y análisis de batería/esfuerzo e iterar sobre la optimización.
+  - **Validación del sistema completo**: Pruebas de campo de extremo a extremo con el hardware físico final (Pico 2W, FPGA).
+  - **Perfilado de batería y consumo**: Medir el impacto de cómputo derivado de los escaneos BLE y la ejecución de modelos TFLite.
+  - **Mantenimiento de modelos**: Actualizar el intérprete de TFLite ante futuros cambios en los modelos de Machine Learning.
+
 
