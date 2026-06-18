@@ -28,6 +28,7 @@ dependencies:
   latlong2: ^0.9.1                  # LatLng types.
   cbor: ^6.5.1                      # CBOR encoding/decoding.
   crypto: ^3.0.3                    # HMAC-SHA256 cryptography.
+  tflite_web: ^0.4.0
 
 
 dev_dependencies:

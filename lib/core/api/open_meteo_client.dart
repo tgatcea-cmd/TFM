@@ -37,11 +37,12 @@ class OpenMeteoClient {
 
 
 
-  /// Fetches forecast data for Today and Tomorrow.
+  /// Fetches forecast data for Today and Tomorrow, plus past 48 hours.
   Future<WeatherData> fetchForecast() async {
     final url = Uri.parse(
       '$_baseUrl?latitude=$latitude&longitude=$longitude'
       '&forecast_days=2'
+      '&past_days=2'
       '&hourly=temperature_2m,relative_humidity_2m,shortwave_radiation,precipitation'
     );
 

@@ -2,7 +2,7 @@ import "dart:async";
 import '../core/ble/ble_service.dart';
 import '../core/ble/cbor_helper.dart';
 import '../core/db/database_service.dart';
-import '../data/schemas/soil_humidity_schema.dart';
+import '../data/models/models.dart';
 
 class BleDataProcessor {
   final BleService _bleService;
