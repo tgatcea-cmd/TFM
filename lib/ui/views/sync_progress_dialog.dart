@@ -33,8 +33,12 @@ class SyncProgressDialog extends ConsumerWidget {
       canPop: isFinished,
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop && !isFinished) {
-          // Trigger disconnect and reset on abort
-          ref.read(bleServiceProvider).disconnect();
+          ref.read(connectionSyncProgressProvider.notifier).submitBypassDecision(false);
+                    
+          if (state.stage == SyncStage.connecting || state.stage == SyncStage.pairing) {
+            ref.read(bleServiceProvider).disconnect();
+          }
+          
           ref.read(connectionSyncProgressProvider.notifier).reset();
         }
       },
@@ -67,37 +71,98 @@ class SyncProgressDialog extends ConsumerWidget {
               ),
               const SizedBox(height: 20),
 
-              // Step 1: Connection
-              _buildStepProgress(
-                ref: ref,
-                title: 'Device Connection',
-                progress: state.connectingProgress,
-                isActive: state.stage == SyncStage.connecting,
-                isDone: state.stage.index > SyncStage.connecting.index,
-                isFailed: state.stage == SyncStage.failed && state.connectingProgress < 1.0,
-              ),
-              const SizedBox(height: 16),
+              if (state.stage == SyncStage.waitingBypass) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade50,
+                    border: Border.all(color: Colors.amber.shade200),
+                    borderRadius: BorderRadius.circular(AppStyles.radiusSmall),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.warning_amber_rounded, color: Colors.amber.shade800),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Insufficient History Data',
+                            style: TextStyle(
+                              color: Colors.amber.shade900,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'This station requires 48 hours of telemetry logs for accurate humidity predictions. Remaining wait time is ${state.hoursToWait} hours.',
+                        style: TextStyle(color: Colors.amber.shade900, fontSize: 13),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.amber.shade700,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                            ),
+                            onPressed: () {
+                              ref.read(connectionSyncProgressProvider.notifier).submitBypassDecision(true);
+                            },
+                            child: const Text('Proceed Anyway'),
+                          ),
+                          OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.amber.shade900,
+                              side: BorderSide(color: Colors.amber.shade400),
+                            ),
+                            onPressed: () {
+                              ref.read(connectionSyncProgressProvider.notifier).submitBypassDecision(false);
+                            },
+                            child: const Text('Wait'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ] else ...[
+                // Step 1: Connection
+                _buildStepProgress(
+                  ref: ref,
+                  title: 'Device Connection',
+                  progress: state.connectingProgress,
+                  isActive: state.stage == SyncStage.connecting,
+                  isDone: state.stage.index > SyncStage.connecting.index,
+                  isFailed: state.stage == SyncStage.failed && state.connectingProgress < 1.0,
+                ),
+                const SizedBox(height: 16),
 
-              // Step 2: Pairing
-              _buildStepProgress(
-                ref: ref,
-                title: 'Security Handshake',
-                progress: state.pairingProgress,
-                isActive: state.stage == SyncStage.pairing,
-                isDone: state.stage.index > SyncStage.pairing.index,
-                isFailed: state.stage == SyncStage.failed && state.connectingProgress >= 1.0 && state.pairingProgress < 1.0,
-              ),
-              const SizedBox(height: 16),
+                // Step 2: Pairing
+                _buildStepProgress(
+                  ref: ref,
+                  title: 'Security Handshake',
+                  progress: state.pairingProgress,
+                  isActive: state.stage == SyncStage.pairing,
+                  isDone: state.stage.index > SyncStage.pairing.index,
+                  isFailed: state.stage == SyncStage.failed && state.connectingProgress >= 1.0 && state.pairingProgress < 1.0,
+                ),
+                const SizedBox(height: 16),
 
-              // Step 3: Refresh/Sync
-              _buildStepProgress(
-                ref: ref,
-                title: 'Data Synchronization',
-                progress: state.refreshingProgress,
-                isActive: state.stage == SyncStage.refreshing,
-                isDone: state.stage == SyncStage.completed,
-                isFailed: state.stage == SyncStage.failed && state.pairingProgress >= 1.0 && state.refreshingProgress < 1.0,
-              ),
+                // Step 3: Refresh/Sync
+                _buildStepProgress(
+                  ref: ref,
+                  title: 'Data Synchronization',
+                  progress: state.refreshingProgress,
+                  isActive: state.stage == SyncStage.refreshing,
+                  isDone: state.stage == SyncStage.completed,
+                  isFailed: state.stage == SyncStage.failed && state.pairingProgress >= 1.0 && state.refreshingProgress < 1.0,
+                ),
+              ],
 
               if (state.errorMessage != null) ...[
                 const SizedBox(height: 20),
@@ -136,20 +201,24 @@ class SyncProgressDialog extends ConsumerWidget {
                 ref.read(connectionSyncProgressProvider.notifier).reset();
                 Navigator.pop(context);
               },
-              child: Text('Close'),
+              child: const Text('Close'),
             )
           else
             TextButton(
               onPressed: () {
                 // Abort sequence
-                ref.read(bleServiceProvider).disconnect();
-                ref.read(connectionSyncProgressProvider.notifier).reset();
+                ref.read(connectionSyncProgressProvider.notifier).submitBypassDecision(false);
+                
+                if (state.stage == SyncStage.connecting || state.stage == SyncStage.pairing) {
+                  ref.read(bleServiceProvider).disconnect();
+                }
+                
                 Navigator.pop(context);
               },
               style: TextButton.styleFrom(
                 foregroundColor: AppStyles.dangerRed(context),
               ),
-              child: Text('Cancel'),
+              child: const Text('Cancel'),
             ),
         ],
       ),
@@ -166,6 +235,8 @@ class SyncProgressDialog extends ConsumerWidget {
         return 'Pairing';
       case SyncStage.refreshing:
         return 'Synchronizing';
+      case SyncStage.waitingBypass:
+        return 'Waiting Bypass Decision';
       case SyncStage.completed:
         return 'Success';
       case SyncStage.failed:

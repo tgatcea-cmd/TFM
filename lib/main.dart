@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'data/models/processed/daily_weather.dart';
+import 'data/models/weather_data.dart';
 import 'data/models/models.dart';
 
 import 'core/api/open_meteo_client.dart';
@@ -20,14 +21,11 @@ import 'logic/weather_processor.dart';
 import 'ui/views/config_view.dart';
 import 'ui/views/sync_progress_dialog.dart';
 import 'ui/views/telemetry_view.dart';
-
-
-
-
-
-
+import 'ui/styles.dart';
 
 /// ################### Providers ###################
+final databaseTriggerProvider = StateProvider<int>((ref) => 0);
+
 final dbProvider = Provider<DatabaseService>((ref) {
   final db = DatabaseService();
   ref.onDispose(() => db.close());
@@ -105,6 +103,13 @@ final mergedDevicesProvider = Provider<List<DisplayDevice>>((ref) {
   }
 
   for (final r in scanResults) {
+    // Filter to keep only devices advertising target service
+    final hasService = r.advertisementData.serviceUuids.any((uuid) {
+      final uuidStr = uuid.toString().toLowerCase();
+      return uuidStr.contains('5a71a000');
+    });
+    if (!hasService) continue;
+
     final mac = r.device.remoteId.toString();
     final name = r.advertisementData.advName.isNotEmpty
         ? r.advertisementData.advName
@@ -137,7 +142,12 @@ final mergedDevicesProvider = Provider<List<DisplayDevice>>((ref) {
 final bleProcessorProvider = Provider<BleDataProcessor>((ref) {
   final ble = ref.watch(bleServiceProvider);
   final db = ref.watch(dbProvider);
-  final processor = BleDataProcessor(ble, db);
+  
+  // 2. PASS THE TRIGGER CALLBACK HERE
+  final processor = BleDataProcessor(ble, db, onDbUpdated: () {
+    ref.read(databaseTriggerProvider.notifier).state++;
+  });
+
   processor.startListening();
   return processor;
 });
@@ -172,7 +182,11 @@ class WeatherState {
 final weatherProvider = StateNotifierProvider<WeatherNotifier, WeatherState>((
   ref,
 ) {
-  return WeatherNotifier(ref.watch(weatherClientProvider), ref);
+  return WeatherNotifier();
+});
+
+final weatherServiceProvider = Provider<WeatherService>((ref) {
+  return WeatherService(ref.watch(weatherClientProvider), ref);
 });
 
 enum SyncStage {
@@ -180,6 +194,7 @@ enum SyncStage {
   connecting,
   pairing,
   refreshing,
+  waitingBypass,
   completed,
   failed,
 }
@@ -191,6 +206,7 @@ class SyncProgressState {
   final double refreshingProgress;
   final String statusMessage;
   final String? errorMessage;
+  final int hoursToWait;
 
   SyncProgressState({
     required this.stage,
@@ -199,6 +215,7 @@ class SyncProgressState {
     required this.refreshingProgress,
     required this.statusMessage,
     this.errorMessage,
+    this.hoursToWait = 0,
   });
 
   SyncProgressState copyWith({
@@ -208,6 +225,7 @@ class SyncProgressState {
     double? refreshingProgress,
     String? statusMessage,
     String? errorMessage,
+    int? hoursToWait,
   }) {
     return SyncProgressState(
       stage: stage ?? this.stage,
@@ -216,21 +234,26 @@ class SyncProgressState {
       refreshingProgress: refreshingProgress ?? this.refreshingProgress,
       statusMessage: statusMessage ?? this.statusMessage,
       errorMessage: errorMessage ?? this.errorMessage,
+      hoursToWait: hoursToWait ?? this.hoursToWait,
     );
   }
 }
 
 class ConnectionSyncProgressNotifier extends StateNotifier<SyncProgressState> {
   final Ref _ref;
+  final Map<String, DateTime> _lockouts = {};
+  Completer<bool>? _bypassCompleter;
 
   ConnectionSyncProgressNotifier(this._ref)
-      : super(SyncProgressState(
+    : super(
+        SyncProgressState(
           stage: SyncStage.idle,
           connectingProgress: 0.0,
           pairingProgress: 0.0,
           refreshingProgress: 0.0,
           statusMessage: '',
-        ));
+        ),
+      );
 
   void reset() {
     state = SyncProgressState(
@@ -240,11 +263,59 @@ class ConnectionSyncProgressNotifier extends StateNotifier<SyncProgressState> {
       refreshingProgress: 0.0,
       statusMessage: '',
     );
+    _bypassCompleter = null;
+  }
+
+  Future<bool> requestBypass(int hours, String deviceId) async {
+    _bypassCompleter = Completer<bool>();
+    state = state.copyWith(
+      stage: SyncStage.waitingBypass,
+      hoursToWait: hours,
+      statusMessage: 'Station has insufficient data ($hours hrs missing).',
+    );
+    final proceed = await _bypassCompleter!.future;
+    _bypassCompleter = null;
+    if (!proceed) {
+      _lockouts[deviceId] = DateTime.now().add(Duration(hours: hours));
+    }
+    return proceed;
+  }
+
+  void submitBypassDecision(bool proceed) {
+    if (_bypassCompleter != null && !_bypassCompleter!.isCompleted) {
+      _bypassCompleter!.complete(proceed);
+    }
   }
 
   Future<bool> startSequence(BluetoothDevice device) async {
     final bleService = _ref.read(bleServiceProvider);
-    
+    final deviceId = device.remoteId.toString();
+
+    // Check lockout first
+    final lockoutUntil = _lockouts[deviceId];
+    if (lockoutUntil != null && DateTime.now().isBefore(lockoutUntil)) {
+      final remaining = lockoutUntil.difference(DateTime.now());
+      final hoursRemaining = (remaining.inSeconds / 3600.0).ceil();
+
+      _bypassCompleter = Completer<bool>();
+      state = SyncProgressState(
+        stage: SyncStage.waitingBypass,
+        connectingProgress: 0.0,
+        pairingProgress: 0.0,
+        refreshingProgress: 0.0,
+        hoursToWait: hoursRemaining,
+        statusMessage:
+            'Device has a pending wait time ($hoursRemaining hrs remaining).',
+      );
+
+      final proceed = await _bypassCompleter!.future;
+      _bypassCompleter = null;
+      if (!proceed) {
+        state = state.copyWith(stage: SyncStage.idle);
+        return false;
+      }
+    }
+
     state = SyncProgressState(
       stage: SyncStage.connecting,
       connectingProgress: 0.0,
@@ -294,7 +365,7 @@ class ConnectionSyncProgressNotifier extends StateNotifier<SyncProgressState> {
       return false;
     }
 
-    state = state.copyWith(
+    state = SyncProgressState(
       stage: SyncStage.refreshing,
       connectingProgress: 1.0,
       pairingProgress: 1.0,
@@ -303,20 +374,33 @@ class ConnectionSyncProgressNotifier extends StateNotifier<SyncProgressState> {
     );
 
     try {
-      await _ref.read(weatherProvider.notifier).refresh(
-        onProgress: (progress, message) {
-          state = state.copyWith(
-            stage: SyncStage.refreshing,
-            refreshingProgress: progress,
-            statusMessage: message,
+      // 1. Refresh local weather state (downloads weather to DB if permitted)
+      await _ref
+          .read(weatherServiceProvider)
+          .refreshWeather(
+            onProgress: (progress, message) {
+              state = state.copyWith(
+                stage: SyncStage.refreshing,
+                refreshingProgress:
+                    progress * 0.4, // map 0.0-0.4 to weather phase
+                statusMessage: message,
+              );
+            },
           );
-        },
-      );
+
+      // 2. Extract updated hourly list
+      final weatherState = _ref.read(weatherProvider);
+      final hourly = weatherState.hourlyForecast;
+
+      // 3. Run BLE operational sequence
+      final db = _ref.read(dbProvider);
+      final appSettings = db.getAppSettings();
+      await _runBleSyncSequence(db, appSettings, bleService, hourly);
     } catch (e) {
       state = state.copyWith(
         stage: SyncStage.failed,
         statusMessage: 'Data sync failed',
-        errorMessage: e.toString(),
+        errorMessage: e.toString().replaceFirst('Exception: ', ''),
       );
       return false;
     }
@@ -334,9 +418,12 @@ class ConnectionSyncProgressNotifier extends StateNotifier<SyncProgressState> {
 
   Future<bool> startRefreshOnly() async {
     final bleService = _ref.read(bleServiceProvider);
+    final db = _ref.read(dbProvider);
+    final appSettings = db.getAppSettings();
+
     if (!bleService.isConnected) {
       try {
-        await _ref.read(weatherProvider.notifier).refresh();
+        await _ref.read(weatherServiceProvider).refreshWeather();
         return true;
       } catch (e) {
         return false;
@@ -352,20 +439,27 @@ class ConnectionSyncProgressNotifier extends StateNotifier<SyncProgressState> {
     );
 
     try {
-      await _ref.read(weatherProvider.notifier).refresh(
-        onProgress: (progress, message) {
-          state = state.copyWith(
-            stage: SyncStage.refreshing,
-            refreshingProgress: progress,
-            statusMessage: message,
+      // 1. Refresh weather state
+      await _ref
+          .read(weatherServiceProvider)
+          .refreshWeather(
+            onProgress: (progress, message) {
+              state = state.copyWith(
+                stage: SyncStage.refreshing,
+                refreshingProgress: progress * 0.4,
+                statusMessage: message,
+              );
+            },
           );
-        },
-      );
+
+      // 2. Run BLE operational sync
+      final hourly = _ref.read(weatherProvider).hourlyForecast;
+      await _runBleSyncSequence(db, appSettings, bleService, hourly);
     } catch (e) {
       state = state.copyWith(
         stage: SyncStage.failed,
         statusMessage: 'Refresh sequence failed',
-        errorMessage: e.toString(),
+        errorMessage: e.toString().replaceFirst('Exception: ', ''),
       );
       return false;
     }
@@ -380,128 +474,291 @@ class ConnectionSyncProgressNotifier extends StateNotifier<SyncProgressState> {
     reset();
     return true;
   }
+
+  Future<void> _runBleSyncSequence(
+    DatabaseService db,
+    AppSettings appSettings,
+    BleService ble,
+    List<double> hourly,
+  ) async {
+    print('SyncOrchestrator: Starting BLE refresh sequence...');
+
+    state = state.copyWith(
+      refreshingProgress: 0.5,
+      statusMessage: 'Synchronizing clock with station...',
+    );
+    await ble.syncTime();
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    state = state.copyWith(
+      refreshingProgress: 0.7,
+      statusMessage: 'Sending weather forecast to station...',
+    );
+    if (appSettings.permitOpenMeteoFill && hourly.isNotEmpty) {
+      await ble.sendHourlyForecast(hourly);
+      await Future.delayed(const Duration(milliseconds: 300));
+    }
+
+    state = state.copyWith(
+      refreshingProgress: 0.8,
+      statusMessage: 'Requesting raw history telemetry...',
+    );
+    await ble.requestData('raw');
+    await Future.delayed(const Duration(milliseconds: 600));
+
+    state = state.copyWith(
+      refreshingProgress: 0.9,
+      statusMessage: 'Checking data completeness...',
+    );
+    final sinceMs = DateTime.now()
+        .subtract(const Duration(hours: 48))
+        .millisecondsSinceEpoch;
+    final count = db.getSoilHumidityCount(sinceMs);
+    print(
+      'SyncOrchestrator: Local SoilHumidityRecord count in last 48h = $count',
+    );
+
+    if (count < 48 && !appSettings.alwaysForceInference) {
+      final hoursToWait = 48 - count;
+      final proceed = await requestBypass(
+        hoursToWait,
+        ble.connectedDevice!.remoteId.toString(),
+      );
+      if (!proceed) {
+        throw Exception(
+          'Sync cancelled: Insufficient telemetry data ($hoursToWait hours missing).',
+        );
+      }
+    }
+
+    if (count < 48 && !appSettings.permitOpenMeteoFill) {
+      state = state.copyWith(
+        refreshingProgress: 0.9,
+        statusMessage: 'Sending fill average instruction...',
+      );
+      await ble.sendFillAverageInstruction();
+      await Future.delayed(const Duration(milliseconds: 300));
+    }
+
+    state = state.copyWith(
+      refreshingProgress: 0.95,
+      statusMessage: 'Requesting prediction telemetry...',
+    );
+    await ble.requestData('pred');
+    await Future.delayed(const Duration(milliseconds: 400));
+
+    state = state.copyWith(
+      refreshingProgress: 1.0,
+      statusMessage: 'Triggering station machine learning inference...',
+    );
+    await ble.triggerInference();
+  }
 }
 
 final connectionSyncProgressProvider =
-    StateNotifierProvider<ConnectionSyncProgressNotifier, SyncProgressState>((ref) {
-  return ConnectionSyncProgressNotifier(ref);
-});
+    StateNotifierProvider<ConnectionSyncProgressNotifier, SyncProgressState>((
+      ref,
+    ) {
+      return ConnectionSyncProgressNotifier(ref);
+    });
 
 class WeatherNotifier extends StateNotifier<WeatherState> {
+  WeatherNotifier() : super(WeatherState());
+
+  void updateState(WeatherState newState) {
+    if (mounted) {
+      state = newState;
+    }
+  }
+}
+
+class WeatherService {
   final OpenMeteoClient _client;
   final Ref _ref;
 
-  WeatherNotifier(this._client, this._ref) : super(WeatherState());
+  WeatherService(this._client, this._ref);
 
-  Future<void> refresh({void Function(double progress, String message)? onProgress}) async {
-    state = WeatherState(isLoading: true); // Show loading indicator
+  Future<void> refreshWeather({
+    void Function(double progress, String message)? onProgress,
+  }) async {
+    final db = _ref.read(dbProvider);
+    final settings = db.getAppSettings();
+
+    _ref
+        .read(weatherProvider.notifier)
+        .updateState(WeatherState(isLoading: true, errorMessage: null));
+
     try {
-      onProgress?.call(0.1, 'Fetching weather forecast...');
-      final data = await _client.fetchForecast();
-      if (!mounted) return;
-      
-      onProgress?.call(0.3, 'Saving weather to local database...');
-      final processed = WeatherProcessor.process(data);
+      WeatherData? apiData;
+      if (settings.permitOpenMeteoFill) {
+        onProgress?.call(0.1, 'Fetching weather forecast...');
+        apiData = await _client.fetchForecast();
 
-      // Save all hourly weather records to database
-      final db = _ref.read(dbProvider);
-      for (int i = 0; i < data.time.length; i++) {
-        db.saveWeather(
-          data.time[i].millisecondsSinceEpoch,
-          data.temperature2m[i],
-          data.relativeHumidity2m[i],
-          data.shortwaveRadiation[i],
-          data.precipitation[i],
-        );
+        onProgress?.call(0.3, 'Saving weather to local database...');
+        // Save all hourly weather records to database
+        for (int i = 0; i < apiData.time.length; i++) {
+          db.saveWeather(
+            apiData.time[i].millisecondsSinceEpoch,
+            apiData.temperature2m[i],
+            apiData.relativeHumidity2m[i],
+            apiData.shortwaveRadiation[i],
+            apiData.precipitation[i],
+          );
+        }
+        
+        _ref.read(databaseTriggerProvider.notifier).state++;
+      } else {
+        print('WeatherService: OpenMeteo filling is disabled by settings.');
       }
 
-      // Extract next 24h of temperature and radiation forecast
-      final now = DateTime.now();
-      final List<double> hourly = [];
-      final List<double> hourlyRad = [];
-      for (int i = 0; i < data.time.length; i++) {
-        if (data.time[i].isAfter(now) || data.time[i].isAtSameMomentAs(now)) {
-          hourly.add(data.temperature2m[i]);
-          hourlyRad.add(data.shortwaveRadiation[i]);
+      // Process hourly forecasts for recommendation scaling
+      final forecastData = _getHourlyForecast(db, apiData);
+      final hourly = forecastData['hourly'] ?? [];
+      final hourlyRad = forecastData['hourlyRad'] ?? [];
+
+      // Process daily weather statistics (for charts and summary UI)
+      final List<ProcessedWeatherDay> apiProcessed = apiData != null
+          ? WeatherProcessor.process(apiData)
+          : const [];
+      final todayWeather = _buildTodayWeather(db, apiProcessed);
+
+      // Update WeatherState
+      _ref
+          .read(weatherProvider.notifier)
+          .updateState(
+            WeatherState(
+              daily: todayWeather,
+              hourlyForecast: hourly,
+              hourlyRadiationForecast: hourlyRad,
+              isLoading: false,
+            ),
+          );
+
+      // If BLE is not connected, run fallback local inference
+      final ble = _ref.read(bleServiceProvider);
+      if (!ble.isConnected) {
+        await runFallbackLocalInference();
+      }
+    } catch (e) {
+      print('Weather fetch error: $e');
+      _ref
+          .read(weatherProvider.notifier)
+          .updateState(
+            WeatherState(
+              isLoading: false,
+              errorMessage: e.toString().replaceFirst('Exception: ', ''),
+            ),
+          );
+      rethrow;
+    }
+  }
+
+  Map<String, List<double>> _getHourlyForecast(
+    DatabaseService db,
+    WeatherData? apiData,
+  ) {
+    final now = DateTime.now();
+    final List<double> hourly = [];
+    final List<double> hourlyRad = [];
+
+    if (apiData != null) {
+      for (int i = 0; i < apiData.time.length; i++) {
+        if (apiData.time[i].isAfter(now) ||
+            apiData.time[i].isAtSameMomentAs(now)) {
+          hourly.add(apiData.temperature2m[i]);
+          hourlyRad.add(apiData.shortwaveRadiation[i]);
           if (hourly.length == 24) break;
         }
       }
+    } else {
+      // Fallback: Populate from local database weather history
+      final localWeather = db.getWeatherHistory();
+      localWeather.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      final nowMs = now.millisecondsSinceEpoch;
+      for (final record in localWeather) {
+        if (record.timestamp >= nowMs) {
+          hourly.add(record.temperature);
+          hourlyRad.add(record.radiation);
+          if (hourly.length == 24) break;
+        }
+      }
+    }
 
-      final todayDate = DateTime(now.year, now.month, now.day);
-      final todayWeather = processed.firstWhere(
+    return {'hourly': hourly, 'hourlyRad': hourlyRad};
+  }
+
+  ProcessedWeatherDay? _buildTodayWeather(
+    DatabaseService db,
+    List<ProcessedWeatherDay> apiProcessed,
+  ) {
+    final now = DateTime.now();
+    final todayDate = DateTime(now.year, now.month, now.day);
+
+    if (apiProcessed.isNotEmpty) {
+      return apiProcessed.firstWhere(
         (day) => DateTime(
           day.date.year,
           day.date.month,
           day.date.day,
         ).isAtSameMomentAs(todayDate),
-        orElse: () => processed.first,
+        orElse: () => apiProcessed.first,
       );
+    }
 
-      if (processed.isNotEmpty) {
-        state = WeatherState(
-          daily: todayWeather,
-          hourlyForecast: hourly,
-          hourlyRadiationForecast: hourlyRad,
-          isLoading: false,
-        );
-      } else {
-        state = WeatherState(
-          isLoading: false,
-          errorMessage: 'No forecast data available from API',
+    // Recreate ProcessedWeatherDay from localWeather database for today
+    final localWeather = db.getWeatherHistory();
+    final todayMsStart = todayDate.millisecondsSinceEpoch;
+    final todayMsEnd = todayDate
+        .add(const Duration(days: 1))
+        .millisecondsSinceEpoch;
+    final todayRecords = localWeather
+        .where((r) => r.timestamp >= todayMsStart && r.timestamp < todayMsEnd)
+        .toList();
+
+    if (todayRecords.isNotEmpty) {
+      final temps = todayRecords.map((r) => r.temperature).toList();
+      final hums = todayRecords.map((r) => r.humidity).toList();
+      final rads = todayRecords.map((r) => r.radiation).toList();
+      final precs = todayRecords.map((r) => r.precipitation).toList();
+
+      DailyStats calcStats(List<double> values, {bool isSum = false}) {
+        if (values.isEmpty)
+          return DailyStats(
+            min: 0.0,
+            max: 0.0,
+            mean: 0.0,
+            stdDev: 0.0,
+            sum: 0.0,
+          );
+        final min = values.reduce((a, b) => a < b ? a : b);
+        final max = values.reduce((a, b) => a > b ? a : b);
+        final sum = values.reduce((a, b) => a + b);
+        final mean = sum / values.length;
+        return DailyStats(
+          min: min,
+          max: max,
+          mean: mean,
+          stdDev: 0.0,
+          sum: isSum ? sum : 0.0,
         );
       }
 
-      // --- FULL REFRESH SEQUENCE ---
-      final ble = _ref.read(bleServiceProvider);
-      if (ble.isConnected) {
-        print('WeatherNotifier: Starting BLE refresh sequence...');
-
-        onProgress?.call(0.5, 'Synchronizing clock with station...');
-        // 1. Sync time
-        await ble.syncTime();
-        await Future.delayed(const Duration(milliseconds: 300));
-
-        onProgress?.call(0.7, 'Sending weather forecast to station...');
-        // 2. Send weather
-        if (hourly.isNotEmpty) {
-          await ble.sendHourlyForecast(hourly);
-          await Future.delayed(const Duration(milliseconds: 300));
-        }
-
-        onProgress?.call(0.8, 'Requesting raw history telemetry...');
-        // 3. Get previous 48 hours raw data
-        await ble.requestData('raw');
-        await Future.delayed(const Duration(milliseconds: 400));
-
-        onProgress?.call(0.9, 'Requesting prediction telemetry...');
-        // 4. Get previous prediction data
-        await ble.requestData('pred');
-        await Future.delayed(const Duration(milliseconds: 400));
-
-        onProgress?.call(1.0, 'Triggering station machine learning inference...');
-        // 5. Trigger LSTM inference on station
-        await ble.triggerInference();
-
-        // Note: Running RF is handled reactively by PredictionNotifier
-        // when the LSTM result is returned via onPredictedHumidityProcessed!
-      } else {
-        print(
-          'WeatherNotifier: Not paired. Running local RF inference fallback...',
-        );
-        // Not paired: run RF inference locally using latest cached prediction
-        final bridge = _ref.read(bridgeProvider);
-        if (_ref.read(tfliteServiceProvider).isRfLoaded) {
-          await bridge.runIrrigationRecommendation();
-        }
-      }
-    } catch (e) {
-      print('Weather fetch error: $e');
-      if (!mounted) return;
-      state = WeatherState(
-        isLoading: false,
-        errorMessage: e.toString().replaceFirst('Exception: ', ''),
+      return ProcessedWeatherDay(
+        date: todayDate,
+        temperature: calcStats(temps),
+        humidity: calcStats(hums),
+        radiation: calcStats(rads, isSum: true),
+        precipitation: calcStats(precs, isSum: true),
       );
-      rethrow;
+    }
+    return null;
+  }
+
+  Future<void> runFallbackLocalInference() async {
+    print('WeatherService: Not paired. Running local RF inference fallback...');
+    final bridge = _ref.read(bridgeProvider);
+    if (_ref.read(tfliteServiceProvider).isRfLoaded) {
+      await bridge.runIrrigationRecommendation();
     }
   }
 }
@@ -516,6 +773,9 @@ final bridgeProvider = Provider<InferenceBridge>((ref) {
   return InferenceBridge(
     ref.watch(dbProvider),
     ref.watch(tfliteServiceProvider),
+    onDbUpdated: () {
+      ref.read(databaseTriggerProvider.notifier).state++;
+    },
   );
 });
 
@@ -561,13 +821,6 @@ class PredictionNotifier extends StateNotifier<double> {
 
 /// ################### Providers ###################
 
-
-
-
-
-
-
-
 /// ################### Main ###################
 void main() {
   PlatformDispatcher.instance.onError = (error, stack) {
@@ -598,14 +851,6 @@ class MyApp extends StatelessWidget {
 
 /// ################### Main ###################
 
-
-
-
-
-
-
-
-
 /// ################### Navigation Views ###################
 class DashboardPage extends ConsumerStatefulWidget {
   const DashboardPage({super.key});
@@ -615,98 +860,175 @@ class DashboardPage extends ConsumerStatefulWidget {
 }
 
 class _DashboardPageState extends ConsumerState<DashboardPage> {
-  bool _showSettings = false;
-  final double _fontScale = 1.0;
+    bool _showSettings = false;
+    late final AppLifecycleListener _lifecycleListener;
 
-  late final AppLifecycleListener _lifecycleListener;
+    @override
+    void initState() {
+          super.initState();
+          ref.read(bleProcessorProvider);
 
-  @override
-  void initState() {
-    super.initState();
-    ref.read(bleProcessorProvider);
+          Future.microtask(() {
+            ref.read(predictionProvider.notifier).init();
+          });
+          ref.listenManual(locationProvider, (previous, next) {
+            ref.read(weatherServiceProvider).refreshWeather();
+          });
 
-    Future.microtask(() {
-      ref.read(predictionProvider.notifier).init();
-    });
+          _lifecycleListener = AppLifecycleListener(
+                
+                onDetach: () {
+                  unawaited(ref.read(bleServiceProvider).disconnect());
+                },
 
-    ref.listenManual(locationProvider, (previous, next) {
-      ref.read(weatherProvider.notifier).refresh();
-    });
 
-    _lifecycleListener = AppLifecycleListener(
-      onDetach: () {
-        unawaited(ref.read(bleServiceProvider).disconnect());
-      },
-      onResume: () async {
-        final pos = await ref
-            .read(locationServiceProvider)
-            .getCurrentPosition();
-        if (pos != null && mounted) {
-          await ref.read(locationProvider.notifier).updateFromGps();
-        }
-      },
-    );
+                
 
-    unawaited(ref.read(bleServiceProvider).startScan());
-  }
-
-  @override
-  void dispose() {
-    _lifecycleListener.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    ref.listen<bool>(bleConnectedProvider, (previous, next) {
-      if (!next && _showSettings) {
-        setState(() {
-          _showSettings = false;
-        });
-      }
-    });
-
-    final db = ref.watch(dbProvider);
-    final hasDevice = ref.watch(bleConnectedProvider);
-    final showSettings = _showSettings && hasDevice;
-
-    return MediaQuery(
-      data: MediaQuery.of(
-        context,
-      ).copyWith(textScaler: TextScaler.linear(_fontScale)),
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(showSettings ? 'Settings' : ''),
-          actions: [
-            if (hasDevice && !showSettings)
-              IconButton(
-                icon: const Icon(Icons.refresh),
-                onPressed: () async {
-                  if (ref.read(bleServiceProvider).isConnected) {
-                    SyncProgressDialog.show(context);
-                    await ref.read(connectionSyncProgressProvider.notifier).startRefreshOnly();
-                  } else {
-                    unawaited(ref.read(weatherProvider.notifier).refresh());
+                onResume: () async {
+                  final pos = await ref
+                      .read(locationServiceProvider)
+                      .getCurrentPosition();
+                  if (pos != null && mounted) {
+                    await ref.read(locationProvider.notifier).updateFromGps();
                   }
-                },
-              ),
-            if (hasDevice)
-              IconButton(
-                icon: Icon(showSettings ? Icons.close : Icons.settings),
-                onPressed: () {
-                  setState(() {
-                    _showSettings = !_showSettings;
-                  });
-                },
-              ),
-          ],
+
+                  final ble = ref.read(bleServiceProvider);
+                  if (!ble.isConnected) {
+                    unawaited(ble.startScan());
+                  }
+            },
+      );
+
+      unawaited(ref.read(bleServiceProvider).startScan());
+    }
+
+    @override
+    void dispose() {
+      _lifecycleListener.dispose();
+      super.dispose();
+    }
+
+    @override
+    Widget build(BuildContext context) {
+      ref.watch(databaseTriggerProvider);
+      final syncState = ref.watch(connectionSyncProgressProvider);
+
+      ref.listen<bool>(bleConnectedProvider, (previous, next) {
+        if (!next && _showSettings) {
+          setState(() {
+            _showSettings = false;
+          });
+        }
+      });
+
+      final db = ref.watch(dbProvider);
+      final hasDevice = ref.watch(bleConnectedProvider);
+      final showSettings = _showSettings && hasDevice;
+
+      return MediaQuery(
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: const TextScaler.linear(1)),
+        child: Scaffold(
+          appBar: AppBar(
+            title: Builder(
+              builder: (context) {
+                if (showSettings) {
+                  return Text('Settings', style: AppStyles.appBarTitleStyle(context));
+                }
+
+                final predictions = db.getPredictionHistory();
+                final isSyncing = syncState.stage != SyncStage.idle &&
+                    syncState.stage != SyncStage.failed;
+                
+                final isInferring = predictions.isNotEmpty &&
+                    predictions.last.recommendation == "Calculating recommendation...";
+
+                if (isSyncing || isInferring) {
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('Syncing & Analysing ', style: AppStyles.appBarTitleStyle(context)),
+                      LoadingDots(color: AppStyles.primaryTeal(context)),
+                    ],
+                  );
+                }
+
+                final hasFinishedInference = predictions.isNotEmpty &&
+                    predictions.last.recommendation != "Calculating recommendation..." &&
+                    predictions.last.recommendation.isNotEmpty;
+
+                if (hasFinishedInference && ref.read(bleServiceProvider).isConnected) {
+                  final isSaturation = predictions.last.recommendation.contains('SATURATION');
+                  final recText = isSaturation ? 'Do not Irrigate' : 'Irrigate';
+                  final badgeColor = isSaturation
+                      ? AppStyles.dangerRed(context)
+                      : AppStyles.primaryTeal(context);
+
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('Irrigation: ', style: AppStyles.appBarTitleStyle(context)),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: badgeColor.withValues(alpha: 0.15),
+                          border: Border.all(
+                            color: badgeColor,
+                            width: 1.5,
+                          ),
+                          borderRadius: BorderRadius.circular(AppStyles.radiusSmall),
+                        ),
+                        child: Text(
+                          recText,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: badgeColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                }
+
+                return Text('', style: AppStyles.appBarTitleStyle(context));
+              },
+            ),
+            actions: [
+              if (hasDevice && !showSettings)
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  onPressed: () async {
+                    if (ref.read(bleServiceProvider).isConnected) {
+                      SyncProgressDialog.show(context);
+                      await ref
+                          .read(connectionSyncProgressProvider.notifier)
+                          .startRefreshOnly();
+                    } else {
+                      unawaited(
+                        ref.read(weatherServiceProvider).refreshWeather(),
+                      );
+                    }
+                  },
+                ),
+              if (hasDevice)
+                IconButton(
+                  icon: Icon(showSettings ? Icons.close : Icons.settings),
+                  onPressed: () {
+                    setState(() {
+                      _showSettings = !_showSettings;
+                    });
+                  },
+                ),
+            ],
+          ),
+          body: SafeArea(
+            child: showSettings ? ConfigView(db: db) : const TelemetryView(),
+          ),
         ),
-        body: SafeArea(
-          child: showSettings ? ConfigView(db: db) : const TelemetryView(),
-        ),
-      ),
-    );
-  }
+      );
+    }
 }
 
 class DisplayDevice {
@@ -723,4 +1045,79 @@ class DisplayDevice {
     this.scanResult,
     this.rssi = -100,
   });
+}
+
+class LoadingDots extends StatefulWidget {
+  final Color color;
+  final double size;
+
+  const LoadingDots({
+    super.key,
+    required this.color,
+    this.size = 6.0,
+  });
+
+  @override
+  State<LoadingDots> createState() => _LoadingDotsState();
+}
+
+class _LoadingDotsState extends State<LoadingDots> with TickerProviderStateMixin {
+  late List<AnimationController> _controllers;
+  late List<Animation<double>> _animations;
+
+  @override
+  void initState() {
+    super.initState();
+    _controllers = List.generate(3, (index) {
+      return AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 300),
+      );
+    });
+
+    _animations = _controllers.map((controller) {
+      return Tween<double>(begin: 0.2, end: 1.0).animate(
+        CurvedAnimation(parent: controller, curve: Curves.easeInOut),
+      );
+    }).toList();
+
+    unawaited(_startAnimations());
+  }
+
+  Future<void> _startAnimations() async {
+    for (int i = 0; i < 3; i++) {
+      if (!mounted) return;
+      unawaited(_controllers[i].repeat(reverse: true));
+      await Future.delayed(const Duration(milliseconds: 150));
+    }
+  }
+
+  @override
+  void dispose() {
+    for (var controller in _controllers) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(3, (index) {
+        return FadeTransition(
+          opacity: _animations[index],
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 2.0),
+            width: widget.size,
+            height: widget.size,
+            decoration: BoxDecoration(
+              color: widget.color,
+              shape: BoxShape.circle,
+            ),
+          ),
+        );
+      }),
+    );
+  }
 }

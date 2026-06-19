@@ -435,4 +435,16 @@ class BleService {
     await _dataRequestChar!.write(CborHelper.encode(payload));
     print('BleService: Toggled debug mode on station');
   }
+
+  /// Send average fill instruction to station
+  Future<void> sendFillAverageInstruction() async {
+    if (_dataRequestChar == null) return;
+    final payload = {
+      'v': 1,
+      'op': 'fill_avg',
+    };
+    await _dataRequestChar!.write(CborHelper.encode(payload));
+    print('BleService: Sent fill average instruction');
+  }
+
 }

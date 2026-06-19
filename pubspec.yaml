@@ -18,7 +18,7 @@ dependencies:
   flutter_blue_plus: ^2.3.1         # BLE interfacing.
   flutter_blue_plus_linux: ^9.0.0       # Explicitly add linux support.
   http: ^1.6.0                      # HTTP interface. Useful for Open-meteo API transactions.
-  tflite_flutter: ^0.12.1           # Tensorflow for mobile and native flutter execution.
+  flutter_litert: ^3.1.1           # Tensorflow for mobile and native flutter execution.
   realm: ^20.2.0                    # Database managing.
   flutter_riverpod: ^2.6.1          # State manager.
   signals: ^3.0.0                   # Reactive signals.
@@ -27,6 +27,11 @@ dependencies:
   cbor: ^6.5.1                      # CBOR encoding/decoding.
   crypto: ^3.0.3                    # HMAC-SHA256 cryptography.
   tflite_web: ^0.4.0
+  path: ^1.9.0
+  path_provider: ^2.1.2
+  flutter_map: ^6.1.0
+  latlong2: ^0.9.0
+
 
 
 dev_dependencies:

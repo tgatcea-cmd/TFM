@@ -3,10 +3,12 @@ import '../core/ble/ble_service.dart';
 import '../core/ble/cbor_helper.dart';
 import '../core/db/database_service.dart';
 import '../data/models/models.dart';
+import 'package:flutter/material.dart';
 
 class BleDataProcessor {
   final BleService _bleService;
   final DatabaseService _dbService;
+  final VoidCallback? onDbUpdated; // ADD CALLBACK
   StreamSubscription? _subscription;
   
 
@@ -14,7 +16,7 @@ class BleDataProcessor {
   final _onPredictedHumidityProcessed = StreamController<double>.broadcast();
   Stream<double> get onPredictedHumidityProcessed => _onPredictedHumidityProcessed.stream;
 
-  BleDataProcessor(this._bleService, this._dbService);
+  BleDataProcessor(this._bleService, this._dbService, {this.onDbUpdated});
 
   void startListening() {
     _subscription = _bleService.dataStream.listen(_handleData);
@@ -69,6 +71,7 @@ class BleDataProcessor {
             predictedHumidity,
             "Calculating recommendation..."
           );
+          onDbUpdated?.call();
           _onPredictedHumidityProcessed.add(predictedHumidity);
         }
       } else {
@@ -91,6 +94,7 @@ class BleDataProcessor {
     if (dbRecords.isNotEmpty) {
       print('BleDataProcessor: Batch writing ${dbRecords.length} soil moisture readings to Realm...');
       _dbService.saveSoilHumidityBatch(dbRecords);
+      onDbUpdated?.call();
     }
   }
 
@@ -111,7 +115,8 @@ class BleDataProcessor {
     }
 
     if (latestVal != null) {
-      _onPredictedHumidityProcessed.add(latestVal);
+      onDbUpdated?.call();
+    //   _onPredictedHumidityProcessed.add(latestVal);
     }
   }
 }

@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/db/database_service.dart';
 import '../../core/ble/ble_service.dart';
 import '../../main.dart';
-import '../../ui/styles.dart';
 import '../../ui/unified_chart.dart';
 import 'sync_progress_dialog.dart';
 
@@ -16,7 +15,6 @@ class TelemetryView extends ConsumerStatefulWidget {
 }
 
 class _TelemetryViewState extends ConsumerState<TelemetryView> {
-
   Future<void> _connectToDevice(
     BuildContext context,
     DisplayDevice device,
@@ -39,7 +37,7 @@ class _TelemetryViewState extends ConsumerState<TelemetryView> {
     if (targetDevice != null) {
       // Show progress bars overlay dialog
       SyncProgressDialog.show(context);
-      
+
       // Start connection/pairing/refresh sequence
       await ref
           .read(connectionSyncProgressProvider.notifier)
@@ -68,7 +66,24 @@ class _TelemetryViewState extends ConsumerState<TelemetryView> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('Device Selection', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Device Selection',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.refresh),
+                        onPressed: () =>
+                            ref.read(bleServiceProvider).startScan(),
+                        tooltip: 'Rescan',
+                      ),
+                    ],
+                  ),
                   const Divider(),
                   if (devices.isEmpty)
                     const Padding(
@@ -83,14 +98,20 @@ class _TelemetryViewState extends ConsumerState<TelemetryView> {
                           final r = devices[index];
                           return ListTile(
                             leading: Icon(
-                              r.rssi == -100 ? Icons.bluetooth_disabled : Icons.bluetooth,
+                              r.rssi == -100
+                                  ? Icons.bluetooth_disabled
+                                  : Icons.bluetooth,
                               color: r.rssi == -100 ? Colors.grey : Colors.teal,
                             ),
                             title: Text(r.name),
-                            subtitle: Text(r.rssi == -100 ? 'Offline' : '${r.rssi} dBm'),
+                            subtitle: Text(
+                              r.rssi == -100 ? 'Offline' : '${r.rssi} dBm',
+                            ),
                             trailing: IconButton(
                               icon: Icon(
-                                r.isSaved ? Icons.bookmark : Icons.bookmark_border,
+                                r.isSaved
+                                    ? Icons.bookmark
+                                    : Icons.bookmark_border,
                                 color: r.isSaved ? Colors.teal : null,
                               ),
                               onPressed: () {
@@ -100,12 +121,14 @@ class _TelemetryViewState extends ConsumerState<TelemetryView> {
                                 } else {
                                   db.saveDevice(r.id, r.name);
                                 }
-                                ref.read(savedDevicesTriggerProvider.notifier).state++;
+                                ref
+                                    .read(savedDevicesTriggerProvider.notifier)
+                                    .state++;
                               },
                             ),
                             onTap: () {
-                              _connectToDevice(context, r);
                               Navigator.pop(context);
+                              _connectToDevice(context, r);
                             },
                           );
                         },
@@ -122,6 +145,8 @@ class _TelemetryViewState extends ConsumerState<TelemetryView> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(databaseTriggerProvider);
+
     final isConnected = ref.watch(bleConnectedProvider);
     final db = ref.watch(dbProvider);
     final weather = ref.watch(weatherProvider);
@@ -141,22 +166,23 @@ class _TelemetryViewState extends ConsumerState<TelemetryView> {
       );
     }
 
-    final predictions = db.getPredictionHistory();
-    final lastRec = predictions.isNotEmpty ? predictions.last.recommendation : 'None';
-
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showDeviceMenu(context),
         icon: const Icon(Icons.bluetooth),
-        label: Text(bleService.connectedDevice?.platformName ?? "Cesar IoT Station"),
+        label: Text(
+          bleService.connectedDevice?.platformName ?? "Cesar IoT Station",
+        ),
       ),
       body: RefreshIndicator(
         onRefresh: () async {
           if (ref.read(bleServiceProvider).isConnected) {
             SyncProgressDialog.show(context);
-            await ref.read(connectionSyncProgressProvider.notifier).startRefreshOnly();
+            await ref
+                .read(connectionSyncProgressProvider.notifier)
+                .startRefreshOnly();
           } else {
-            await ref.read(weatherProvider.notifier).refresh();
+            await ref.read(weatherServiceProvider).refreshWeather();
           }
         },
         child: SingleChildScrollView(
@@ -165,36 +191,6 @@ class _TelemetryViewState extends ConsumerState<TelemetryView> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: lastRec.contains('SATURATION')
-                            ? AppStyles.dangerRedBg(context)
-                            : AppStyles.bgTealLight(context),
-                        borderRadius: BorderRadius.circular(AppStyles.radiusSmall),
-                        border: Border.all(
-                          color: lastRec.contains('SATURATION')
-                              ? AppStyles.dangerRedBorder(context)
-                              : AppStyles.borderTealLight(context),
-                        ),
-                      ),
-                      child: Text(
-                        lastRec.contains('SATURATION')
-                            ? 'Overwatering risk | Irrigation not recommended'
-                            : 'Follow usual irrigation schedule',
-                        style: lastRec.contains('SATURATION')
-                            ? AppStyles.recDangerStyle(context)
-                            : AppStyles.recSafeStyle(context),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
               _buildUnifiedChart(db, weather, isConnected),
               const SizedBox(height: 16),
               _buildHistoryTableView(db),
@@ -211,10 +207,16 @@ class _TelemetryViewState extends ConsumerState<TelemetryView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Telemetry History Log', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const Text(
+          'Telemetry History Log',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
         const Divider(),
         if (history.isEmpty)
-          const Padding(padding: EdgeInsets.all(20), child: Text('No database entries found.'))
+          const Padding(
+            padding: EdgeInsets.all(20),
+            child: Text('No database entries found.'),
+          )
         else
           ListView.builder(
             shrinkWrap: true,
@@ -223,7 +225,8 @@ class _TelemetryViewState extends ConsumerState<TelemetryView> {
             itemBuilder: (context, index) {
               final item = history[history.length - 1 - index];
               final time = DateTime.fromMillisecondsSinceEpoch(item.timestamp);
-              final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+              final timeStr =
+                  '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
               final dateStr = '${time.year}-${time.month}-${time.day}';
               return ListTile(
                 leading: const Icon(Icons.water_drop, color: Colors.blue),
@@ -236,7 +239,11 @@ class _TelemetryViewState extends ConsumerState<TelemetryView> {
     );
   }
 
-  Widget _buildUnifiedChart(DatabaseService db, WeatherState weather, bool isConnected) {
+  Widget _buildUnifiedChart(
+    DatabaseService db,
+    WeatherState weather,
+    bool isConnected,
+  ) {
     return UnifiedChart(
       history: isConnected ? db.getSoilHumidityHistory() : [],
       predictions: isConnected ? db.getPredictionHistory() : [],

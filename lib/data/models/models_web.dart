@@ -44,3 +44,26 @@ class SavedDevice {
 
   SavedDevice(this.id, this.name);
 }
+
+class AppSettings {
+  int id;
+  String tfmServerUrl;
+  int tfmServerPort;
+  String tfmServerApiKey;
+  String selectedTfliteModel;
+  bool invertModelOutput;
+  bool permitOpenMeteoFill;
+  bool alwaysForceInference;
+
+  AppSettings(
+    this.id,
+    this.tfmServerUrl,
+    this.tfmServerPort,
+    this.tfmServerApiKey,
+    this.selectedTfliteModel,
+    this.invertModelOutput,
+    this.permitOpenMeteoFill,
+    this.alwaysForceInference,
+  );
+}
+

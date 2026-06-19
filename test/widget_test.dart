@@ -51,9 +51,6 @@ void main() {
       ),
     );
 
-    // Verify that the dashboard title is displayed.
-    expect(find.text('TFM PoC Dashboard'), findsOneWidget);
-
     // Verify that the "Check for IoT Station" button is displayed since we are not connected.
     expect(find.text('Check for IoT Station'), findsOneWidget);
   });

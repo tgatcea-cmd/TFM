@@ -1,6 +1,7 @@
 import "dart:async";
+import 'dart:io';
 import 'dart:typed_data';
-import 'package:tflite_flutter/tflite_flutter.dart';
+import 'package:flutter_litert/flutter_litert.dart';
 
 class TfliteService {
   Interpreter? _rfInterpreter;
@@ -12,7 +13,14 @@ class TfliteService {
   Future<void> loadRfModel(String modelPath) async {
     try {
       print('TfliteService: Loading RF model: $modelPath');
-      _rfInterpreter = await Interpreter.fromAsset(modelPath);
+      final file = File(modelPath);
+      if (await file.exists()) {
+        print('TfliteService: Loading from local file system path');
+        _rfInterpreter = Interpreter.fromFile(file);
+      } else {
+        print('TfliteService: Loading from asset path');
+        _rfInterpreter = await Interpreter.fromAsset(modelPath);
+      }
       _rfLoaded = true;
       _useFallback = false;
       

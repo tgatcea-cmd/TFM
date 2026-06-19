@@ -4,6 +4,15 @@ import time
 import random
 import hashlib
 
+
+
+
+
+
+
+
+
+
 # -------------------------------------------------------------
 # MicroPython HMAC Fallback Wrapper
 # -------------------------------------------------------------
@@ -52,6 +61,15 @@ except ImportError:
 
     hmac = hmac_fallback
 
+
+
+
+
+
+
+
+
+
 # -------------------------------------------------------------
 # Cross-Platform Shims for Standard Python / MicroPython
 # -------------------------------------------------------------
@@ -93,6 +111,15 @@ if IS_PC:
             else:
                 time.sleep(0.1)
     machine = MockMachine
+
+
+
+
+
+
+
+
+
 
 # -------------------------------------------------------------
 # CBOR Encoder & Decoder
@@ -259,6 +286,16 @@ def decode_cbor_full(data):
     res, _ = decode_cbor(data)
     return res
 
+
+
+
+
+
+
+
+
+
+
 # -------------------------------------------------------------
 # BLE Constants & Services Setup
 # -------------------------------------------------------------
@@ -336,10 +373,29 @@ class PicoBLEMock:
 
     def _advertise(self, interval_us=500000):
         name = "PicoWH_MockStation"
-        adv = bytearray(b'\x02\x01\x06')
-        adv += bytearray((len(name) + 1, 0x09)) + name.encode()
-        self._ble.gap_advertise(interval_us, adv)
-        print("Advertising as '%s'..." % name)
+        
+        # --- 1. MAIN ADVERTISEMENT PACKET (Max 31 Bytes) ---
+        # Flags: General discoverable, BR/EDR not supported (3 bytes)
+        adv_data = bytearray(b'\x02\x01\x06')
+        
+        # 128-bit Service UUID (18 bytes)
+        # BLE requires UUIDs to be transmitted in Little-Endian format.
+        # UUID: 5a71a000-0000-0000-0000-000000000001
+        uuid_little_endian = bytes([
+            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+            0x00, 0x00, 0x00, 0x00, 0x00, 0xA0, 0x71, 0x5A
+        ])
+        
+        # Type 0x06 = Incomplete List of 128-bit Service UUIDs
+        adv_data += bytearray([17, 0x06]) + uuid_little_endian
+        
+        # --- 2. SCAN RESPONSE PACKET (Max 31 Bytes) ---
+        # Complete Local Name (Type 0x09)
+        resp_data = bytearray([len(name) + 1, 0x09]) + name.encode()
+        
+        # Publish both: The phone reads adv_data, then requests resp_data
+        self._ble.gap_advertise(interval_us, adv_data=adv_data, resp_data=resp_data)
+        print("Advertising as '%s' with Service UUID..." % name)
 
     def _irq(self, event, data):
         if event == _IRQ_CENTRAL_CONNECT:
@@ -522,6 +578,21 @@ class PicoBLEMock:
         if not self._authenticated or not self._debug_mode:
             return
         self.run_real_time_inference()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 def main():
     ble = bluetooth.BLE()

@@ -228,4 +228,9 @@ class BleService {
   Future<void> toggleDebugMode() async {
     print('BleServiceWeb: Toggling station debug mode (mock)...');
   }
+
+  Future<void> sendFillAverageInstruction() async {
+    print('BleServiceWeb: Sending fill average instruction (mock)...');
+  }
+
 }

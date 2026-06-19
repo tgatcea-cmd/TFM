@@ -4,6 +4,7 @@ import '../../data/schemas/weather_schema.dart';
 import '../../data/schemas/prediction_schema.dart';
 import '../../data/schemas/location_schema.dart';
 import '../../data/schemas/device_schema.dart';
+import '../../data/schemas/app_settings_schema.dart';
 
 class DatabaseService {
   late Realm _realm;
@@ -15,6 +16,7 @@ class DatabaseService {
       PredictionRecord.schema,
       LocationSettings.schema,
       SavedDevice.schema,
+      AppSettings.schema,
     ]);
     _realm = Realm(config);
     
@@ -103,6 +105,52 @@ class DatabaseService {
     });
   }
 
+  // App Settings
+  AppSettings getAppSettings() {
+    final settings = _realm.find<AppSettings>(1);
+    if (settings == null) {
+      final defaultSettings = AppSettings(
+        1,
+        'http://10.0.2.2', // default local TFM server IP (e.g. Android Emulator host loopback)
+        3000,
+        '',
+        'rf_irrigation.tflite',
+        false,
+        true,
+        false,
+      );
+      _realm.write(() => _realm.add(defaultSettings));
+      return defaultSettings;
+    }
+    return settings;
+  }
+
+  void saveAppSettings({
+    required String tfmServerUrl,
+    required int tfmServerPort,
+    required String tfmServerApiKey,
+    required String selectedTfliteModel,
+    required bool invertModelOutput,
+    required bool permitOpenMeteoFill,
+    required bool alwaysForceInference,
+  }) {
+    _realm.write(() {
+      _realm.add(
+        AppSettings(
+          1,
+          tfmServerUrl,
+          tfmServerPort,
+          tfmServerApiKey,
+          selectedTfliteModel,
+          invertModelOutput,
+          permitOpenMeteoFill,
+          alwaysForceInference,
+        ),
+        update: true,
+      );
+    });
+  }
+
   // Soil Humidity
   void saveSoilHumidity(int timestamp, double value) {
     _realm.write(() {
@@ -140,6 +188,15 @@ class DatabaseService {
     return records.map((r) => r.radiation).reduce((a, b) => a + b);
   }
 
+  int getSoilHumidityCount(int sinceMs) {
+    return _realm.all<SoilHumidityRecord>().query('timestamp >= $sinceMs').length;
+  }
+
+  int getWeatherCount(int sinceMs) {
+    return _realm.all<WeatherRecord>().query('timestamp >= $sinceMs').length;
+  }
+
+
   // Predictions
   void savePrediction(int timestamp, double predictedHumidity, String recommendation) {
     _realm.write(() {
@@ -158,6 +215,11 @@ class DatabaseService {
       _realm.deleteAll<PredictionRecord>();
     });
   }
+
+  String getDatabasePath() {
+    return _realm.config.path;
+  }
+
 
   // Saved Devices
   List<SavedDevice> getSavedDevices() {

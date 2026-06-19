@@ -7,10 +7,21 @@ class DatabaseService {
   final List<SavedDevice> _savedDevices = [];
   late LocationSettings _locationSettings;
   late LocationSettings _gpsConfig;
+  late AppSettings _appSettings;
 
   DatabaseService() {
     _locationSettings = LocationSettings(1, 40.4168, -3.7038, false);
     _gpsConfig = LocationSettings(3, 40.4168, -3.7038, true);
+    _appSettings = AppSettings(
+      1,
+      'http://localhost',
+      3000,
+      '',
+      'rf_irrigation.tflite',
+      false,
+      true,
+      false,
+    );
     
     // Seed default stations
     _savedDevices.add(SavedDevice("00:11:22:33:44:01", "Cesar's IoT Station (0x01)"));
@@ -73,6 +84,32 @@ class DatabaseService {
     _gpsConfig = LocationSettings(3, lat, lon, true);
   }
 
+  // App Settings
+  AppSettings getAppSettings() {
+    return _appSettings;
+  }
+
+  void saveAppSettings({
+    required String tfmServerUrl,
+    required int tfmServerPort,
+    required String tfmServerApiKey,
+    required String selectedTfliteModel,
+    required bool invertModelOutput,
+    required bool permitOpenMeteoFill,
+    required bool alwaysForceInference,
+  }) {
+    _appSettings = AppSettings(
+      1,
+      tfmServerUrl,
+      tfmServerPort,
+      tfmServerApiKey,
+      selectedTfliteModel,
+      invertModelOutput,
+      permitOpenMeteoFill,
+      alwaysForceInference,
+    );
+  }
+
   // Soil Humidity
   void saveSoilHumidity(int timestamp, double value) {
     // Overwrite existing or add new
@@ -109,6 +146,14 @@ class DatabaseService {
     return records.map((r) => r.radiation).reduce((a, b) => a + b);
   }
 
+  int getSoilHumidityCount(int sinceMs) {
+    return _soilHumidityHistory.where((r) => r.timestamp >= sinceMs).length;
+  }
+
+  int getWeatherCount(int sinceMs) {
+    return _weatherHistory.where((r) => r.timestamp >= sinceMs).length;
+  }
+
   // Predictions
   void savePrediction(int timestamp, double predictedHumidity, String recommendation) {
     _predictionHistory.removeWhere((r) => r.timestamp == timestamp);
@@ -123,6 +168,10 @@ class DatabaseService {
     _soilHumidityHistory.clear();
     _weatherHistory.clear();
     _predictionHistory.clear();
+  }
+
+  String getDatabasePath() {
+    return '';
   }
 
   // Saved Devices

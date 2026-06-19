@@ -19,75 +19,41 @@ class UnifiedChart extends StatelessWidget {
     required this.weatherHistory,
   });
 
-  @override
+@override
   Widget build(BuildContext context) {
-    // Sort and take latest 48 historical points
-    final sortedHistory = List<SoilHumidityRecord>.from(history)
-      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-    final displayHistory = sortedHistory.length > 48
-        ? sortedHistory.sublist(sortedHistory.length - 48)
-        : sortedHistory;
+    final double nowMs = DateTime.now().millisecondsSinceEpoch.toDouble();
+    final double msPerHour = 3600000.0;
 
-    // Sort and take latest 24 prediction points
-    final sortedPreds = List<PredictionRecord>.from(predictions)
-      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-    final displayPreds = sortedPreds.length > 24
-        ? sortedPreds.sublist(sortedPreds.length - 24)
-        : sortedPreds;
+    // 1. Map history to FlSpot (Time-based X-axis)
+    final List<FlSpot> historySpots = history
+        .map((r) => FlSpot((r.timestamp - nowMs) / msPerHour, r.value))
+        .where((s) => s.x >= -48.0 && s.x <= 0.0) // Limit to past 48h
+        .toList()
+      ..sort((a, b) => a.x.compareTo(b.x));
 
-    final double historyOffset = displayHistory.isNotEmpty
-        ? displayHistory.length - 1.0
-        : 0.0;
+    // 2. Map predictions to FlSpot
+    final List<FlSpot> predSpots = predictions
+        .map((r) => FlSpot((r.timestamp - nowMs) / msPerHour, r.predictedHumidity))
+        .where((s) => s.x >= 0.0 && s.x <= 24.0) // Limit to next 24h
+        .toList()
+      ..sort((a, b) => a.x.compareTo(b.x));
 
-    // Map history to FlSpot
-    final List<FlSpot> historySpots = [];
-    for (int i = 0; i < displayHistory.length; i++) {
-      historySpots.add(FlSpot(i.toDouble(), displayHistory[i].value));
-    }
+    // 3. Map past radiation to FlSpot (Independent of history!)
+    final List<FlSpot> pastRadiationSpots = weatherHistory
+        .map((w) {
+          final double scaledRad = (w.radiation / 10.0).clamp(0.0, 100.0);
+          return FlSpot((w.timestamp - nowMs) / msPerHour, scaledRad);
+        })
+        .where((s) => s.x >= -48.0 && s.x <= 0.0)
+        .toList()
+      ..sort((a, b) => a.x.compareTo(b.x));
 
-    // Map predictions to FlSpot, offset after history
-    final List<FlSpot> predSpots = [];
-    for (int i = 0; i < displayPreds.length; i++) {
-      predSpots.add(
-        FlSpot(historyOffset + i.toDouble(), displayPreds[i].predictedHumidity),
-      );
-    }
-
-    // Map radiation forecast to FlSpot, offset after history
+    // 4. Map radiation forecast to FlSpot
     final List<FlSpot> radiationSpots = [];
     for (int i = 0; i < radiationForecast.length; i++) {
-      // Scale radiation to fit 0-100% y-axis.
-      // A standard max is 1000 W/m², so we scale by dividing by 10.0
+      if (i > 24) break;
       final double scaledRad = (radiationForecast[i] / 10.0).clamp(0.0, 100.0);
-      radiationSpots.add(FlSpot(historyOffset + i.toDouble(), scaledRad));
-    }
-
-    // Map past radiation to FlSpot, aligned with history by timestamp
-    final List<FlSpot> pastRadiationSpots = [];
-    final sortedWeather = List<WeatherRecord>.from(weatherHistory)
-      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-
-    for (int i = 0; i < displayHistory.length; i++) {
-      final ts = displayHistory[i].timestamp;
-      
-      // Find the closest weather record by minimizing absolute difference
-      WeatherRecord? closest;
-      int minDiff = 9999999999999;
-      
-      for (final w in sortedWeather) {
-        final diff = (w.timestamp - ts).abs();
-        if (diff < minDiff) {
-          minDiff = diff;
-          closest = w;
-        }
-      }
-      
-      // If the closest weather record is within 1 hour (3600000 ms), use it
-      if (closest != null && minDiff < 3600000) {
-        final rad = closest.radiation;
-        final double scaledRad = (rad / 10.0).clamp(0.0, 100.0);
-        pastRadiationSpots.add(FlSpot(i.toDouble(), scaledRad));
-      }
+      radiationSpots.add(FlSpot(i.toDouble(), scaledRad)); // i is hours in future
     }
 
     return LayoutBuilder(
@@ -110,252 +76,245 @@ class UnifiedChart extends StatelessWidget {
                 child: SizedBox(
                   width: width < 600 ? 800 : width,
                   child: LineChart(
-                LineChartData(
-                  minY: 0,
-                  maxY: 100,
-                  lineTouchData: LineTouchData(
-                    touchTooltipData: LineTouchTooltipData(
-                      getTooltipColor: (LineBarSpot touchedSpot) =>
-                          AppStyles.darkSlate(context).withValues(alpha: 0.9),
-                      getTooltipItems: (List<LineBarSpot> touchedSpots) {
-                        if (touchedSpots.isEmpty) return [];
+                    LineChartData(
+                      minY: 0,
+                      maxY: 100,
+                      // We no longer strictly need minX/maxX, FlChart handles it based on spots, 
+                      // but setting them explicitly prevents jumping when data is empty
+                      minX: -48,
+                      maxX: 24,
+                      lineTouchData: LineTouchData(
+                        touchTooltipData: LineTouchTooltipData(
+                          getTooltipColor: (LineBarSpot touchedSpot) =>
+                              AppStyles.darkSlate(context).withValues(alpha: 0.9),
+                          getTooltipItems: (List<LineBarSpot> touchedSpots) {
+                            if (touchedSpots.isEmpty) return [];
 
-                        // Group all data points under a single hour display header
-                        final spot = touchedSpots.first;
-                        final int diff = spot.x.round() - historyOffset.toInt();
-                        final time = DateTime.now().add(Duration(hours: diff));
-                        final hourStr =
-                            '${time.hour.toString().padLeft(2, '0')}:00';
+                            final spot = touchedSpots.first;
+                            final int diff = spot.x.round(); // Hours relative to now
+                            final time = DateTime.now().add(Duration(hours: diff));
+                            final hourStr = '${time.hour.toString().padLeft(2, '0')}:00';
 
-                        final List<String> lines = [hourStr];
-                        for (var s in touchedSpots) {
-                          final double value = s.y;
-                          final color = s.bar.color;
-                          final isDashed = s.bar.dashArray != null;
-                          if (color == AppStyles.primaryTeal(context)) {
-                            lines.add('Humidity: ${value.toStringAsFixed(1)}%');
-                          } else if (color == AppStyles.dangerRed(context)) {
-                            lines.add(
-                              'Past Rad: ${(value * 10.0).toStringAsFixed(0)} W/m²',
-                            );
-                          } else if (color == AppStyles.accentOrange(context)) {
-                            if (isDashed) {
-                              lines.add(
-                                'Prediction: ${value.toStringAsFixed(1)}%',
-                              );
-                            } else {
-                              lines.add(
-                                'Rad. Forecast: ${(value * 10.0).toStringAsFixed(0)} W/m²',
-                              );
+                            final List<String> lines = [
+                              diff < 0 ? '$hourStr (${diff.abs()}h ago)' : 
+                              diff == 0 ? '$hourStr (Now)' : '$hourStr (In ${diff}h)'
+                            ];
+
+                            for (var s in touchedSpots) {
+                              final double value = s.y;
+                              final color = s.bar.color;
+                              final isDashed = s.bar.dashArray != null;
+                              
+                              if (color == AppStyles.primaryTeal(context)) {
+                                lines.add('Humidity: ${value.toStringAsFixed(1)}%');
+                              } else if (color == AppStyles.dangerRed(context)) {
+                                lines.add('Past Rad: ${(value * 10.0).toStringAsFixed(0)} W/m²');
+                              } else if (color == AppStyles.accentOrange(context)) {
+                                if (isDashed) {
+                                  lines.add('Prediction: ${value.toStringAsFixed(1)}%');
+                                } else {
+                                  lines.add('Rad. Forecast: ${(value * 10.0).toStringAsFixed(0)} W/m²');
+                                }
+                              }
                             }
-                          }
-                        }
 
-                        return [
-                          LineTooltipItem(
-                            lines.join('\n'),
-                            const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 11,
-                            ),
-                          ),
-                          // Return empty/null tooltips for remaining spots to display only one box
-                          ...List.filled(touchedSpots.length - 1, null),
-                        ];
-                      },
-                    ),
-                  ),
-                  gridData: FlGridData(
-                    show: true,
-                    drawVerticalLine: true,
-                    getDrawingHorizontalLine: (value) =>
-                        FlLine(color: Colors.grey.shade200, strokeWidth: 1),
-                    getDrawingVerticalLine: (value) =>
-                        FlLine(color: Colors.grey.shade200, strokeWidth: 1),
-                  ),
-                  extraLinesData: ExtraLinesData(
-                    verticalLines: [
-                      VerticalLine(
-                        x: historyOffset,
-                        color: Colors.teal.shade700,
-                        strokeWidth: 1.5,
-                        dashArray: [4, 4],
-                        label: VerticalLineLabel(
-                          show: true,
-                          alignment: Alignment.topRight,
-                          style: TextStyle(
-                            color: Colors.teal.shade800,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          labelResolver: (line) => 'Now',
-                        ),
-                      ),
-                    ],
-                  ),
-                  titlesData: FlTitlesData(
-                    show: true,
-                    rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 28,
-                        interval: 1.0,
-                        getTitlesWidget: (value, meta) {
-                          final double rounded = value.roundToDouble();
-                          if ((value - rounded).abs() > 0.05) {
-                            return const SizedBox.shrink();
-                          }
-                          final int intVal = rounded.toInt();
-                          final int diff = intVal - historyOffset.toInt();
-                          // always allow index 0 (first value) on x-axis
-                          if (intVal != 0 && diff % interval != 0) {
-                            return const SizedBox.shrink();
-                          }
-                          final time = DateTime.now().add(
-                            Duration(hours: diff),
-                          );
-                          final hourStr =
-                              '${time.hour.toString().padLeft(2, '0')}:00';
-                          final String label;
-                          if (diff == 0) {
-                            label = width > 350 ? '$hourStr (Now)' : hourStr;
-                          } else {
-                            label = hourStr;
-                          }
-                          return SideTitleWidget(
-                            meta: meta,
-                            space: 4,
-                            child: Text(
-                              label,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: diff == 0
-                                    ? FontWeight.bold
-                                    : FontWeight.normal,
-                                color: diff == 0
-                                    ? Colors.teal.shade900
-                                    : Colors.grey.shade600,
+                            return [
+                              LineTooltipItem(
+                                lines.join('\n'),
+                                const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 11,
+                                ),
                               ),
-                            ),
-                          );
-                        },
+                              ...List.filled(touchedSpots.length - 1, null),
+                            ];
+                          },
+                        ),
                       ),
+                      gridData: FlGridData(
+                        show: true,
+                        drawVerticalLine: true,
+                        getDrawingHorizontalLine: (value) =>
+                            FlLine(color: Colors.grey.shade200, strokeWidth: 1),
+                        getDrawingVerticalLine: (value) =>
+                            FlLine(color: Colors.grey.shade200, strokeWidth: 1),
+                      ),
+                      extraLinesData: ExtraLinesData(
+                        verticalLines: [
+                          VerticalLine(
+                            x: 0.0, // NOW is exactly 0
+                            color: Colors.teal.shade700,
+                            strokeWidth: 1.5,
+                            dashArray: [4, 4],
+                            label: VerticalLineLabel(
+                              show: true,
+                              alignment: Alignment.topRight,
+                              style: TextStyle(
+                                color: Colors.teal.shade800,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              labelResolver: (line) => 'Now',
+                            ),
+                          ),
+                        ],
+                      ),
+                      titlesData: FlTitlesData(
+                        show: true,
+                        rightTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        topTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 28,
+                            interval: 1.0,
+                            getTitlesWidget: (value, meta) {
+                              final double rounded = value.roundToDouble();
+                              if ((value - rounded).abs() > 0.05) {
+                                return const SizedBox.shrink();
+                              }
+                              
+                              final int diff = rounded.toInt();
+                              
+                              // Check standard interval logic
+                              if (diff != 0 && diff % interval != 0) {
+                                return const SizedBox.shrink();
+                              }
+                              
+                              final time = DateTime.now().add(Duration(hours: diff));
+                              final hourStr = '${time.hour.toString().padLeft(2, '0')}:00';
+                              
+                              final String label;
+                              if (diff == 0) {
+                                label = width > 350 ? '$hourStr (Now)' : hourStr;
+                              } else {
+                                label = hourStr;
+                              }
+                              
+                              return SideTitleWidget(
+                                meta: meta,
+                                space: 4,
+                                child: Text(
+                                  label,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: diff == 0
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                    color: diff == 0
+                                        ? Colors.teal.shade900
+                                        : Colors.grey.shade600,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                      borderData: FlBorderData(
+                        show: true,
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      lineBarsData: [
+                        // 0: History Line (Solid Green)
+                        if (historySpots.isNotEmpty)
+                          LineChartBarData(
+                            spots: historySpots,
+                            isCurved: true,
+                            color: AppStyles.primaryTeal(context),
+                            barWidth: 3.0,
+                            isStrokeCapRound: true,
+                            dotData: const FlDotData(show: false),
+                            belowBarData: BarAreaData(
+                              show: true,
+                              color: AppStyles.primaryTeal(context).withValues(alpha: 0.1),
+                            ),
+                          ),
+                        // 1: Past Radiation Line (Dashed Red)
+                        if (pastRadiationSpots.isNotEmpty)
+                          LineChartBarData(
+                            spots: pastRadiationSpots,
+                            isCurved: true,
+                            color: AppStyles.dangerRed(context),
+                            barWidth: 2.0,
+                            dashArray: const [4, 4],
+                            isStrokeCapRound: true,
+                            dotData: const FlDotData(show: false),
+                            belowBarData: BarAreaData(
+                              show: true,
+                              color: AppStyles.dangerRed(context).withValues(alpha: 0.05),
+                            ),
+                          ),
+                        // 2: Predictions Line (Dashed Orange)
+                        if (predSpots.isNotEmpty)
+                          LineChartBarData(
+                            spots: predSpots,
+                            isCurved: true,
+                            color: AppStyles.accentOrange(context),
+                            barWidth: 2.0,
+                            dashArray: const [5, 5],
+                            isStrokeCapRound: true,
+                            dotData: const FlDotData(show: false),
+                            belowBarData: BarAreaData(
+                              show: true,
+                              color: AppStyles.accentOrange(context).withValues(alpha: 0.05),
+                            ),
+                          ),
+                        // 3: Radiation Line (Solid Amber)
+                        if (radiationSpots.isNotEmpty)
+                          LineChartBarData(
+                            spots: radiationSpots,
+                            isCurved: true,
+                            color: AppStyles.accentOrange(context),
+                            barWidth: 2.0,
+                            isStrokeCapRound: true,
+                            dotData: const FlDotData(show: false),
+                            belowBarData: BarAreaData(
+                              show: true,
+                              color: AppStyles.accentOrange(context).withValues(alpha: 0.08),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
-                  borderData: FlBorderData(
-                    show: true,
-                    border: Border.all(color: Colors.grey.shade300),
-                  ),
-                  lineBarsData: [
-                    // 0: History Line (Solid Green)
-                    if (historySpots.isNotEmpty)
-                      LineChartBarData(
-                        spots: historySpots,
-                        isCurved: true,
-                        color: AppStyles.primaryTeal(context),
-                        barWidth: 3.0,
-                        isStrokeCapRound: true,
-                        dotData: const FlDotData(show: false),
-                        belowBarData: BarAreaData(
-                          show: true,
-                          color: AppStyles.primaryTeal(context).withValues(
-                            alpha: 0.1,
-                          ),
-                        ),
-                      ),
-                    // 1: Past Radiation Line (Dashed Red)
-                    if (pastRadiationSpots.isNotEmpty)
-                      LineChartBarData(
-                        spots: pastRadiationSpots,
-                        isCurved: true,
-                        color: AppStyles.dangerRed(context),
-                        barWidth: 2.0,
-                        dashArray: const [4, 4],
-                        isStrokeCapRound: true,
-                        dotData: const FlDotData(show: false),
-                        belowBarData: BarAreaData(
-                          show: true,
-                          color: AppStyles.dangerRed(context).withValues(
-                            alpha: 0.05,
-                          ),
-                        ),
-                      ),
-                    // 2: Predictions Line (Dashed Orange)
-                    if (predSpots.isNotEmpty)
-                      LineChartBarData(
-                        spots: predSpots,
-                        isCurved: true,
-                        color: AppStyles.accentOrange(context),
-                        barWidth: 2.0,
-                        dashArray: const [5, 5],
-                        isStrokeCapRound: true,
-                        dotData: const FlDotData(show: false),
-                        belowBarData: BarAreaData(
-                          show: true,
-                          color: AppStyles.accentOrange(context).withValues(
-                            alpha: 0.05,
-                          ),
-                        ),
-                      ),
-                    // 3: Radiation Line (Solid Amber)
-                    if (radiationSpots.isNotEmpty)
-                      LineChartBarData(
-                        spots: radiationSpots,
-                        isCurved: true,
-                        color: AppStyles.accentOrange(context),
-                        barWidth: 2.0,
-                        isStrokeCapRound: true,
-                        dotData: const FlDotData(show: false),
-                        belowBarData: BarAreaData(
-                          show: true,
-                          color: AppStyles.accentOrange(context).withValues(
-                            alpha: 0.08,
-                          ),
-                        ),
-                      ),
-                  ],
                 ),
               ),
             ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Wrap(
-            spacing: 12,
-            runSpacing: 6,
-            alignment: WrapAlignment.center,
-            children: [
-              _buildLegendItem(
-                'Humidity %',
-                AppStyles.primaryTeal(context),
-                isDashed: false,
-              ),
-              _buildLegendItem(
-                'Past Radiation W/m²',
-                AppStyles.dangerRed(context),
-                isDashed: true,
-              ),
-              _buildLegendItem(
-                'Prediction %',
-                AppStyles.accentOrange(context),
-                isDashed: true,
-              ),
-              _buildLegendItem(
-                'Radiation Forecast W/m²',
-                AppStyles.accentOrange(context),
-                isDashed: false,
-              ),
-            ],
-          ),
-        ],
-      );
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 12,
+              runSpacing: 6,
+              alignment: WrapAlignment.center,
+              children: [
+                _buildLegendItem(
+                  'Humidity %',
+                  AppStyles.primaryTeal(context),
+                  isDashed: false,
+                ),
+                _buildLegendItem(
+                  'Past Radiation W/m²',
+                  AppStyles.dangerRed(context),
+                  isDashed: true,
+                ),
+                _buildLegendItem(
+                  'Prediction %',
+                  AppStyles.accentOrange(context),
+                  isDashed: true,
+                ),
+                _buildLegendItem(
+                  'Radiation Forecast W/m²',
+                  AppStyles.accentOrange(context),
+                  isDashed: false,
+                ),
+              ],
+            ),
+          ],
+        );
       },
     );
   }
