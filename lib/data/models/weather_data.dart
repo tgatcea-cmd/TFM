@@ -16,7 +16,10 @@ class WeatherData {
   factory WeatherData.fromJson(Map<String, dynamic> json) {
     final hourly = json['hourly'];
     return WeatherData(
-      time: (hourly['time'] as List).map((t) => DateTime.parse(t)).toList(),
+      time: (hourly['time'] as List).map((t) {
+        final s = t.toString();
+        return DateTime.parse(s.endsWith('Z') ? s : '${s}Z').toLocal();
+      }).toList(),
       temperature2m: (hourly['temperature_2m'] as List).map((v) => (v as num).toDouble()).toList(),
       relativeHumidity2m: (hourly['relative_humidity_2m'] as List).map((v) => (v as num).toDouble()).toList(),
       shortwaveRadiation: (hourly['shortwave_radiation'] as List).map((v) => (v as num).toDouble()).toList(),

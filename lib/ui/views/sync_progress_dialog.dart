@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../main.dart';
 import '../styles.dart';
-import '../../core/localization/languages.dart';
 
 class SyncProgressDialog extends ConsumerWidget {
   const SyncProgressDialog({super.key});
@@ -48,7 +47,7 @@ class SyncProgressDialog extends ConsumerWidget {
             Icon(Icons.sync, color: AppStyles.primaryTeal(context)),
             const SizedBox(width: 10),
             Text(
-              ref.tr('weather_bridge'),
+              'Weather Data Bridge',
               style: AppStyles.titleStyle(context),
             ),
           ],
@@ -71,7 +70,7 @@ class SyncProgressDialog extends ConsumerWidget {
               // Step 1: Connection
               _buildStepProgress(
                 ref: ref,
-                title: ref.tr('sync_step_connect'),
+                title: 'Device Connection',
                 progress: state.connectingProgress,
                 isActive: state.stage == SyncStage.connecting,
                 isDone: state.stage.index > SyncStage.connecting.index,
@@ -82,7 +81,7 @@ class SyncProgressDialog extends ConsumerWidget {
               // Step 2: Pairing
               _buildStepProgress(
                 ref: ref,
-                title: ref.tr('sync_step_pair'),
+                title: 'Security Handshake',
                 progress: state.pairingProgress,
                 isActive: state.stage == SyncStage.pairing,
                 isDone: state.stage.index > SyncStage.pairing.index,
@@ -93,7 +92,7 @@ class SyncProgressDialog extends ConsumerWidget {
               // Step 3: Refresh/Sync
               _buildStepProgress(
                 ref: ref,
-                title: ref.tr('sync_step_refresh'),
+                title: 'Data Synchronization',
                 progress: state.refreshingProgress,
                 isActive: state.stage == SyncStage.refreshing,
                 isDone: state.stage == SyncStage.completed,
@@ -137,7 +136,7 @@ class SyncProgressDialog extends ConsumerWidget {
                 ref.read(connectionSyncProgressProvider.notifier).reset();
                 Navigator.pop(context);
               },
-              child: Text(ref.tr('sync_close')),
+              child: Text('Close'),
             )
           else
             TextButton(
@@ -150,7 +149,7 @@ class SyncProgressDialog extends ConsumerWidget {
               style: TextButton.styleFrom(
                 foregroundColor: AppStyles.dangerRed(context),
               ),
-              child: Text(ref.tr('sync_cancel')),
+              child: Text('Cancel'),
             ),
         ],
       ),
@@ -160,17 +159,17 @@ class SyncProgressDialog extends ConsumerWidget {
   String _getStageText(WidgetRef ref, SyncStage stage) {
     switch (stage) {
       case SyncStage.idle:
-        return ref.tr('sync_stage_idle');
+        return 'Idle';
       case SyncStage.connecting:
-        return ref.tr('sync_stage_connecting');
+        return 'Connecting';
       case SyncStage.pairing:
-        return ref.tr('sync_stage_pairing');
+        return 'Pairing';
       case SyncStage.refreshing:
-        return ref.tr('sync_stage_refreshing');
+        return 'Synchronizing';
       case SyncStage.completed:
-        return ref.tr('sync_stage_completed');
+        return 'Success';
       case SyncStage.failed:
-        return ref.tr('sync_stage_failed');
+        return 'Failed';
     }
   }
 

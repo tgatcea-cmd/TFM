@@ -64,13 +64,27 @@ class UnifiedChart extends StatelessWidget {
 
     // Map past radiation to FlSpot, aligned with history by timestamp
     final List<FlSpot> pastRadiationSpots = [];
+    final sortedWeather = List<WeatherRecord>.from(weatherHistory)
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
     for (int i = 0; i < displayHistory.length; i++) {
       final ts = displayHistory[i].timestamp;
-      final closestWeather = weatherHistory.where(
-        (w) => (w.timestamp - ts).abs() < 1800000,
-      );
-      if (closestWeather.isNotEmpty) {
-        final rad = closestWeather.first.radiation;
+      
+      // Find the closest weather record by minimizing absolute difference
+      WeatherRecord? closest;
+      int minDiff = 9999999999999;
+      
+      for (final w in sortedWeather) {
+        final diff = (w.timestamp - ts).abs();
+        if (diff < minDiff) {
+          minDiff = diff;
+          closest = w;
+        }
+      }
+      
+      // If the closest weather record is within 1 hour (3600000 ms), use it
+      if (closest != null && minDiff < 3600000) {
+        final rad = closest.radiation;
         final double scaledRad = (rad / 10.0).clamp(0.0, 100.0);
         pastRadiationSpots.add(FlSpot(i.toDouble(), scaledRad));
       }
@@ -87,7 +101,6 @@ class UnifiedChart extends StatelessWidget {
           interval = 12;
         }
 
-        // ponytail: Scrollable chart container preventing overflow on smaller mobile screens
         return Column(
           children: [
             SizedBox(
@@ -117,21 +130,24 @@ class UnifiedChart extends StatelessWidget {
                         final List<String> lines = [hourStr];
                         for (var s in touchedSpots) {
                           final double value = s.y;
-                          // Match lines based on spot y value characteristics or s.barIndex
-                          if (s.barIndex == 0) {
+                          final color = s.bar.color;
+                          final isDashed = s.bar.dashArray != null;
+                          if (color == AppStyles.primaryTeal(context)) {
                             lines.add('Humidity: ${value.toStringAsFixed(1)}%');
-                          } else if (s.barIndex == 1) {
+                          } else if (color == AppStyles.dangerRed(context)) {
                             lines.add(
                               'Past Rad: ${(value * 10.0).toStringAsFixed(0)} W/m²',
                             );
-                          } else if (s.barIndex == 2) {
-                            lines.add(
-                              'Prediction: ${value.toStringAsFixed(1)}%',
-                            );
-                          } else if (s.barIndex == 3) {
-                            lines.add(
-                              'Rad. Forecast: ${(value * 10.0).toStringAsFixed(0)} W/m²',
-                            );
+                          } else if (color == AppStyles.accentOrange(context)) {
+                            if (isDashed) {
+                              lines.add(
+                                'Prediction: ${value.toStringAsFixed(1)}%',
+                              );
+                            } else {
+                              lines.add(
+                                'Rad. Forecast: ${(value * 10.0).toStringAsFixed(0)} W/m²',
+                              );
+                            }
                           }
                         }
 

@@ -1,20 +1,31 @@
 import "dart:async";
 import 'dart:ui' show PlatformDispatcher;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'data/models/processed/daily_weather.dart';
+import 'data/models/models.dart';
+
+import 'core/api/open_meteo_client.dart';
 import 'core/ble/ble_service.dart';
 import 'core/db/database_service.dart';
-import 'logic/ble_data_processor.dart';
-import 'core/api/open_meteo_client.dart';
-import 'logic/weather_processor.dart';
-import 'data/models/processed/daily_weather.dart';
-import 'logic/inference/tflite_service.dart';
+
 import 'logic/inference/inference_bridge.dart';
+import 'logic/inference/tflite_service.dart';
+import 'logic/ble_data_processor.dart';
 import 'logic/location_service.dart';
-import 'data/models/models.dart';
-import 'ui/views/telemetry_view.dart';
+import 'logic/weather_processor.dart';
+
 import 'ui/views/config_view.dart';
 import 'ui/views/sync_progress_dialog.dart';
+import 'ui/views/telemetry_view.dart';
+
+
+
+
+
+
 
 /// ################### Providers ###################
 final dbProvider = Provider<DatabaseService>((ref) {
@@ -538,7 +549,7 @@ class PredictionNotifier extends StateNotifier<double> {
   Future<void> runRealInference() async {
     await _bridge.runIrrigationRecommendation();
     if (!mounted) return;
-    state = 1.0; // Trigger refresh
+    state = 1.0;
   }
 
   @override
@@ -549,6 +560,13 @@ class PredictionNotifier extends StateNotifier<double> {
 }
 
 /// ################### Providers ###################
+
+
+
+
+
+
+
 
 /// ################### Main ###################
 void main() {
@@ -579,6 +597,14 @@ class MyApp extends StatelessWidget {
 }
 
 /// ################### Main ###################
+
+
+
+
+
+
+
+
 
 /// ################### Navigation Views ###################
 class DashboardPage extends ConsumerStatefulWidget {
@@ -632,7 +658,17 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<bool>(bleConnectedProvider, (previous, next) {
+      if (!next && _showSettings) {
+        setState(() {
+          _showSettings = false;
+        });
+      }
+    });
+
     final db = ref.watch(dbProvider);
+    final hasDevice = ref.watch(bleConnectedProvider);
+    final showSettings = _showSettings && hasDevice;
 
     return MediaQuery(
       data: MediaQuery.of(
@@ -640,9 +676,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
       ).copyWith(textScaler: TextScaler.linear(_fontScale)),
       child: Scaffold(
         appBar: AppBar(
-          title: Text(_showSettings ? 'Settings' : 'TFM PoC Dashboard'),
+          title: Text(showSettings ? 'Settings' : ''),
           actions: [
-            if (!_showSettings)
+            if (hasDevice && !showSettings)
               IconButton(
                 icon: const Icon(Icons.refresh),
                 onPressed: () async {
@@ -654,18 +690,19 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                   }
                 },
               ),
-            IconButton(
-              icon: Icon(_showSettings ? Icons.close : Icons.settings),
-              onPressed: () {
-                setState(() {
-                  _showSettings = !_showSettings;
-                });
-              },
-            ),
+            if (hasDevice)
+              IconButton(
+                icon: Icon(showSettings ? Icons.close : Icons.settings),
+                onPressed: () {
+                  setState(() {
+                    _showSettings = !_showSettings;
+                  });
+                },
+              ),
           ],
         ),
         body: SafeArea(
-          child: _showSettings ? ConfigView(db: db) : const TelemetryView(),
+          child: showSettings ? ConfigView(db: db) : const TelemetryView(),
         ),
       ),
     );
