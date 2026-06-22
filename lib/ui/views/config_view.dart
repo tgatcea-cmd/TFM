@@ -445,7 +445,7 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
                   const SizedBox(height: 12), // Add spacing
                   
                   // ADD THE NEW OPENSTREETMAP BUTTON HERE
-                  OutlinedButton.icon(
+                  ElevatedButton.icon(
                     onPressed: () async {
                       // 1. Get current saved coordinates to center the map
                       final currentLoc = ref.read(locationProvider);

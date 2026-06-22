@@ -22,7 +22,7 @@ class UnifiedChart extends StatelessWidget {
 @override
   Widget build(BuildContext context) {
     final double nowMs = DateTime.now().millisecondsSinceEpoch.toDouble();
-    final double msPerHour = 3600000.0;
+    const double msPerHour = 3600000.0;
 
     // 1. Map history to FlSpot (Time-based X-axis)
     final List<FlSpot> historySpots = history

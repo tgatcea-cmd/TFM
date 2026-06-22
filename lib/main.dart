@@ -722,7 +722,7 @@ class WeatherService {
       final precs = todayRecords.map((r) => r.precipitation).toList();
 
       DailyStats calcStats(List<double> values, {bool isSum = false}) {
-        if (values.isEmpty)
+        if (values.isEmpty) {
           return DailyStats(
             min: 0.0,
             max: 0.0,
@@ -730,6 +730,7 @@ class WeatherService {
             stdDev: 0.0,
             sum: 0.0,
           );
+        }
         final min = values.reduce((a, b) => a < b ? a : b);
         final max = values.reduce((a, b) => a > b ? a : b);
         final sum = values.reduce((a, b) => a + b);
