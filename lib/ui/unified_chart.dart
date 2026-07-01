@@ -26,10 +26,46 @@ class UnifiedChart extends StatefulWidget {
   State<UnifiedChart> createState() => _UnifiedChartState();
 }
 
-class _UnifiedChartState extends State<UnifiedChart> {
+class _UnifiedChartState extends State<UnifiedChart> with SingleTickerProviderStateMixin {
   // Offset en horas. 0 = tiempo actual centrado.
   // Positivo significa mirar hacia el pasado. Negativo hacia el futuro.
   double _scrollOffset = 0.0;
+
+  late AnimationController _snapController;
+  Animation<double>? _snapAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _snapController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
+    _snapController.addListener(() {
+      if (_snapAnimation != null) {
+        setState(() {
+          _scrollOffset = _snapAnimation!.value;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _snapController.dispose();
+    super.dispose();
+  }
+
+  void _animateToOffset(double target) {
+    _snapController.stop();
+    _snapAnimation = Tween<double>(
+      begin: _scrollOffset,
+      end: target,
+    ).animate(
+      CurvedAnimation(parent: _snapController, curve: Curves.easeOutCubic),
+    );
+    _snapController.forward(from: 0.0);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -137,10 +173,12 @@ class _UnifiedChartState extends State<UnifiedChart> {
           clipBehavior:
               Clip.hardEdge, // Recorta los desbordamientos del efecto 3D
           child: GestureDetector(
+            behavior: HitTestBehavior.opaque, // ponytail: ensure all clicks, taps, and drags are captured
             onDoubleTap: () {
-              setState(() {
-                _scrollOffset = 0.0;
-              });
+              _animateToOffset(0.0);
+            },
+            onHorizontalDragStart: (details) {
+              _snapController.stop();
             },
             onHorizontalDragUpdate: (details) {
               setState(() {
@@ -149,6 +187,10 @@ class _UnifiedChartState extends State<UnifiedChart> {
                 // Clamp: Limitar el pan desde -24h (futuro max) hasta 48h (pasado max)
                 _scrollOffset = _scrollOffset.clamp(-24.0, 48.0);
               });
+            },
+            onHorizontalDragEnd: (details) {
+              final target = _scrollOffset.roundToDouble().clamp(-24.0, 48.0);
+              _animateToOffset(target);
             },
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -239,8 +281,8 @@ class _UnifiedChartState extends State<UnifiedChart> {
                     Positioned(
                       left: halfWidth - 1,
                       width: 2,
-                      height: height,
-                      child: Container(color: redColor),
+                      height: height - 24.0, // Stop at the X-axis line to avoid covering the X labels
+                      child: Container(color: redColor.withOpacity(0.35)),
                     ),
                   ],
                 );
@@ -393,40 +435,15 @@ class ChartPainter extends CustomPainter {
       _drawZoningBand(canvas, chartHeight, greenStart, greenEnd, Colors.green.withOpacity(0.08), size);
     }
 
-    // 2. Dibujar Grid horizontal y guías de Y con etiquetas de porcentaje
+    // ponytail: dinamic grid rendering based on dynamic relative bounds (clean grid lines without confusing static numbers)
     final gridPaint = Paint()
-      ..color = Colors.black.withOpacity(0.04) // ponytail: lower opacity to prevent distraction
+      ..color = Colors.black.withOpacity(0.04)
       ..strokeWidth = 1;
-
-    final textStyleY = const TextStyle(
-      color: Colors.black38,
-      fontSize: 9,
-      fontWeight: FontWeight.bold,
-    );
-
-    // ponytail: dinamic grid rendering based on dynamic relative bounds
     final double rangeStep = (maxHumidity - minHumidity) / 4.0;
     for (int i = 0; i <= 4; i++) {
       double val = minHumidity + i * rangeStep;
       double y = _getY(val, chartHeight);
       canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
-
-      // ponytail: Y-axis labels positioned next to the central Now line and color coded
-      if (isLeft) {
-        // Left side of the central line: draw Humidity % labels (teal)
-        final span = TextSpan(text: '${val.toStringAsFixed(0)}%', style: textStyleY.copyWith(color: teal));
-        final tp = TextPainter(text: span, textDirection: TextDirection.ltr);
-        tp.layout();
-        tp.paint(canvas, Offset(size.width - tp.width - 6, y - tp.height - 2));
-      } else {
-        // Right side of the central line: draw Radiation labels (red/orange)
-        final double radVal = i * 250.0;
-        final String labelText = i == 4 ? '1000 W/m²' : '${radVal.toStringAsFixed(0)}';
-        final span = TextSpan(text: labelText, style: textStyleY.copyWith(color: red));
-        final tp = TextPainter(text: span, textDirection: TextDirection.ltr);
-        tp.layout();
-        tp.paint(canvas, Offset(6, y - tp.height - 2));
-      }
     }
 
     // 3. Dibujar las etiquetas de las Horas (Eje X)
@@ -475,7 +492,7 @@ class ChartPainter extends CustomPainter {
       isDashed: true,
     );
 
-    // ---- PREDICCIONES Y FORECAST (Solo en ETAPA DATOS LISTOS) ----
+    // ---- PREDICCIONES (Solo en ETAPA DATOS LISTOS) ----
     if (!isWaitingData) {
       // Prediccion Humedad (Naranja Dashed)
       List<Offset> predPoints = [];
@@ -494,27 +511,70 @@ class ChartPainter extends CustomPainter {
           ..style = PaintingStyle.stroke,
         isDashed: true,
       );
+    }
 
-      // Forecast Radiacion (Naranja Sólido)
-      // ponytail: scale future radiation forecast independently from 0 to 1000 W/m2
-      List<Offset> radForecastPoints = [];
-      for (int i = 0; i < radiationForecast.length; i++) {
-        double h = i.toDouble();
-        radForecastPoints.add(
-          Offset(
-            _getX(h, size.width),
-            _getRadY(radiationForecast[i], chartHeight),
-          ),
-        );
-      }
-      _drawDataLines(
-        canvas,
-        radForecastPoints,
-        Paint()
-          ..color = orange
-          ..strokeWidth = 1.5
-          ..style = PaintingStyle.stroke,
+    // Forecast Radiacion (Naranja Sólido)
+    // ponytail: scale future radiation forecast independently from 0 to 1000 W/m2, show it always
+    List<Offset> radForecastPoints = [];
+    for (int i = 0; i < radiationForecast.length; i++) {
+      double h = i.toDouble();
+      radForecastPoints.add(
+        Offset(
+          _getX(h, size.width),
+          _getRadY(radiationForecast[i], chartHeight),
+        ),
       );
+    }
+    _drawDataLines(
+      canvas,
+      radForecastPoints,
+      Paint()
+        ..color = orange
+        ..strokeWidth = 1.5
+        ..style = PaintingStyle.stroke,
+    );
+
+    // ---- INTERACTIVE VALUE LABELS AT CENTRAL DIVISION (Now line) ----
+    // ponytail: floating dynamic readouts that glide along the central Y-axis line displaying values at the current scroll cursor
+    final double centerHour = -scrollOffset;
+    final double? currentHum = _getHumidityAt(centerHour, nowMs, msPerHour);
+    final double? currentRad = _getRadiationAt(centerHour, nowMs, msPerHour);
+
+    if (isLeft && currentHum != null) {
+      final double y = _getY(currentHum, chartHeight);
+      final span = TextSpan(
+        text: '${currentHum.toStringAsFixed(0)}%',
+        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+      );
+      final tp = TextPainter(text: span, textDirection: TextDirection.ltr);
+      tp.layout();
+
+      final bgPaint = Paint()..color = teal..style = PaintingStyle.fill;
+      final rect = RRect.fromRectAndRadius(
+        Rect.fromLTRB(size.width - tp.width - 12, y - tp.height / 2 - 3, size.width - 4, y + tp.height / 2 + 3),
+        const Radius.circular(4),
+      );
+      canvas.drawRRect(rect, bgPaint);
+      tp.paint(canvas, Offset(size.width - tp.width - 8, y - tp.height / 2));
+    }
+
+    if (!isLeft && currentRad != null) {
+      final double y = _getRadY(currentRad, chartHeight);
+      final span = TextSpan(
+        text: '${currentRad.toStringAsFixed(0)} W/m²',
+        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+      );
+      final tp = TextPainter(text: span, textDirection: TextDirection.ltr);
+      tp.layout();
+
+      final isPast = centerHour <= 0;
+      final bgPaint = Paint()..color = (isPast ? red : orange)..style = PaintingStyle.fill;
+      final rect = RRect.fromRectAndRadius(
+        Rect.fromLTRB(4, y - tp.height / 2 - 3, 12 + tp.width + 4, y + tp.height / 2 + 3),
+        const Radius.circular(4),
+      );
+      canvas.drawRRect(rect, bgPaint);
+      tp.paint(canvas, Offset(8, y - tp.height / 2));
     }
   }
 
@@ -604,6 +664,61 @@ class ChartPainter extends CustomPainter {
     final val = value.clamp(minHumidity, maxHumidity);
     final percent = (val - minHumidity) / (maxHumidity - minHumidity);
     return chartHeight - percent * chartHeight;
+  }
+
+  // ponytail: find closest soil humidity value to show in floating cursor
+  double? _getHumidityAt(double h, double nowMs, double msPerHour) {
+    final double targetTs = nowMs + h * msPerHour;
+    double closestDist = double.infinity;
+    double? closestVal;
+
+    for (var r in history) {
+      final dist = (r.timestamp - targetTs).abs();
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestVal = r.value;
+      }
+    }
+    for (var p in predictions) {
+      final dist = (p.timestamp - targetTs).abs();
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestVal = p.predictedHumidity;
+      }
+    }
+
+    if (closestDist <= 3.0 * msPerHour) {
+      return closestVal;
+    }
+    return null;
+  }
+
+  // ponytail: find closest radiation value to show in floating cursor
+  double? _getRadiationAt(double h, double nowMs, double msPerHour) {
+    final double targetTs = nowMs + h * msPerHour;
+    double closestDist = double.infinity;
+    double? closestVal;
+
+    for (var w in weatherHistory) {
+      final dist = (w.timestamp - targetTs).abs();
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestVal = w.radiation;
+      }
+    }
+
+    // Also look at future forecast list if index matches
+    if (h >= 0.0 && h < radiationForecast.length) {
+      final int idx = h.round();
+      if (idx >= 0 && idx < radiationForecast.length) {
+        return radiationForecast[idx];
+      }
+    }
+
+    if (closestDist <= 3.0 * msPerHour) {
+      return closestVal;
+    }
+    return null;
   }
 
   // ponytail: scale radiation independently from 0 to 1000 W/m2

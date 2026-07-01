@@ -76,11 +76,28 @@ class _TelemetryViewState extends ConsumerState<TelemetryView> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.refresh),
-                        onPressed: () =>
-                            ref.read(bleServiceProvider).startScan(),
-                        tooltip: 'Rescan',
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (ref.watch(bleConnectedProvider))
+                            TextButton.icon(
+                              onPressed: () {
+                                Navigator.pop(context);
+                                ref.read(bleServiceProvider).disconnect();
+                              },
+                              icon: const Icon(Icons.close, color: Colors.red),
+                              label: const Text(
+                                'Disconnect',
+                                style: TextStyle(color: Colors.red),
+                              ),
+                            ),
+                          IconButton(
+                            icon: const Icon(Icons.refresh),
+                            onPressed: () =>
+                                ref.read(bleServiceProvider).startScan(),
+                            tooltip: 'Rescan',
+                          ),
+                        ],
                       ),
                     ],
                   ),
