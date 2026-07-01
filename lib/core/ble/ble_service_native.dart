@@ -10,7 +10,6 @@ import 'ble_chunk_assembler.dart';
 export 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show BluetoothDevice, ScanResult, BluetoothConnectionState;
 
-/// HMAC-SHA256 Challenge-Response Authentication.
 class PicoHandshakeModule {
   final String sharedSecret;
   PicoHandshakeModule({this.sharedSecret = "TFM_CESAR_PICO_SECRET_KEY_2026"});
@@ -49,48 +48,73 @@ class PicoHandshakeModule {
     }
 
     try {
-      print(
-        'PicoHandshakeModule: Leyendo nonce de desafío desde Auth (0x14)...',
-      );
+      print('PicoHandshakeModule: Leyendo estado y nonce desde Auth (0x14)...');
       onProgress?.call(0.1, 'Solicitando nonce de desafío...');
 
       final authBytes = await _readCharacteristicRobust(authChar);
       final decoded = CborHelper.decode(authBytes);
       final authMap = CborHelper.asMap(decoded);
 
-      if (authMap == null || !authMap.containsKey('challenge')) {
+      // 1. C firmware uses "nonce" instead of "challenge"
+      if (authMap == null || !authMap.containsKey('nonce')) {
         print(
-          'Handshake Error: El payload de Auth no contiene un desafío. Map: $authMap',
+          'Handshake Error: El payload de Auth no contiene un nonce. Map: $authMap',
         );
         return false;
       }
 
-      final List<int> challenge = List<int>.from(authMap['challenge'] as List);
-      print('PicoHandshakeModule: Desafío recibido de la estación: $challenge');
+      final List<int> nonce = List<int>.from(authMap['nonce'] as List);
+      final bool isProvisioned = authMap['prov'] == true;
+      print('PicoHandshakeModule: Nonce recibido: $nonce');
 
-      onProgress?.call(0.5, 'Calculando firma HMAC criptográfica...');
-      final keyBytes = utf8.encode(sharedSecret);
-      final hmac = Hmac(sha256, keyBytes);
-      final digest = hmac.convert(challenge);
-      final responseBytes = digest.bytes;
+      // 2. The 32-byte authKey stored on the device is the SHA-256 of the plain text password
+      final passwordBytes = utf8.encode(sharedSecret);
+      final authKey = sha256.convert(passwordBytes).bytes;
+
+      // 3. Handle the "all zeros" unprovisioned state by sending setpw
+      if (!isProvisioned) {
+        print(
+          'PicoHandshakeModule: ¡Estación no provisionada! Configurando password inicial...',
+        );
+        onProgress?.call(0.3, 'Configurando credenciales iniciales...');
+
+        final setpwPayload = {
+          'v': 1,
+          'op': 'setpw',
+          'key': Uint8List.fromList(authKey),
+        };
+        await authChar.write(CborHelper.encode(setpwPayload));
+        await Future.delayed(const Duration(milliseconds: 400));
+        // The device is now provisioned and we can proceed to authenticate using the same nonce.
+      }
+
+      onProgress?.call(0.5, 'Calculando firma criptográfica (SHA-256)...');
+
+      // 4. Compute proof: SHA256( authKey || nonce ), NOT an HMAC!
+      final proofInput = <int>[...authKey, ...nonce];
+      final proof = sha256.convert(proofInput).bytes;
+
+      // 5. C firmware expects the proof in the "mac" field
       final authPayload = {
         'v': 1,
         'op': 'auth',
-        'resp': Uint8List.fromList(responseBytes),
+        'mac': Uint8List.fromList(proof),
       };
       final encodedPayload = CborHelper.encode(authPayload);
 
-      print('PicoHandshakeModule: Enviando respuesta de verificación a Auth (0x14)...',);
-      onProgress?.call(0.7, 'Enviando respuesta de desafío...');
+      print(
+        'PicoHandshakeModule: Enviando prueba de verificación a Auth (0x14)...',
+      );
+      onProgress?.call(0.7, 'Enviando prueba de verificación...');
       await authChar.write(encodedPayload);
       onProgress?.call(0.8, 'Verificando credenciales de acceso...');
       await Future.delayed(const Duration(milliseconds: 400));
 
-
       final confirmBytes = await _readCharacteristicRobust(authChar);
       final confirmMap = CborHelper.asMap(CborHelper.decode(confirmBytes));
 
-      if (confirmMap != null && confirmMap['authenticated'] == true) {
+      // 6. C firmware returns "authed" instead of "authenticated"
+      if (confirmMap != null && confirmMap['authed'] == true) {
         print(
           'PicoHandshakeModule: ¡Estación desbloqueada y autenticada con éxito!',
         );
@@ -433,4 +457,8 @@ class BleService {
     await _dataRequestChar!.write(CborHelper.encode(payload));
     print('BleService: Sent fill average instruction');
   }
+
+  Future<void> forceMock72Hours() async => _dataRequestChar?.write(
+    CborHelper.encode({'v': 1, 'op': 'mock', 'kind': '48h'}),
+  );
 }

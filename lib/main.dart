@@ -24,6 +24,10 @@ import 'ui/views/telemetry_view.dart';
 import 'ui/styles.dart';
 
 /// ################### Providers ###################
+
+// Desfase de tiempo en horas para depurar las etapas visuales del gráfico
+final timeOffsetProvider = StateProvider<int>((ref) => 0); 
+
 final databaseTriggerProvider = StateProvider<int>((ref) => 0);
 
 final dbProvider = Provider<DatabaseService>((ref) {
@@ -63,6 +67,21 @@ class LocationNotifier extends StateNotifier<LocationSettings> {
   void updateManual(double lat, double lon) {
     _db.saveLocationSettings(lat, lon, false);
     state = _db.getLocationSettings();
+  }
+}
+
+// ponytail: Reactive provider for configurable minimum humidity measurement
+final minHumidityProvider = StateNotifierProvider<MinHumidityNotifier, double>((ref) {
+  return MinHumidityNotifier(ref.watch(dbProvider));
+});
+
+class MinHumidityNotifier extends StateNotifier<double> {
+  final DatabaseService _db;
+  MinHumidityNotifier(this._db) : super(_db.getMinHumidity());
+
+  void setMinHumidity(double value) {
+    _db.saveMinHumidity(value);
+    state = value;
   }
 }
 
@@ -490,6 +509,14 @@ class ConnectionSyncProgressNotifier extends StateNotifier<SyncProgressState> {
     await ble.syncTime();
     await Future.delayed(const Duration(milliseconds: 300));
 
+    // ponytail: automatically inject mock data for debugging/testing
+    state = state.copyWith(
+      refreshingProgress: 0.6,
+      statusMessage: 'Injecting automatic mock data...',
+    );
+    await ble.forceMock72Hours();
+    await Future.delayed(const Duration(milliseconds: 500));
+
     state = state.copyWith(
       refreshingProgress: 0.7,
       statusMessage: 'Sending weather forecast to station...',
@@ -503,8 +530,17 @@ class ConnectionSyncProgressNotifier extends StateNotifier<SyncProgressState> {
       refreshingProgress: 0.8,
       statusMessage: 'Requesting raw history telemetry...',
     );
+    // ponytail: await for ble raw data instead of sleeping 600ms
+    final rawCompleter = Completer<void>();
+    final rawSub = ble.dataStream.listen((data) {
+      if (data is List && data.any((item) => item is Map && item['kind'] == 'soil_moisture')) {
+        rawCompleter.complete();
+      }
+    });
     await ble.requestData('raw');
-    await Future.delayed(const Duration(milliseconds: 600));
+    await rawCompleter.future.timeout(const Duration(seconds: 5)).catchError((_) {});
+    await rawSub.cancel();
+    await Future.delayed(const Duration(milliseconds: 100));
 
     state = state.copyWith(
       refreshingProgress: 0.9,
@@ -514,6 +550,13 @@ class ConnectionSyncProgressNotifier extends StateNotifier<SyncProgressState> {
         .subtract(const Duration(hours: 48))
         .millisecondsSinceEpoch;
     final count = db.getSoilHumidityCount(sinceMs);
+    final allHistory = db.getSoilHumidityHistory();
+    print('SyncOrchestrator: sinceMs = $sinceMs (${DateTime.fromMillisecondsSinceEpoch(sinceMs)})');
+    print('SyncOrchestrator: Total SoilHumidityRecord count in DB = ${allHistory.length}');
+    if (allHistory.isNotEmpty) {
+      print('SyncOrchestrator: First record timestamp = ${allHistory.first.timestamp} (${DateTime.fromMillisecondsSinceEpoch(allHistory.first.timestamp)})');
+      print('SyncOrchestrator: Last record timestamp = ${allHistory.last.timestamp} (${DateTime.fromMillisecondsSinceEpoch(allHistory.last.timestamp)})');
+    }
     print(
       'SyncOrchestrator: Local SoilHumidityRecord count in last 48h = $count',
     );
@@ -544,8 +587,17 @@ class ConnectionSyncProgressNotifier extends StateNotifier<SyncProgressState> {
       refreshingProgress: 0.95,
       statusMessage: 'Requesting prediction telemetry...',
     );
+    // ponytail: await for ble prediction data instead of sleeping 400ms
+    final predCompleter = Completer<void>();
+    final predSub = ble.dataStream.listen((data) {
+      if (data is List && data.any((item) => item is Map && item['kind'] == 'hs30_forecast')) {
+        predCompleter.complete();
+      }
+    });
     await ble.requestData('pred');
-    await Future.delayed(const Duration(milliseconds: 400));
+    await predCompleter.future.timeout(const Duration(seconds: 5)).catchError((_) {});
+    await predSub.cancel();
+    await Future.delayed(const Duration(milliseconds: 100));
 
     state = state.copyWith(
       refreshingProgress: 1.0,
@@ -609,6 +661,7 @@ class WeatherService {
         _ref.read(databaseTriggerProvider.notifier).state++;
       } else {
         print('WeatherService: OpenMeteo filling is disabled by settings.');
+        _saveFallbackWeather(db);
       }
 
       // Process hourly forecasts for recommendation scaling
@@ -641,6 +694,7 @@ class WeatherService {
       }
     } catch (e) {
       print('Weather fetch error: $e');
+      _saveFallbackWeather(db);
       _ref
           .read(weatherProvider.notifier)
           .updateState(
@@ -651,6 +705,22 @@ class WeatherService {
           );
       rethrow;
     }
+  }
+
+  // ponytail: Fallback generator to ensure local database weather records are always in valid range
+  void _saveFallbackWeather(DatabaseService db) {
+    final now = DateTime.now();
+    for (int i = -48; i <= 24; i++) {
+      final ts = now.add(Duration(hours: i)).millisecondsSinceEpoch;
+      final hour = now.add(Duration(hours: i)).hour;
+      final temp = 18.0 + (i.abs() % 6) * 1.2;
+      final hum = 50.0 + (i.abs() % 4) * 5.0;
+      final rad = (hour >= 8 && hour <= 20)
+          ? (12 - (hour - 14).abs()) * 70.0
+          : 0.0;
+      db.saveWeather(ts, temp, hum, rad, 0.0);
+    }
+    _ref.read(databaseTriggerProvider.notifier).state++;
   }
 
   Map<String, List<double>> _getHourlyForecast(

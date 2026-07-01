@@ -203,7 +203,11 @@ class _TelemetryViewState extends ConsumerState<TelemetryView> {
   }
 
   Widget _buildHistoryTableView(DatabaseService db) {
-    final history = db.getSoilHumidityHistory();
+    final allHistory = db.getSoilHumidityHistory();
+    // ponytail: limit to latest 50 records to prevent UI lag when list is huge
+    final history = allHistory.length > 50
+        ? allHistory.sublist(allHistory.length - 50)
+        : allHistory;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -244,11 +248,16 @@ class _TelemetryViewState extends ConsumerState<TelemetryView> {
     WeatherState weather,
     bool isConnected,
   ) {
+    final timeOffset = ref.watch(timeOffsetProvider);
+    final minHumidity = ref.watch(minHumidityProvider);
+
     return UnifiedChart(
       history: isConnected ? db.getSoilHumidityHistory() : [],
       predictions: isConnected ? db.getPredictionHistory() : [],
       radiationForecast: isConnected ? weather.hourlyRadiationForecast : [],
       weatherHistory: isConnected ? db.getWeatherHistory() : [],
+      timeOffsetHours: timeOffset,
+      minHumidity: minHumidity,
     );
   }
 }

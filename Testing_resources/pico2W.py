@@ -285,6 +285,7 @@ class PicoBLE:
         self._authenticated = False
         self._debug_mode = False
         self._scenario_idx = 0
+        self._time_offset = 0
         
         if IS_PC:
             try:
@@ -344,7 +345,8 @@ class PicoBLE:
             data = decode_cbor_full(value)
             if data and data.get("op") == "set":
                 ms = data.get("ms")
-                print("Time Sync Command received: RTC set to %d ms UTC" % ms)
+                self._time_offset = ms - time.ticks_ms()
+                print("Time Sync Command received: RTC set to %d ms UTC (Offset: %d ms)" % (ms, self._time_offset))
         except Exception as e:
             print("Error parsing time sync: %s" % e)
 
@@ -441,7 +443,7 @@ class PicoBLE:
 
     def send_raw_humidity_history(self):
         # Generate 10 mock readings for the LSTM sequence
-        base_time = time.time() * 1000
+        base_time = (time.ticks_ms() + self._time_offset) if self._time_offset else (time.time() * 1000)
         readings = []
         for i in range(10):
             readings.append({
@@ -456,7 +458,7 @@ class PicoBLE:
         self.send_chunks(payload)
 
     def send_prediction_history(self):
-        base_time = time.time() * 1000
+        base_time = (time.ticks_ms() + self._time_offset) if self._time_offset else (time.time() * 1000)
         predictions = [{
             "ts_ms": int(base_time),
             "model": "lstm-hs30",

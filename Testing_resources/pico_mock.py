@@ -430,7 +430,8 @@ class PicoBLEMock:
                 ms = data.get("ms")
                 # Update mock RTC
                 secs = ms // 1000
-                t_struct = time.localtime(secs)
+                epoch_offset = 946684800 if time.localtime(0)[0] == 2000 else 0
+                t_struct = time.localtime(secs - epoch_offset)
                 self._rtc.datetime((t_struct[0], t_struct[1], t_struct[2], t_struct[6], t_struct[3], t_struct[4], t_struct[5], 0))
                 print("RTC successfully synchronized to: %d-%02d-%02d %02d:%02d:%02d UTC" % 
                       (t_struct[0], t_struct[1], t_struct[2], t_struct[3], t_struct[4], t_struct[5]))
@@ -526,7 +527,8 @@ class PicoBLEMock:
 
     def send_raw_humidity_history(self):
         # 48 hours of soil moisture raw data (1 reading per hour)
-        base_time = time.time() * 1000
+        epoch_offset = 946684800 if time.localtime(0)[0] == 2000 else 0
+        base_time = (time.time() + epoch_offset) * 1000
         readings = []
         # Generate stable decaying moisture profile (from 0.85 to 0.40)
         for i in range(48):
@@ -543,7 +545,8 @@ class PicoBLEMock:
 
     def send_prediction_history(self):
         # 24 hours of prediction forecast data (1 forecast per hour)
-        base_time = time.time() * 1000
+        epoch_offset = 946684800 if time.localtime(0)[0] == 2000 else 0
+        base_time = (time.time() + epoch_offset) * 1000
         predictions = []
         for i in range(24):
             predictions.append({

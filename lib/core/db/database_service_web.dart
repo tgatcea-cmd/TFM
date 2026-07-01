@@ -89,6 +89,16 @@ class DatabaseService {
     return _appSettings;
   }
 
+  double _minHumidity = 60.0;
+
+  double getMinHumidity() {
+    return _minHumidity;
+  }
+
+  void saveMinHumidity(double value) {
+    _minHumidity = value;
+  }
+
   void saveAppSettings({
     required String tfmServerUrl,
     required int tfmServerPort,

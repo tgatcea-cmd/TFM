@@ -10,14 +10,10 @@ import '../styles.dart';
 import 'map_picker_dialog.dart';
 import 'package:latlong2/latlong.dart';
 
-
 class ConfigView extends ConsumerStatefulWidget {
   final DatabaseService db;
 
-  const ConfigView({
-    super.key,
-    required this.db,
-  });
+  const ConfigView({super.key, required this.db});
 
   @override
   ConsumerState<ConfigView> createState() => _ConfigViewState();
@@ -31,24 +27,28 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
   bool _isConnecting = false;
   bool? _isConnected;
   List<String> _serverModels = [];
-  
+
   late String _selectedModel;
   late bool _invertOutput;
   late bool _permitFill;
   late bool _forceInference;
+  late double _minHumidity;
 
   @override
   void initState() {
     super.initState();
     final settings = widget.db.getAppSettings();
     _urlController = TextEditingController(text: settings.tfmServerUrl);
-    _portController = TextEditingController(text: settings.tfmServerPort.toString());
+    _portController = TextEditingController(
+      text: settings.tfmServerPort.toString(),
+    );
     _apiKeyController = TextEditingController(text: settings.tfmServerApiKey);
-    
+
     _selectedModel = settings.selectedTfliteModel;
     _invertOutput = settings.invertModelOutput;
     _permitFill = settings.permitOpenMeteoFill;
     _forceInference = settings.alwaysForceInference;
+    _minHumidity = ref.read(minHumidityProvider);
 
     // Check server availability asynchronously on load
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -113,7 +113,11 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
       if (!silent) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(ok ? 'Connected successfully! Found ${models.length - 1} models.' : 'Connection failed.'),
+            content: Text(
+              ok
+                  ? 'Connected successfully! Found ${models.length - 1} models.'
+                  : 'Connection failed.',
+            ),
             backgroundColor: ok ? Colors.teal : Colors.red,
           ),
         );
@@ -141,7 +145,9 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
       setState(() => _isConnecting = false);
       if (file != null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Model $_selectedModel downloaded and set active!')),
+          SnackBar(
+            content: Text('Model $_selectedModel downloaded and set active!'),
+          ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -158,25 +164,27 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
       'farm_optimized.tflite',
     ];
 
-    unawaited(showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Select Local Tflite Model to Upload'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: mockLocalModels.map((model) {
-            return ListTile(
-              title: Text(model),
-              leading: const Icon(Icons.psychology, color: Colors.teal),
-              onTap: () {
-                Navigator.pop(context);
-                unawaited(_uploadModel(model));
-              },
-            );
-          }).toList(),
+    unawaited(
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Select Local Tflite Model to Upload'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: mockLocalModels.map((model) {
+              return ListTile(
+                title: Text(model),
+                leading: const Icon(Icons.psychology, color: Colors.teal),
+                onTap: () {
+                  Navigator.pop(context);
+                  unawaited(_uploadModel(model));
+                },
+              );
+            }).toList(),
+          ),
         ),
       ),
-    ));
+    );
   }
 
   Future<void> _uploadModel(String filename) async {
@@ -206,9 +214,9 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
         );
         await _testConnection(silent: true);
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Upload failed.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Upload failed.')));
       }
     }
   }
@@ -223,7 +231,9 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
           // TFM Server Configuration Card
           Card(
             elevation: 3,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppStyles.radiusMedium)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppStyles.radiusMedium),
+            ),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -234,7 +244,10 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
                     children: [
                       const Text(
                         'TFM Database Server',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       if (_isConnected != null)
                         Icon(
@@ -292,12 +305,17 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       ElevatedButton.icon(
-                        onPressed: _isConnecting ? null : () => _testConnection(),
+                        onPressed: _isConnecting
+                            ? null
+                            : () => _testConnection(),
                         icon: _isConnecting
                             ? const SizedBox(
                                 width: 16,
                                 height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.teal),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.teal,
+                                ),
                               )
                             : const Icon(Icons.wifi),
                         label: const Text('Test & Sync'),
@@ -319,7 +337,10 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
                     const SizedBox(height: 20),
                     const Text(
                       'Select Recommendation Model (.tflite)',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Container(
@@ -369,7 +390,9 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
           // Inference Logic Card
           Card(
             elevation: 3,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppStyles.radiusMedium)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppStyles.radiusMedium),
+            ),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -382,7 +405,9 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
                   const Divider(),
                   SwitchListTile(
                     title: const Text('Invert Model Output'),
-                    subtitle: const Text('Toggle output recommendation classes: 0 to Healthy, 1 to Danger vs inverted.'),
+                    subtitle: const Text(
+                      'Toggle output recommendation classes: 0 to Healthy, 1 to Danger vs inverted.',
+                    ),
                     value: _invertOutput,
                     onChanged: (val) {
                       setState(() => _invertOutput = val);
@@ -392,7 +417,9 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
                   ),
                   SwitchListTile(
                     title: const Text('Permit OpenMeteo filling'),
-                    subtitle: const Text('Allow matching missing local station weather points with Open-Meteo predictions.'),
+                    subtitle: const Text(
+                      'Allow matching missing local station weather points with Open-Meteo predictions.',
+                    ),
                     value: _permitFill,
                     onChanged: (val) {
                       setState(() => _permitFill = val);
@@ -402,13 +429,49 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
                   ),
                   SwitchListTile(
                     title: const Text('Always force inference'),
-                    subtitle: const Text('Bypass checks on historical logs completeness to force RF recommendation execution.'),
+                    subtitle: const Text(
+                      'Bypass checks on historical logs completeness to force RF recommendation execution.',
+                    ),
                     value: _forceInference,
                     onChanged: (val) {
                       setState(() => _forceInference = val);
                       _saveSettings();
                     },
                     activeThumbColor: Colors.teal,
+                  ),
+                  const Divider(),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Minimum Humidity Threshold',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                            ),
+                            Text(
+                              '${_minHumidity.toStringAsFixed(0)}%',
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.teal),
+                            ),
+                          ],
+                        ),
+                        Slider(
+                          value: _minHumidity,
+                          min: 0.0,
+                          max: 90.0,
+                          divisions: 18,
+                          activeColor: Colors.teal,
+                          inactiveColor: Colors.teal.withOpacity(0.2),
+                          onChanged: (val) {
+                            setState(() => _minHumidity = val);
+                            ref.read(minHumidityProvider.notifier).setMinHumidity(val);
+                          },
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -419,7 +482,9 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
           // Location settings
           Card(
             elevation: 3,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppStyles.radiusMedium)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppStyles.radiusMedium),
+            ),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -436,20 +501,21 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
                       final messenger = ScaffoldMessenger.of(context);
                       await ref.read(locationProvider.notifier).updateFromGps();
                       messenger.showSnackBar(
-                        const SnackBar(content: Text('Location updated successfully')),
+                        const SnackBar(
+                          content: Text('Location updated successfully'),
+                        ),
                       );
                     },
                     icon: const Icon(Icons.my_location),
                     label: const Text('Refresh Location from GPS'),
                   ),
                   const SizedBox(height: 12), // Add spacing
-                  
                   // ADD THE NEW OPENSTREETMAP BUTTON HERE
                   ElevatedButton.icon(
                     onPressed: () async {
                       // 1. Get current saved coordinates to center the map
                       final currentLoc = ref.read(locationProvider);
-                      
+
                       // 2. Open the OSM Picker Dialog
                       final LatLng? newLocation = await showDialog<LatLng>(
                         context: context,
@@ -461,13 +527,19 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
 
                       // 3. If user saved a location, update the state and DB
                       if (newLocation != null) {
-                        ref.read(locationProvider.notifier).updateManual(
-                          newLocation.latitude, 
-                          newLocation.longitude
-                        );
-                        
+                        ref
+                            .read(locationProvider.notifier)
+                            .updateManual(
+                              newLocation.latitude,
+                              newLocation.longitude,
+                            );
+
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Manual location saved! (${newLocation.latitude.toStringAsFixed(3)}, ${newLocation.longitude.toStringAsFixed(3)})')),
+                          SnackBar(
+                            content: Text(
+                              'Manual location saved! (${newLocation.latitude.toStringAsFixed(3)}, ${newLocation.longitude.toStringAsFixed(3)})',
+                            ),
+                          ),
                         );
                       }
                     },
@@ -480,10 +552,105 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
           ),
           const SizedBox(height: 16),
 
+          // Hardware / Station Debug Card
+          const Text(
+            'Time Travel Simulator (UI Debug)',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          Consumer(
+            builder: (context, ref, child) {
+              final offset = ref.watch(timeOffsetProvider);
+              final simulatedTime = DateTime.now().add(Duration(hours: offset));
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Offset: $offset horas -> Hora simulada: ${simulatedTime.hour.toString().padLeft(2, '0')}:${simulatedTime.minute.toString().padLeft(2, '0')}',
+                  ),
+                  Slider(
+                    value: offset.toDouble(),
+                    min: -24,
+                    max: 24,
+                    divisions: 48,
+                    activeColor: Colors.amber.shade700,
+                    label: '${offset > 0 ? '+' : ''}$offset h',
+                    onChanged: (val) {
+                      // Actualizamos la variable y la gráfica se repintará sola
+                      ref.read(timeOffsetProvider.notifier).state = val.toInt();
+                    },
+                  ),
+                ],
+              );
+            },
+          ),
+          Card(
+            elevation: 3,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppStyles.radiusMedium),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Station Debug (BLE)',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const Divider(),
+                  const SizedBox(height: 10),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.amber.shade100,
+                      foregroundColor: Colors.amber.shade900,
+                    ),
+                    onPressed: () async {
+                      final ble = ref.read(bleServiceProvider);
+                      if (ble.isConnected) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Injecting 48h mock data to station...',
+                            ),
+                          ),
+                        );
+
+                        // ponytail: sync clock first so Pico does not write underflowed uptime timestamps
+                        await ble.syncTime();
+                        await Future.delayed(const Duration(milliseconds: 300));
+                        await ble.forceMock72Hours();
+
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Finished injecting mock data!'),
+                            ),
+                          );
+                        }
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Connect to a station first.'),
+                          ),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.bug_report),
+                    label: const Text('Inject 48h Mock Data to Pico'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
           // Database maintenance
           Card(
             elevation: 3,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppStyles.radiusMedium)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppStyles.radiusMedium),
+            ),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -522,7 +689,9 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
                                 Navigator.pop(context);
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
-                                    content: Text('Database cleared successfully!'),
+                                    content: Text(
+                                      'Database cleared successfully!',
+                                    ),
                                   ),
                                 );
                               },

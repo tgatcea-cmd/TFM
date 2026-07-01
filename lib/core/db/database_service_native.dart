@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:realm/realm.dart';
 import '../../data/schemas/soil_humidity_schema.dart';
 import '../../data/schemas/weather_schema.dart';
@@ -123,6 +124,24 @@ class DatabaseService {
       return defaultSettings;
     }
     return settings;
+  }
+
+  // ponytail: local file storage for custom minHumidity config
+  double getMinHumidity() {
+    try {
+      final file = File('.min_humidity');
+      if (file.existsSync()) {
+        return double.tryParse(file.readAsStringSync()) ?? 60.0;
+      }
+    } catch (_) {}
+    return 60.0;
+  }
+
+  void saveMinHumidity(double value) {
+    try {
+      final file = File('.min_humidity');
+      file.writeAsStringSync(value.toString());
+    } catch (_) {}
   }
 
   void saveAppSettings({
