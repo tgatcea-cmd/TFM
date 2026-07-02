@@ -5,6 +5,7 @@ import '../../core/db/database_service.dart';
 import '../../core/ble/ble_service.dart';
 import '../../main.dart';
 import '../../ui/unified_chart.dart';
+import '../../ui/separate_charts.dart';
 import 'sync_progress_dialog.dart';
 
 class TelemetryView extends ConsumerStatefulWidget {
@@ -208,9 +209,18 @@ class _TelemetryViewState extends ConsumerState<TelemetryView> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildUnifiedChart(db, weather, isConnected),
-              const SizedBox(height: 16),
-              _buildHistoryTableView(db),
+              // _buildUnifiedChart(db, weather, isConnected),
+              RadiationChart(
+                weatherHistory: isConnected ? db.getWeatherHistory() : [],
+                radiationForecast: isConnected ? weather.hourlyRadiationForecast : [],
+                timeOffsetHours: ref.watch(timeOffsetProvider),
+              ),
+              const SizedBox(height: 24),
+              HumidityChart(
+                history: isConnected ? db.getSoilHumidityHistory() : [],
+                predictions: isConnected ? db.getPredictionHistory() : [],
+                timeOffsetHours: ref.watch(timeOffsetProvider),
+              ),
               const SizedBox(height: 80), // Space for FAB
             ],
           ),
@@ -221,7 +231,6 @@ class _TelemetryViewState extends ConsumerState<TelemetryView> {
 
   Widget _buildHistoryTableView(DatabaseService db) {
     final allHistory = db.getSoilHumidityHistory();
-    // ponytail: limit to latest 50 records to prevent UI lag when list is huge
     final history = allHistory.length > 50
         ? allHistory.sublist(allHistory.length - 50)
         : allHistory;
