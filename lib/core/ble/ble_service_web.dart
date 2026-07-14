@@ -145,6 +145,7 @@ class BleService {
 
     _isConnected = true;
     _connectionStateController.add(true);
+    await syncTime(0);
     return true;
   }
 
@@ -181,7 +182,7 @@ class BleService {
     await disconnect();
   }
 
-  Future<void> syncTime() async {
+  Future<void> syncTime(int timeOffsetHours) async {
     print('BleServiceWeb: Syncing time (mock)...');
   }
 

@@ -44,10 +44,10 @@ class TfmServerClient {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final List<dynamic> files = data['files'] ?? [];
-        return files.map((f) => f.toString()).where((f) => f.endsWith('.tflite')).toList();
+        return files.map((f) => f.toString()).where((f) => f.endsWith('.dart')).toList();
       }
     } catch (e) {
-      print('TfmServerClient listTfliteModels error: $e');
+      print('TfmServerClient listDartModels error: $e');
     }
     return [];
   }

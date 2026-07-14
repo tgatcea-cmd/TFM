@@ -115,7 +115,7 @@ class DatabaseService {
         'http://10.0.2.2', // default local TFM server IP (e.g. Android Emulator host loopback)
         3000,
         '',
-        'rf_irrigation.tflite',
+        'random_forest.dart',
         false,
         true,
         false,

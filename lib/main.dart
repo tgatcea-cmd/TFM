@@ -13,7 +13,7 @@ import 'core/ble/ble_service.dart';
 import 'core/db/database_service.dart';
 
 import 'logic/inference/inference_bridge.dart';
-import 'logic/inference/tflite_service.dart';
+
 import 'logic/ble_data_processor.dart';
 import 'logic/location_service.dart';
 import 'logic/weather_processor.dart';
@@ -503,19 +503,56 @@ class ConnectionSyncProgressNotifier extends StateNotifier<SyncProgressState> {
     print('SyncOrchestrator: Starting BLE refresh sequence...');
 
     state = state.copyWith(
-      refreshingProgress: 0.5,
-      statusMessage: 'Synchronizing clock with station...',
+      refreshingProgress: 0.1,
+      statusMessage: 'Synchronizing time...',
     );
-    await ble.syncTime();
-    await Future.delayed(const Duration(milliseconds: 300));
+    final timeOffset = _ref.read(timeOffsetProvider);
+    await ble.syncTime(timeOffset);
+    await Future.delayed(const Duration(milliseconds: 100));
 
-    // ponytail: automatically inject mock data for debugging/testing
+    // Request raw history telemetry first to see if station has memory
     state = state.copyWith(
-      refreshingProgress: 0.6,
-      statusMessage: 'Injecting automatic mock data...',
+      refreshingProgress: 0.2,
+      statusMessage: 'Requesting raw history telemetry...',
     );
-    await ble.forceMock72Hours();
-    await Future.delayed(const Duration(milliseconds: 500));
+    final rawCompleter1 = Completer<void>();
+    final rawSub1 = ble.dataStream.listen((data) {
+      if (data is List && data.any((item) => item is Map && item['kind'] == 'soil_moisture')) {
+        rawCompleter1.complete();
+      }
+    });
+    await ble.requestData('raw');
+    await rawCompleter1.future.timeout(const Duration(seconds: 3)).catchError((_) {});
+    await rawSub1.cancel();
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    // Check if we got any data. If not, station has no registry, so inject mock data.
+    final sinceMs = DateTime.now().add(Duration(hours: timeOffset)).subtract(const Duration(hours: 48)).millisecondsSinceEpoch;
+    final initialCount = db.getSoilHumidityCount(sinceMs);
+    if (initialCount == 0) {
+      state = state.copyWith(
+        refreshingProgress: 0.4,
+        statusMessage: 'Station has no registry. Injecting automatic mock data...',
+      );
+      await ble.forceMock72Hours();
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // Request raw data again after mocking
+      state = state.copyWith(
+        refreshingProgress: 0.6,
+        statusMessage: 'Requesting mocked raw history telemetry...',
+      );
+      final rawCompleter2 = Completer<void>();
+      final rawSub2 = ble.dataStream.listen((data) {
+        if (data is List && data.any((item) => item is Map && item['kind'] == 'soil_moisture')) {
+          rawCompleter2.complete();
+        }
+      });
+      await ble.requestData('raw');
+      await rawCompleter2.future.timeout(const Duration(seconds: 5)).catchError((_) {});
+      await rawSub2.cancel();
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
 
     state = state.copyWith(
       refreshingProgress: 0.7,
@@ -526,30 +563,17 @@ class ConnectionSyncProgressNotifier extends StateNotifier<SyncProgressState> {
       await Future.delayed(const Duration(milliseconds: 300));
     }
 
-    state = state.copyWith(
-      refreshingProgress: 0.8,
-      statusMessage: 'Requesting raw history telemetry...',
-    );
-    // ponytail: await for ble raw data instead of sleeping 600ms
-    final rawCompleter = Completer<void>();
-    final rawSub = ble.dataStream.listen((data) {
-      if (data is List && data.any((item) => item is Map && item['kind'] == 'soil_moisture')) {
-        rawCompleter.complete();
-      }
-    });
-    await ble.requestData('raw');
-    await rawCompleter.future.timeout(const Duration(seconds: 5)).catchError((_) {});
-    await rawSub.cancel();
-    await Future.delayed(const Duration(milliseconds: 100));
+    // Data is already requested, we don't need to do it again here.
 
     state = state.copyWith(
       refreshingProgress: 0.9,
       statusMessage: 'Checking data completeness...',
     );
-    final sinceMs = DateTime.now()
+    final debugTime = DateTime.now().add(Duration(hours: timeOffset));
+    final sinceMsForCheck = debugTime
         .subtract(const Duration(hours: 48))
         .millisecondsSinceEpoch;
-    final count = db.getSoilHumidityCount(sinceMs);
+    final count = db.getSoilHumidityCount(sinceMsForCheck);
     final allHistory = db.getSoilHumidityHistory();
     print('SyncOrchestrator: sinceMs = $sinceMs (${DateTime.fromMillisecondsSinceEpoch(sinceMs)})');
     print('SyncOrchestrator: Total SoilHumidityRecord count in DB = ${allHistory.length}');
@@ -587,7 +611,24 @@ class ConnectionSyncProgressNotifier extends StateNotifier<SyncProgressState> {
       refreshingProgress: 0.95,
       statusMessage: 'Requesting prediction telemetry...',
     );
-    // ponytail: await for ble prediction data instead of sleeping 400ms
+    // Condition for inference: hour >= 19 or hour < 10 of debug time
+    final debugTimeForInfer = DateTime.now().add(Duration(hours: timeOffset));
+    final hour = debugTimeForInfer.hour;
+    final isWithinInferenceWindow = hour >= 19 || hour < 10;
+    
+    if (isWithinInferenceWindow) {
+      state = state.copyWith(
+        refreshingProgress: 0.9,
+        statusMessage: 'Triggering station machine learning inference...',
+      );
+      await ble.triggerInference();
+      // Wait briefly for inference to finish on the IoT station (takes ~270ms on Pico 2 W)
+      await Future.delayed(const Duration(milliseconds: 500));
+    } else {
+      print('SyncOrchestrator: Skipping ML inference trigger outside 19:00-10:00 window (current debug hour: $hour)');
+    }
+
+    // Fetch the new predictions
     final predCompleter = Completer<void>();
     final predSub = ble.dataStream.listen((data) {
       if (data is List && data.any((item) => item is Map && item['kind'] == 'hs30_forecast')) {
@@ -598,12 +639,11 @@ class ConnectionSyncProgressNotifier extends StateNotifier<SyncProgressState> {
     await predCompleter.future.timeout(const Duration(seconds: 5)).catchError((_) {});
     await predSub.cancel();
     await Future.delayed(const Duration(milliseconds: 100));
-
+    
     state = state.copyWith(
       refreshingProgress: 1.0,
-      statusMessage: 'Triggering station machine learning inference...',
+      statusMessage: 'Synchronized.',
     );
-    await ble.triggerInference();
   }
 }
 
@@ -828,22 +868,13 @@ class WeatherService {
   Future<void> runFallbackLocalInference() async {
     print('WeatherService: Not paired. Running local RF inference fallback...');
     final bridge = _ref.read(bridgeProvider);
-    if (_ref.read(tfliteServiceProvider).isRfLoaded) {
-      await bridge.runIrrigationRecommendation();
-    }
+    await bridge.runIrrigationRecommendation();
   }
 }
-
-final tfliteServiceProvider = Provider<TfliteService>((ref) {
-  final service = TfliteService();
-  ref.onDispose(() => service.dispose());
-  return service;
-});
 
 final bridgeProvider = Provider<InferenceBridge>((ref) {
   return InferenceBridge(
     ref.watch(dbProvider),
-    ref.watch(tfliteServiceProvider),
     onDbUpdated: () {
       ref.read(databaseTriggerProvider.notifier).state++;
     },
@@ -872,9 +903,7 @@ class PredictionNotifier extends StateNotifier<double> {
   }
 
   Future<void> init() async {
-    final tflite = _ref.read(tfliteServiceProvider);
-    // await tflite.loadLstmModel('assets/models/irrigation_gru.tflite');
-    await tflite.loadRfModel('assets/models/rf_irrigation.tflite');
+    // No initialization needed for static dart models
   }
 
   Future<void> runRealInference() async {

@@ -10,7 +10,7 @@ class TfmServerClient {
   });
 
   Future<bool> testConnection() async => true;
-  Future<List<String>> listTfliteModels() async => ['rf_irrigation.tflite'];
+  Future<List<String>> listTfliteModels() async => ['random_forest.dart'];
   Future<dynamic> downloadModel(String fileName) async => null;
   Future<bool> uploadModel(dynamic file) async => true;
   Future<bool> uploadDatabase(String realmPath) async => true;

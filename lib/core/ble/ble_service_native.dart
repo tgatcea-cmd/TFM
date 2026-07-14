@@ -297,7 +297,7 @@ class BleService {
         _connectionStateController.add(true);
 
         // Auto-sync RTC clock with Pico
-        await syncTime();
+        await syncTime(0);
 
         return true;
       } else {
@@ -401,15 +401,17 @@ class BleService {
   }
 
   /// Synchronize RTC clock with Pico
-  Future<void> syncTime() async {
+  Future<void> syncTime(int timeOffsetHours) async {
     if (_timeSyncChar == null) return;
+    
+    final debugTime = DateTime.now().add(Duration(hours: timeOffsetHours));
     final payload = {
       'v': 1,
       'op': 'set',
-      'ms': DateTime.now().millisecondsSinceEpoch,
+      'ms': debugTime.millisecondsSinceEpoch,
     };
     await _timeSyncChar!.write(CborHelper.encode(payload));
-    print('BleService: Time synchronized with station');
+    print('BleService: Time synchronized with station to debug time: $debugTime');
   }
 
   /// Send hourly temperature forecast to station

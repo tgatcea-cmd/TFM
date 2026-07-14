@@ -102,11 +102,11 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
         _isConnected = ok;
         _serverModels = models;
         // Keep default selected if empty
-        if (!_serverModels.contains('rf_irrigation.tflite')) {
-          _serverModels.insert(0, 'rf_irrigation.tflite');
+        if (!_serverModels.contains('random_forest.dart')) {
+          _serverModels.insert(0, 'random_forest.dart');
         }
         if (!_serverModels.contains(_selectedModel)) {
-          _selectedModel = 'rf_irrigation.tflite';
+          _selectedModel = 'random_forest.dart';
         }
       });
       _saveSettings();
@@ -126,7 +126,7 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
   }
 
   Future<void> _downloadModel() async {
-    if (_selectedModel == 'rf_irrigation.tflite') {
+    if (_selectedModel == 'random_forest.dart') {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Default asset model is pre-loaded.')),
       );
@@ -159,16 +159,16 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
 
   Future<void> _showUploadDialog() async {
     final List<String> mockLocalModels = [
-      'custom_model_v1.tflite',
-      'custom_model_v2.tflite',
-      'farm_optimized.tflite',
+      'custom_model_v1.dart',
+      'custom_model_v2.dart',
+      'farm_optimized.dart',
     ];
 
     unawaited(
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Select Local Tflite Model to Upload'),
+          title: const Text('Select Local Dart Model to Upload'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: mockLocalModels.map((model) {
@@ -336,7 +336,7 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
                   if (_isConnected == true && _serverModels.isNotEmpty) ...[
                     const SizedBox(height: 20),
                     const Text(
-                      'Select Recommendation Model (.tflite)',
+                      'Select Recommendation Model (.dart)',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
@@ -368,7 +368,7 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
                         ),
                       ),
                     ),
-                    if (_selectedModel != 'rf_irrigation.tflite') ...[
+                    if (_selectedModel != 'random_forest.dart') ...[
                       const SizedBox(height: 10),
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
@@ -616,8 +616,8 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
                           ),
                         );
 
-                        // ponytail: sync clock first so Pico does not write underflowed uptime timestamps
-                        await ble.syncTime();
+                        // ponytail: sync clock first so Pico do  es not write underflowed uptime timestamps
+                        await ble.syncTime(ref.watch(timeOffsetProvider));
                         await Future.delayed(const Duration(milliseconds: 300));
                         await ble.forceMock72Hours();
 

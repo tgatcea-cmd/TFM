@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 class BleDataProcessor {
   final BleService _bleService;
   final DatabaseService _dbService;
-  final VoidCallback? onDbUpdated; // ADD CALLBACK
+  final VoidCallback? onDbUpdated;
   StreamSubscription? _subscription;
   
 
@@ -62,17 +62,49 @@ class BleDataProcessor {
     if (op == 'infer_done') {
       final bool ok = map['ok'] as bool? ?? false;
       if (ok) {
-        final double? hs30Min = (map['hs30_min'] as num?)?.toDouble();
-        if (hs30Min != null) {
-          final double predictedHumidity = hs30Min * 100.0;
-          print('BleDataProcessor: Real-time inference complete. Predicted: $predictedHumidity%');
-          _dbService.savePrediction(
-            DateTime.now().millisecondsSinceEpoch,
-            predictedHumidity,
-            "Calculating recommendation..."
-          );
+        final List<dynamic>? vector = map['hs30_vector'] as List<dynamic>?;
+        if (vector != null && vector.isNotEmpty) {
+          final nowMs = DateTime.now().millisecondsSinceEpoch;
+          double? lastLstmValue;
+          int targetIndex = -1;
+
+          for (int i = 0; i < vector.length; i++) {
+            double val = (vector[i] as num).toDouble();
+            double predictedHumidity = val * 100.0;
+            int tsMs = nowMs + (i + 1) * 3600000;
+            _dbService.savePrediction(
+              tsMs,
+              predictedHumidity,
+              "Calculating recommendation..."
+            );
+
+            DateTime dt = DateTime.fromMillisecondsSinceEpoch(tsMs);
+            if (dt.hour == 19 && targetIndex == -1) {
+              targetIndex = i;
+              lastLstmValue = predictedHumidity;
+            }
+          }
+
+          if (lastLstmValue == null) {
+            lastLstmValue = (vector.last as num).toDouble() * 100.0;
+          }
+
+          print('BleDataProcessor: Real-time inference complete. 24h vector processed. Predicted at 19:00: $lastLstmValue%');
           onDbUpdated?.call();
-          _onPredictedHumidityProcessed.add(predictedHumidity);
+          _onPredictedHumidityProcessed.add(lastLstmValue);
+        } else {
+          final double? hs30Min = (map['hs30_min'] as num?)?.toDouble();
+          if (hs30Min != null) {
+            final double predictedHumidity = hs30Min * 100.0;
+            print('BleDataProcessor: Real-time inference complete. Predicted: $predictedHumidity%');
+            _dbService.savePrediction(
+              DateTime.now().millisecondsSinceEpoch,
+              predictedHumidity,
+              "Calculating recommendation..."
+            );
+            onDbUpdated?.call();
+            _onPredictedHumidityProcessed.add(predictedHumidity);
+          }
         }
       } else {
         print('BleDataProcessor: Real-time inference failed on Pico!');

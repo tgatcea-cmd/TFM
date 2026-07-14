@@ -37,7 +37,7 @@ Map<String, DateTime> _calculateAgriWindow(int timeOffsetHours) {
   };
 }
 
-class RadiationChart extends StatelessWidget {
+class RadiationChart extends StatefulWidget {
   final List<WeatherRecord> weatherHistory;
   final List<double> radiationForecast;
   final int timeOffsetHours;
@@ -50,12 +50,19 @@ class RadiationChart extends StatelessWidget {
   });
 
   @override
+  State<RadiationChart> createState() => _RadiationChartState();
+}
+
+class _RadiationChartState extends State<RadiationChart> {
+  double? hoverX;
+
+  @override
   Widget build(BuildContext context) {
-    final window = _calculateAgriWindow(timeOffsetHours);
+    final window = _calculateAgriWindow(widget.timeOffsetHours);
     final chartStart = window['start']!;
     final chartEnd = window['end']!;
 
-    final realNow = DateTime.now().add(Duration(hours: timeOffsetHours));
+    final realNow = DateTime.now().add(Duration(hours: widget.timeOffsetHours));
 
     // Colors
     final redColor = AppStyles.dangerRed(context);
@@ -64,7 +71,7 @@ class RadiationChart extends StatelessWidget {
     // Filter weather records to the 3-day window
     final limitPastMs = chartStart.millisecondsSinceEpoch;
     final limitFutureMs = chartEnd.millisecondsSinceEpoch;
-    final sortedWeather = List<WeatherRecord>.from(weatherHistory)
+    final sortedWeather = List<WeatherRecord>.from(widget.weatherHistory)
       ..removeWhere((w) => w.timestamp < limitPastMs || w.timestamp > limitFutureMs)
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
@@ -76,23 +83,46 @@ class RadiationChart extends StatelessWidget {
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 8),
-        Container(
-          height: 180,
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: Colors.grey.shade50,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.shade300),
-          ),
-          child: CustomPaint(
-            painter: _RadiationPainter(
-              chartStart: chartStart,
-              chartEnd: chartEnd,
-              realNow: realNow,
-              weatherHistory: sortedWeather,
-              radiationForecast: radiationForecast,
-              redColor: redColor,
-              orangeColor: orangeColor,
+        GestureDetector(
+          onHorizontalDragUpdate: (details) {
+            setState(() { hoverX = details.localPosition.dx; });
+          },
+          onHorizontalDragEnd: (_) {
+            setState(() { hoverX = null; });
+          },
+          onTapDown: (details) {
+            setState(() { hoverX = details.localPosition.dx; });
+          },
+          onTapUp: (_) {
+            setState(() { hoverX = null; });
+          },
+          child: MouseRegion(
+            onHover: (event) {
+              setState(() { hoverX = event.localPosition.dx; });
+            },
+            onExit: (_) {
+              setState(() { hoverX = null; });
+            },
+            child: Container(
+              height: 180,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: CustomPaint(
+                painter: _RadiationPainter(
+                  chartStart: chartStart,
+                  chartEnd: chartEnd,
+                  realNow: realNow,
+                  weatherHistory: sortedWeather,
+                  radiationForecast: widget.radiationForecast,
+                  redColor: redColor,
+                  orangeColor: orangeColor,
+                  hoverX: hoverX,
+                ),
+              ),
             ),
           ),
         ),
@@ -109,6 +139,7 @@ class _RadiationPainter extends CustomPainter {
   final List<double> radiationForecast;
   final Color redColor;
   final Color orangeColor;
+  final double? hoverX;
 
   _RadiationPainter({
     required this.chartStart,
@@ -118,6 +149,7 @@ class _RadiationPainter extends CustomPainter {
     required this.radiationForecast,
     required this.redColor,
     required this.orangeColor,
+    this.hoverX,
   });
 
   double _getX(int timestamp, double width) {
@@ -165,7 +197,6 @@ class _RadiationPainter extends CustomPainter {
     
     final textStyleX = const TextStyle(color: Colors.black54, fontSize: 9, fontWeight: FontWeight.bold);
 
-    // June 30 19:00, July 1 19:00, July 2 19:00, July 3 19:00
     DateTime tick = chartStart;
     while (tick.isBefore(chartEnd) || tick.isAtSameMomentAs(chartEnd)) {
       final x = _getX(tick.millisecondsSinceEpoch, size.width);
@@ -193,23 +224,28 @@ class _RadiationPainter extends CustomPainter {
       nowDividerPaint,
     );
 
+    // Prepare data points for interpolation and hover
+    final List<Map<String, dynamic>> allPoints = [];
+
     // 5. Draw Radiation Data Lines
     // Past radiation (Red dashed)
     final pastPath = ui.Path();
     bool hasPast = false;
+    Offset? lastPastOffset;
     for (var w in weatherHistory) {
       if (w.timestamp > nowMs) continue;
       final x = _getX(w.timestamp, size.width);
       final y = _getY(w.radiation, chartHeight);
+      allPoints.add({'x': x, 'y': y, 'val': w.radiation, 'ts': w.timestamp, 'type': 'past'});
       if (!hasPast) {
         pastPath.moveTo(x, y);
         hasPast = true;
       } else {
         pastPath.lineTo(x, y);
       }
+      lastPastOffset = Offset(x, y);
     }
     if (hasPast) {
-      // Simple dashed drawing or solid
       final strokePaint = Paint()
         ..color = redColor
         ..strokeWidth = 2.0
@@ -221,11 +257,20 @@ class _RadiationPainter extends CustomPainter {
     final forecastPath = ui.Path();
     bool hasForecast = false;
     
+    // Connect future line exactly to the last past point for seamless alignment
+    if (lastPastOffset != null) {
+      forecastPath.moveTo(lastPastOffset.dx, lastPastOffset.dy);
+      hasForecast = true;
+    }
+
     // Draw using weather history points that are in the future
+    bool drewFutureWeather = false;
     for (var w in weatherHistory) {
       if (w.timestamp <= nowMs) continue;
+      drewFutureWeather = true;
       final x = _getX(w.timestamp, size.width);
       final y = _getY(w.radiation, chartHeight);
+      allPoints.add({'x': x, 'y': y, 'val': w.radiation, 'ts': w.timestamp, 'type': 'future'});
       if (!hasForecast) {
         forecastPath.moveTo(x, y);
         hasForecast = true;
@@ -235,19 +280,20 @@ class _RadiationPainter extends CustomPainter {
     }
 
     // If weatherHistory doesn't cover future, draw from radiationForecast array
-    if (!hasForecast && radiationForecast.isNotEmpty) {
+    if (!drewFutureWeather && radiationForecast.isNotEmpty) {
       for (int i = 0; i < radiationForecast.length; i++) {
         final ts = nowMs + i * 3600000;
         if (ts > chartEnd.millisecondsSinceEpoch) break;
         final x = _getX(ts, size.width);
         final y = _getY(radiationForecast[i], chartHeight);
-        if (i == 0) {
+        allPoints.add({'x': x, 'y': y, 'val': radiationForecast[i], 'ts': ts, 'type': 'future'});
+        if (!hasForecast) {
           forecastPath.moveTo(x, y);
+          hasForecast = true;
         } else {
           forecastPath.lineTo(x, y);
         }
       }
-      hasForecast = true;
     }
 
     if (hasForecast) {
@@ -258,37 +304,54 @@ class _RadiationPainter extends CustomPainter {
       canvas.drawPath(forecastPath, strokePaint);
     }
 
-    // 6. Draw floating cursor chip displaying current radiation value at the central Now line
-    double? currentRad;
+    // 6. Draw floating cursor chip displaying current radiation value or hover value
+    double activeX = hoverX ?? xNow;
+    
+    // Find closest point to activeX
+    Map<String, dynamic>? closestPoint;
     double closestDist = double.infinity;
-    for (var w in weatherHistory) {
-      final dist = (w.timestamp - nowMs).abs().toDouble();
+    for (var p in allPoints) {
+      final dist = (p['x'] - activeX).abs().toDouble();
       if (dist < closestDist) {
         closestDist = dist;
-        currentRad = w.radiation;
+        closestPoint = p;
       }
     }
-    // Check forecast array if closer
-    if (radiationForecast.isNotEmpty && (closestDist > 1800000.0)) {
-      currentRad = radiationForecast.first;
-    }
 
-    if (currentRad != null) {
-      final double y = _getY(currentRad, chartHeight);
+    if (closestPoint != null && closestDist < 40.0) { // Only show if within 40 pixels
+      final double cx = closestPoint['x'];
+      final double cy = closestPoint['y'];
+      final double val = closestPoint['val'];
+      final bool isFuture = closestPoint['type'] == 'future';
+      final Color chipColor = isFuture ? orangeColor : redColor;
+
+      // Draw point circle
+      if (hoverX != null) {
+        canvas.drawCircle(Offset(cx, cy), 4.0, Paint()..color = chipColor..style = PaintingStyle.fill);
+        canvas.drawCircle(Offset(cx, cy), 6.0, Paint()..color = chipColor.withOpacity(0.3)..style = PaintingStyle.stroke..strokeWidth = 2.0);
+        
+        // Draw vertical hover line
+        canvas.drawLine(
+          Offset(cx, 0),
+          Offset(cx, chartHeight),
+          Paint()..color = chipColor.withOpacity(0.5)..strokeWidth = 1.0,
+        );
+      }
+
       final span = TextSpan(
-        text: '${currentRad.toStringAsFixed(0)} W/m²',
+        text: '${val.toStringAsFixed(0)} W/m²',
         style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
       );
       final tp = TextPainter(text: span, textDirection: TextDirection.ltr);
       tp.layout();
 
-      final bgPaint = Paint()..color = orangeColor..style = PaintingStyle.fill;
+      final bgPaint = Paint()..color = chipColor..style = PaintingStyle.fill;
       final rect = RRect.fromRectAndRadius(
-        Rect.fromLTRB(xNow + 6, y - tp.height / 2 - 3, xNow + 12 + tp.width + 4, y + tp.height / 2 + 3),
+        Rect.fromLTRB(cx + 6, cy - tp.height / 2 - 3, cx + 12 + tp.width + 4, cy + tp.height / 2 + 3),
         const Radius.circular(4),
       );
       canvas.drawRRect(rect, bgPaint);
-      tp.paint(canvas, Offset(xNow + 10, y - tp.height / 2));
+      tp.paint(canvas, Offset(cx + 10, cy - tp.height / 2));
     }
   }
 
@@ -296,7 +359,7 @@ class _RadiationPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
 
-class HumidityChart extends StatelessWidget {
+class HumidityChart extends StatefulWidget {
   final List<SoilHumidityRecord> history;
   final List<PredictionRecord> predictions;
   final int timeOffsetHours;
@@ -309,12 +372,19 @@ class HumidityChart extends StatelessWidget {
   });
 
   @override
+  State<HumidityChart> createState() => _HumidityChartState();
+}
+
+class _HumidityChartState extends State<HumidityChart> {
+  double? hoverX;
+
+  @override
   Widget build(BuildContext context) {
-    final window = _calculateAgriWindow(timeOffsetHours);
+    final window = _calculateAgriWindow(widget.timeOffsetHours);
     final chartStart = window['start']!;
     final chartEnd = window['end']!;
 
-    final realNow = DateTime.now().add(Duration(hours: timeOffsetHours));
+    final realNow = DateTime.now().add(Duration(hours: widget.timeOffsetHours));
 
     // Colors
     final tealColor = AppStyles.primaryTeal(context);
@@ -324,11 +394,11 @@ class HumidityChart extends StatelessWidget {
     final limitPastMs = chartStart.millisecondsSinceEpoch;
     final limitFutureMs = chartEnd.millisecondsSinceEpoch;
 
-    final sortedHistory = List<SoilHumidityRecord>.from(history)
+    final sortedHistory = List<SoilHumidityRecord>.from(widget.history)
       ..removeWhere((r) => r.timestamp < limitPastMs || r.timestamp > realNow.millisecondsSinceEpoch)
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
-    final sortedPredictions = List<PredictionRecord>.from(predictions)
+    final sortedPredictions = List<PredictionRecord>.from(widget.predictions)
       ..removeWhere((p) => p.timestamp < realNow.millisecondsSinceEpoch || p.timestamp > limitFutureMs)
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
@@ -358,25 +428,48 @@ class HumidityChart extends StatelessWidget {
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 8),
-        Container(
-          height: 180,
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: Colors.grey.shade50,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.shade300),
-          ),
-          child: CustomPaint(
-            painter: _HumidityPainter(
-              chartStart: chartStart,
-              chartEnd: chartEnd,
-              realNow: realNow,
-              history: sortedHistory,
-              predictions: sortedPredictions,
-              minHumidity: displayMin,
-              maxHumidity: displayMax,
-              tealColor: tealColor,
-              orangeColor: orangeColor,
+        GestureDetector(
+          onHorizontalDragUpdate: (details) {
+            setState(() { hoverX = details.localPosition.dx; });
+          },
+          onHorizontalDragEnd: (_) {
+            setState(() { hoverX = null; });
+          },
+          onTapDown: (details) {
+            setState(() { hoverX = details.localPosition.dx; });
+          },
+          onTapUp: (_) {
+            setState(() { hoverX = null; });
+          },
+          child: MouseRegion(
+            onHover: (event) {
+              setState(() { hoverX = event.localPosition.dx; });
+            },
+            onExit: (_) {
+              setState(() { hoverX = null; });
+            },
+            child: Container(
+              height: 180,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: CustomPaint(
+                painter: _HumidityPainter(
+                  chartStart: chartStart,
+                  chartEnd: chartEnd,
+                  realNow: realNow,
+                  history: sortedHistory,
+                  predictions: sortedPredictions,
+                  minHumidity: displayMin,
+                  maxHumidity: displayMax,
+                  tealColor: tealColor,
+                  orangeColor: orangeColor,
+                  hoverX: hoverX,
+                ),
+              ),
             ),
           ),
         ),
@@ -395,6 +488,7 @@ class _HumidityPainter extends CustomPainter {
   final double maxHumidity;
   final Color tealColor;
   final Color orangeColor;
+  final double? hoverX;
 
   _HumidityPainter({
     required this.chartStart,
@@ -406,6 +500,7 @@ class _HumidityPainter extends CustomPainter {
     required this.maxHumidity,
     required this.tealColor,
     required this.orangeColor,
+    this.hoverX,
   });
 
   double _getX(int timestamp, double width) {
@@ -483,18 +578,23 @@ class _HumidityPainter extends CustomPainter {
       nowDividerPaint,
     );
 
+    final List<Map<String, dynamic>> allPoints = [];
+
     // 5. Draw Soil Humidity Line (Teal)
     final historyPath = ui.Path();
     bool hasHistory = false;
+    Offset? lastHistoryOffset;
     for (var r in history) {
       final x = _getX(r.timestamp, size.width);
       final y = _getY(r.value, chartHeight);
+      allPoints.add({'x': x, 'y': y, 'val': r.value, 'ts': r.timestamp, 'type': 'past'});
       if (!hasHistory) {
         historyPath.moveTo(x, y);
         hasHistory = true;
       } else {
         historyPath.lineTo(x, y);
       }
+      lastHistoryOffset = Offset(x, y);
     }
     if (hasHistory) {
       final strokePaint = Paint()
@@ -507,9 +607,17 @@ class _HumidityPainter extends CustomPainter {
     // 6. Draw soil humidity predictions (Orange dashed)
     final predPath = ui.Path();
     bool hasPredictions = false;
+    
+    // Connect future line exactly to the last history point
+    if (lastHistoryOffset != null) {
+      predPath.moveTo(lastHistoryOffset.dx, lastHistoryOffset.dy);
+      hasPredictions = true;
+    }
+
     for (var p in predictions) {
       final x = _getX(p.timestamp, size.width);
       final y = _getY(p.predictedHumidity, chartHeight);
+      allPoints.add({'x': x, 'y': y, 'val': p.predictedHumidity, 'ts': p.timestamp, 'type': 'future'});
       if (!hasPredictions) {
         predPath.moveTo(x, y);
         hasPredictions = true;
@@ -518,50 +626,62 @@ class _HumidityPainter extends CustomPainter {
       }
     }
     if (hasPredictions) {
-      // Dashed paint
       final strokePaint = Paint()
         ..color = orangeColor
         ..strokeWidth = 2.0
         ..style = PaintingStyle.stroke;
       
-      // Simple path rendering for prediction line
       canvas.drawPath(predPath, strokePaint);
     }
 
-    // 7. Draw floating cursor chip displaying current humidity value at the Now line
-    double? currentHum;
+    // 7. Draw floating cursor chip displaying current humidity value or hover value
+    double activeX = hoverX ?? xNow;
+    
+    // Find closest point to activeX
+    Map<String, dynamic>? closestPoint;
     double closestDist = double.infinity;
-    for (var r in history) {
-      final dist = (r.timestamp - nowMs).abs().toDouble();
+    for (var p in allPoints) {
+      final dist = (p['x'] - activeX).abs().toDouble();
       if (dist < closestDist) {
         closestDist = dist;
-        currentHum = r.value;
-      }
-    }
-    for (var p in predictions) {
-      final dist = (p.timestamp - nowMs).abs().toDouble();
-      if (dist < closestDist) {
-        closestDist = dist;
-        currentHum = p.predictedHumidity;
+        closestPoint = p;
       }
     }
 
-    if (currentHum != null) {
-      final double y = _getY(currentHum, chartHeight);
+    if (closestPoint != null && closestDist < 40.0) {
+      final double cx = closestPoint['x'];
+      final double cy = closestPoint['y'];
+      final double val = closestPoint['val'];
+      final bool isFuture = closestPoint['type'] == 'future';
+      final Color chipColor = isFuture ? orangeColor : tealColor;
+
+      // Draw point circle
+      if (hoverX != null) {
+        canvas.drawCircle(Offset(cx, cy), 4.0, Paint()..color = chipColor..style = PaintingStyle.fill);
+        canvas.drawCircle(Offset(cx, cy), 6.0, Paint()..color = chipColor.withOpacity(0.3)..style = PaintingStyle.stroke..strokeWidth = 2.0);
+        
+        // Draw vertical hover line
+        canvas.drawLine(
+          Offset(cx, 0),
+          Offset(cx, chartHeight),
+          Paint()..color = chipColor.withOpacity(0.5)..strokeWidth = 1.0,
+        );
+      }
+
       final span = TextSpan(
-        text: '${currentHum.toStringAsFixed(1)}%',
+        text: '${val.toStringAsFixed(1)}%',
         style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
       );
       final tp = TextPainter(text: span, textDirection: TextDirection.ltr);
       tp.layout();
 
-      final bgPaint = Paint()..color = tealColor..style = PaintingStyle.fill;
+      final bgPaint = Paint()..color = chipColor..style = PaintingStyle.fill;
       final rect = RRect.fromRectAndRadius(
-        Rect.fromLTRB(xNow - tp.width - 12, y - tp.height / 2 - 3, xNow - 4, y + tp.height / 2 + 3),
+        Rect.fromLTRB(cx - tp.width - 12, cy - tp.height / 2 - 3, cx - 4, cy + tp.height / 2 + 3),
         const Radius.circular(4),
       );
       canvas.drawRRect(rect, bgPaint);
-      tp.paint(canvas, Offset(xNow - tp.width - 9, y - tp.height / 2));
+      tp.paint(canvas, Offset(cx - tp.width - 9, cy - tp.height / 2));
     }
   }
 

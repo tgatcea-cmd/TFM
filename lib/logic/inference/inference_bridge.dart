@@ -6,11 +6,10 @@ import 'package:flutter/material.dart';
 
 import '../../core/db/database_service.dart';
 import '../../core/api/tfm_server_client.dart';
-import 'tflite_service.dart';
+import '../../core/models/random_forest.dart' as rf;
 
 class InferenceBridge {
   final DatabaseService _db;
-  final TfliteService _tflite;
   final VoidCallback? onDbUpdated;
 
   // Signals for UI
@@ -19,22 +18,10 @@ class InferenceBridge {
   final lastInferenceTime = signal<DateTime?>(null);
   final isRunning = signal<bool>(false);
 
-  InferenceBridge(this._db, this._tflite, {this.onDbUpdated});
+  InferenceBridge(this._db, {this.onDbUpdated});
 
   Future<void> _loadModelFromSettings() async {
-    final settings = _db.getAppSettings();
-    final modelName = settings.selectedTfliteModel;
-    
-    String modelPath = 'assets/models/rf_irrigation.tflite';
-    if (modelName != 'rf_irrigation.tflite' && modelName.isNotEmpty) {
-      try {
-        final dir = await getApplicationDocumentsDirectory();
-        modelPath = p.join(dir.path, modelName);
-      } catch (e) {
-        print('InferenceBridge: Error getting app documents directory: $e');
-      }
-    }
-    await _tflite.loadRfModel(modelPath);
+    // Model is now statically compiled, no need to load dynamically at runtime
   }
 
   Future<void> _uploadDatabaseToServer() async {
@@ -68,11 +55,7 @@ class InferenceBridge {
 
     await _loadModelFromSettings();
 
-    if (!_tflite.isRfLoaded) {
-      status.value = "Error: RF Model Not Loaded";
-      isRunning.value = false;
-      return;
-    }
+    // Model is statically compiled, so it's always "loaded"
 
     progress.value = 0.3;
     status.value = "Calculating Radiation Sum...";
@@ -93,10 +76,12 @@ class InferenceBridge {
     final predHum = latestPrediction.predictedHumidity;
 
     progress.value = 0.8;
-    status.value = "Running RF TFLite...";
+    status.value = "Running RF Classifier...";
 
-    // Run Random Forest Inference (TFLite)
-    int resultClass = _tflite.runRfInference(radSum, predHum);
+    // Run Random Forest Inference using statically imported Dart model
+    final probs = rf.score([radSum, predHum]);
+    // The model returns [prob_0, prob_1]. We take the argmax.
+    int resultClass = (probs.length > 1 && probs[1] > probs[0]) ? 1 : 0;
 
     // Apply output inversion if setting is active
     final settings = _db.getAppSettings();

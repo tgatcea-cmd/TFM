@@ -17,7 +17,7 @@ class DatabaseService {
       'http://localhost',
       3000,
       '',
-      'rf_irrigation.tflite',
+      'random_forest.dart',
       false,
       true,
       false,
