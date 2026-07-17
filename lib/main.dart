@@ -14,7 +14,7 @@ import 'core/db/database_service.dart';
 
 import 'logic/inference/inference_bridge.dart';
 
-import 'logic/ble_data_processor.dart';
+//import 'logic/ble_data_processor.dart';
 import 'logic/location_service.dart';
 import 'logic/weather_processor.dart';
 

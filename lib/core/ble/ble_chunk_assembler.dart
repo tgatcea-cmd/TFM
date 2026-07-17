@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'cbor_helper.dart';
+import 'package:cbor/cbor.dart';
 
 class BleChunkAssembler {
   final Map<int, List<int>> _chunks = {};
@@ -20,8 +20,8 @@ class BleChunkAssembler {
     if (_isAssembled) return;
 
     try {
-      final decoded = CborHelper.decode(bytes);
-      final map = CborHelper.asMap(decoded);
+      final decoded = bytes.isEmpty ? null : cbor.decode(bytes).toObject();
+      final map = decoded is Map ? decoded.map((k, v) => MapEntry(k.toString(), v)) : null;
       if (map == null) {
         print('BleChunkAssembler Error: Decoded chunk is not a map!');
         return;
