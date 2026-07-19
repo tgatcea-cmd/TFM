@@ -14,32 +14,40 @@ dependencies:
   flutter:
     sdk: flutter
 
-  cupertino_icons: ^1.0.8           # Icons font. Use with the CupertinoIcons class for iOS style icons.
-  flutter_blue_plus: ^2.3.1         # BLE interfacing.
-  flutter_blue_plus_linux: ^9.0.0       # Explicitly add linux support.
-  http: ^1.6.0                      # HTTP interface. Useful for Open-meteo API transactions.
-  flutter_litert: ^3.1.1           # Tensorflow for mobile and native flutter execution.
-  realm: ^20.2.0                    # Database managing.
-  flutter_riverpod: ^2.6.1          # State manager.
-  signals: ^3.0.0                   # Reactive signals.
-  fl_chart: ^0.71.0                 # Powerful charting library.
-  geolocator: ^13.0.1               # Location services.
+  ### BLE API and OPEN-METEO ###
   cbor: ^6.5.1                      # CBOR encoding/decoding.
   crypto: ^3.0.3                    # HMAC-SHA256 cryptography.
+  flutter_blue_plus: ^2.3.1         # BLE interfacing.
+  flutter_blue_plus_linux: ^9.0.0   # Explicitly add linux support.
+  http: ^1.6.0                      # HTTP interface. Useful for Open-meteo API transactions.
+  ##############################
+
+  ### DATABASE ###
+  #realm: ^20.2.0                    # Database managing.
+  isar_community: ^3.3.2             # <-- Changed name & version
+  isar_community_flutter_libs: ^3.3.2 # <-- Changed name & version
+  path_provider: ^2.1.2
+  ################
+
+  cupertino_icons: ^1.0.8           # Icons font. Use with the CupertinoIcons class for iOS style icons.
+  flutter_litert: ^3.1.1           # Tensorflow for mobile and native flutter execution.
+  flutter_riverpod: ^2.6.1          # State manager.
+  signals: ^7.1.0                   # Reactive signals.
+  fl_chart: ^1.2.0                 # Powerful charting library.
+  geolocator: ^14.0.3               # Location services.
   tflite_web: ^0.4.0
   path: ^1.9.0
-  path_provider: ^2.1.2
-  flutter_map: ^6.1.0
-  latlong2: ^0.9.0
+  flutter_map: ^8.3.1
+  latlong2: ^0.10.1
 
 
 
 dev_dependencies:
-  custom_lint: ^0.7.6
-  flutter_lints: ^6.0.0             # Good and Clean coding prsactises.
+  build_runner: ^2.4.9
+  isar_community_generator: ^3.3.2
+  flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
-  riverpod_lint: ^2.6.5
 
 
 
@@ -55,3 +63,4 @@ assets:
 dependency_overrides:
   flutter_blue_plus_linux:
     path: ./packages/flutter_blue_plus_linux
+    

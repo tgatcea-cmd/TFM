@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'data/models/processed/daily_weather.dart';
 import 'data/models/weather_data.dart';
 import 'data/models/models.dart';
+import 'data/models/app_settings.dart';
+import 'data/models/location_settings.dart';
 
 import 'core/api/open_meteo_client.dart';
 import 'core/ble/ble_service.dart';
@@ -14,7 +16,7 @@ import 'core/db/database_service.dart';
 
 import 'logic/inference/inference_bridge.dart';
 
-//import 'logic/ble_data_processor.dart';
+import 'logic/ble_data_processor.dart';
 import 'logic/location_service.dart';
 import 'logic/weather_processor.dart';
 
@@ -118,7 +120,7 @@ final mergedDevicesProvider = Provider<List<DisplayDevice>>((ref) {
   final Map<String, DisplayDevice> map = {};
 
   for (final d in savedList) {
-    map[d.id] = DisplayDevice(id: d.id, name: d.name, isSaved: true);
+    map[d.deviceIdentifier] = DisplayDevice(id: d.deviceIdentifier, name: d.name, isSaved: true);
   }
 
   for (final r in scanResults) {
@@ -559,7 +561,7 @@ class ConnectionSyncProgressNotifier extends StateNotifier<SyncProgressState> {
       statusMessage: 'Sending weather forecast to station...',
     );
     if (appSettings.permitOpenMeteoFill && hourly.isNotEmpty) {
-      await ble.sendHourlyForecast(hourly);
+      await ble.sendHourlyForecast([], hourly);
       await Future.delayed(const Duration(milliseconds: 300));
     }
 
@@ -922,7 +924,9 @@ class PredictionNotifier extends StateNotifier<double> {
 /// ################### Providers ###################
 
 /// ################### Main ###################
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
   PlatformDispatcher.instance.onError = (error, stack) {
     try {
       BleService.instance?.disconnect();
@@ -930,7 +934,15 @@ void main() {
     return false;
   };
 
-  runApp(const ProviderScope(child: MyApp()));
+  final db = DatabaseService();
+  await db.init();
+
+  runApp(ProviderScope(
+    overrides: [
+      dbProvider.overrideWithValue(db),
+    ],
+    child: const MyApp(),
+  ));
 }
 
 class MyApp extends StatelessWidget {

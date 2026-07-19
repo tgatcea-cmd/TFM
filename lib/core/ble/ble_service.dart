@@ -1,6 +1,6 @@
 import "dart:async";
 import 'dart:convert';
-import 'dart:typed_data';
+//import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:crypto/crypto.dart';
@@ -392,7 +392,7 @@ class BleService {
     final cborFuture = CborList(futureTemperatures.map((t) => CborFloat(_forceFloat32(t))).toList());
 
     final payload = CborMap({
-      CborString('v'): CborSmallInt(1),
+      CborString('v'): const CborSmallInt(1),
       CborString('op'): CborString('upd'),
       CborString('data'): CborMap({
         CborString('past_ta_hourly'): cborPast,

@@ -137,7 +137,7 @@ class _TelemetryViewState extends ConsumerState<TelemetryView> {
                                 if (r.isSaved) {
                                   db.deleteDevice(r.id);
                                 } else {
-                                  db.saveDevice(r.id, r.name);
+                                  db.saveDeviceBasic(r.id, r.name);
                                 }
                                 ref
                                     .read(savedDevicesTriggerProvider.notifier)
@@ -210,6 +210,7 @@ class _TelemetryViewState extends ConsumerState<TelemetryView> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // _buildUnifiedChart(db, weather, isConnected),
+              // const SizedBox(height: 24),
               RadiationChart(
                 weatherHistory: isConnected ? db.getWeatherHistory() : [],
                 radiationForecast: isConnected ? weather.hourlyRadiationForecast : [],
@@ -221,6 +222,8 @@ class _TelemetryViewState extends ConsumerState<TelemetryView> {
                 predictions: isConnected ? db.getPredictionHistory() : [],
                 timeOffsetHours: ref.watch(timeOffsetProvider),
               ),
+              const SizedBox(height: 24),
+              _buildHistoryTableView(db),
               const SizedBox(height: 80), // Space for FAB
             ],
           ),

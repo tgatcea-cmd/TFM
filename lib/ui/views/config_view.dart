@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../core/db/database_service.dart';
-import '../../core/api/tfm_server_client.dart';
+import '../../core/api/api_client.dart';
 import '../../main.dart';
 import '../styles.dart';
 import 'map_picker_dialog.dart';
@@ -84,7 +84,7 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
       });
     }
 
-    final client = TfmServerClient(
+    final client = ApiClient(
       serverUrl: _urlController.text.trim(),
       port: int.tryParse(_portController.text.trim()) ?? 3000,
       apiKey: _apiKeyController.text.trim(),
@@ -134,7 +134,7 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
     }
 
     setState(() => _isConnecting = true);
-    final client = TfmServerClient(
+    final client = ApiClient(
       serverUrl: _urlController.text.trim(),
       port: int.tryParse(_portController.text.trim()) ?? 3000,
       apiKey: _apiKeyController.text.trim(),
@@ -189,7 +189,7 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
 
   Future<void> _uploadModel(String filename) async {
     setState(() => _isConnecting = true);
-    final client = TfmServerClient(
+    final client = ApiClient(
       serverUrl: _urlController.text.trim(),
       port: int.tryParse(_portController.text.trim()) ?? 3000,
       apiKey: _apiKeyController.text.trim(),
@@ -464,7 +464,7 @@ class _ConfigViewState extends ConsumerState<ConfigView> {
                           max: 90.0,
                           divisions: 18,
                           activeColor: Colors.teal,
-                          inactiveColor: Colors.teal.withOpacity(0.2),
+                          inactiveColor: Colors.teal.withValues(alpha: 0.2),
                           onChanged: (val) {
                             setState(() => _minHumidity = val);
                             ref.read(minHumidityProvider.notifier).setMinHumidity(val);

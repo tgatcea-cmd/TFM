@@ -1,4 +1,4 @@
-import 'dart:io';
+//import 'dart:io';
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -7,7 +7,7 @@ import '../api/open_meteo_client.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  BleService bleService = BleService(handshakeModule: PicoHandshakeModule());
+  final BleService bleService = BleService(handshakeModule: PicoHandshakeModule());
 
   print('1. Start Scan');
   await bleService.startScan();
@@ -15,7 +15,7 @@ void main() async {
   print('2. Connect to Savia (88:A2:9E:13:CE:09)');
   BluetoothDevice? targetDevice;
   
-  var scanSub = bleService.scanResults.listen((results) {
+  final scanSub = bleService.scanResults.listen((results) {
     for (var r in results) {
       if (r.device.remoteId.str == '88:A2:9E:13:CE:09' || 
           r.advertisementData.advName == 'Savia' || 
@@ -31,7 +31,7 @@ void main() async {
     await Future.delayed(const Duration(seconds: 1));
   }
   
-  scanSub.cancel();
+  await scanSub.cancel();
 
   if (targetDevice != null) {
     print('Device found! Connecting...');
@@ -74,7 +74,7 @@ void main() async {
       currentIndex--;
   }
 
-  List<double> futureTemps = [];
+  final List<double> futureTemps = [];
   for (int i = 0; i < 24; i++) {
     if (currentIndex + i < weatherData.temperature2m.length) {
       futureTemps.add(weatherData.temperature2m[currentIndex + i]);
@@ -83,7 +83,7 @@ void main() async {
     }
   }
 
-  List<double> pastTemps = [];
+  final List<double> pastTemps = [];
   // Go backwards to get the past 48 hours in chronological order
   for (int i = 48; i > 0; i--) {
     if (currentIndex - i >= 0) {
@@ -99,16 +99,16 @@ void main() async {
   print('6. Check if it has enough data (48 values), if not -> mock');
   bool hasEnoughData = false;
   
-  var dataSub = bleService.dataStream.listen((data) {
+  final dataSub = bleService.dataStream.listen((data) {
     print('\n[DataStream] Received: $data');
   });
 
-  var rawDataFuture = bleService.dataStream.firstWhere((data) => data is List).timeout(const Duration(seconds: 10), onTimeout: () => []);
+  final rawDataFuture = bleService.dataStream.firstWhere((data) => data is List).timeout(const Duration(seconds: 10), onTimeout: () => []);
   await bleService.requestData('raw');
   
   final rawData = await rawDataFuture;
   if (rawData is List && rawData.isNotEmpty) {
-    List<Map<String, dynamic>> depth30Moisture = [];
+    final List<Map<String, dynamic>> depth30Moisture = [];
     for (var item in rawData) {
       if (item is Map && item['kind'] == 'soil_moisture' && item['depth_cm'] == 30) {
         depth30Moisture.add(item.cast<String, dynamic>());
@@ -131,13 +131,13 @@ void main() async {
   }
 
   print('6.5. Fetch OLD Predictions to detect changes...');
-  var oldPredFuture = bleService.dataStream.firstWhere((data) => data is List).timeout(const Duration(seconds: 5), onTimeout: () => [-1]);
+  final oldPredFuture = bleService.dataStream.firstWhere((data) => data is List).timeout(const Duration(seconds: 5), onTimeout: () => [-1]);
   await bleService.requestData('pred');
   final oldPredictionsRaw = await oldPredFuture;
-  List<dynamic> oldPredictions = (oldPredictionsRaw is List && oldPredictionsRaw.isNotEmpty && oldPredictionsRaw.first != -1) ? oldPredictionsRaw : [];
+  final List<dynamic> oldPredictions = (oldPredictionsRaw is List && oldPredictionsRaw.isNotEmpty && oldPredictionsRaw.first != -1) ? oldPredictionsRaw : [];
 
   print('7. Trigger Inference');
-  var inferenceFuture = bleService.dataStream.firstWhere((data) => data is Map && data.containsKey('count')).timeout(const Duration(seconds: 30), onTimeout: () => {'count': -1});
+  final inferenceFuture = bleService.dataStream.firstWhere((data) => data is Map && data.containsKey('count')).timeout(const Duration(seconds: 30), onTimeout: () => {'count': -1});
   await bleService.triggerInference();
 
   print('8. Wait for Inference to complete...');
@@ -150,10 +150,10 @@ void main() async {
   
   print('9. Fetch Predictions (Polling)...');
   List<dynamic>? finalPredictions;
-  int maxPolls = 6; // 3 seconds total max polling time
+  const int maxPolls = 6; // 3 seconds total max polling time
   
   for (int i = 0; i < maxPolls; i++) {
-    var predictionsFuture = bleService.dataStream.firstWhere((data) => data is List).timeout(const Duration(seconds: 2), onTimeout: () => [-1]);
+    final predictionsFuture = bleService.dataStream.firstWhere((data) => data is List).timeout(const Duration(seconds: 2), onTimeout: () => [-1]);
     await bleService.requestData('pred');
     final predictions = await predictionsFuture;
     
@@ -162,7 +162,7 @@ void main() async {
       continue;
     } else if (predictions is List && predictions.isNotEmpty) {
       // Check if it's identical to old predictions
-      bool isDifferent = predictions.toString() != oldPredictions.toString();
+      final bool isDifferent = predictions.toString() != oldPredictions.toString();
       
       if (isDifferent || oldPredictions.isEmpty) {
         finalPredictions = predictions;
@@ -204,7 +204,7 @@ void main() async {
   }
 
   print('9.6. Fetch Pico diagnostic logs...');
-  var logsFuture = bleService.dataStream.firstWhere((data) => data is List).timeout(const Duration(seconds: 15), onTimeout: () => [-1]);
+  final logsFuture = bleService.dataStream.firstWhere((data) => data is List).timeout(const Duration(seconds: 15), onTimeout: () => [-1]);
   await bleService.requestData('logs');
   final picoLogs = await logsFuture;
   

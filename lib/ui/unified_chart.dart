@@ -1,8 +1,10 @@
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
+import '../data/models/models.dart';
 //import 'package:tfm_app/main.dart';
 import 'dart:math' show pi;
-import '../data/models/models.dart';
+//import '../data/models/models.dart.off';
 import 'styles.dart';
 
 class UnifiedChart extends StatefulWidget {
@@ -133,12 +135,12 @@ class _UnifiedChartState extends State<UnifiedChart> with SingleTickerProviderSt
       print('UnifiedChart Debug: database weather range: ${sortedTimes.first} to ${sortedTimes.last}');
       print('UnifiedChart Debug: sortedWeather filtered count in chart range=${sortedWeather.length}');
       final pastCount = sortedWeather.where((w) => w.timestamp <= baseTime.millisecondsSinceEpoch).length;
-      print('UnifiedChart Debug: past weather records count=${pastCount}');
+      print('UnifiedChart Debug: past weather records count=$pastCount');
       if (pastCount > 0) {
         final sample = sortedWeather.firstWhere((w) => w.timestamp <= baseTime.millisecondsSinceEpoch);
         print('UnifiedChart Debug: past weather sample ts=${sample.timestamp}, rad=${sample.radiation}');
       }
-    };
+    }
 
     return Column(
       children: [
@@ -282,7 +284,7 @@ class _UnifiedChartState extends State<UnifiedChart> with SingleTickerProviderSt
                       left: halfWidth - 1,
                       width: 2,
                       height: height - 24.0, // Stop at the X-axis line to avoid covering the X labels
-                      child: Container(color: redColor.withOpacity(0.35)),
+                      child: Container(color: redColor.withValues(alpha: 0.35)),
                     ),
                   ],
                 );
@@ -414,8 +416,8 @@ class ChartPainter extends CustomPainter {
       final double greenStart = 19.0 - currentHour;
       final double greenEnd = 34.0 - currentHour;
 
-      _drawZoningBand(canvas, chartHeight, yellowStart, yellowEnd, Colors.amber.withOpacity(0.08), size);
-      _drawZoningBand(canvas, chartHeight, greenStart, greenEnd, Colors.green.withOpacity(0.08), size);
+      _drawZoningBand(canvas, chartHeight, yellowStart, yellowEnd, Colors.amber.withValues(alpha: 0.08), size);
+      _drawZoningBand(canvas, chartHeight, greenStart, greenEnd, Colors.green.withValues(alpha: 0.08), size);
     } else {
       // Green condition -> Paint Green (current) AND Yellow (past)
       double greenStart, greenEnd, yellowStart, yellowEnd;
@@ -431,18 +433,18 @@ class ChartPainter extends CustomPainter {
         yellowEnd = -5.0 - currentHour;
       }
 
-      _drawZoningBand(canvas, chartHeight, yellowStart, yellowEnd, Colors.amber.withOpacity(0.08), size);
-      _drawZoningBand(canvas, chartHeight, greenStart, greenEnd, Colors.green.withOpacity(0.08), size);
+      _drawZoningBand(canvas, chartHeight, yellowStart, yellowEnd, Colors.amber.withValues(alpha: 0.08), size);
+      _drawZoningBand(canvas, chartHeight, greenStart, greenEnd, Colors.green.withValues(alpha: 0.08), size);
     }
 
     // ponytail: dinamic grid rendering based on dynamic relative bounds (clean grid lines without confusing static numbers)
     final gridPaint = Paint()
-      ..color = Colors.black.withOpacity(0.04)
+      ..color = Colors.black.withValues(alpha: 0.04)
       ..strokeWidth = 1;
     final double rangeStep = (maxHumidity - minHumidity) / 4.0;
     for (int i = 0; i <= 4; i++) {
-      double val = minHumidity + i * rangeStep;
-      double y = _getY(val, chartHeight);
+      final double val = minHumidity + i * rangeStep;
+      final double y = _getY(val, chartHeight);
       canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
     }
 
@@ -453,9 +455,9 @@ class ChartPainter extends CustomPainter {
     const double msPerHour = 3600000.0;
 
     // ---- HISTÓRICO HUMEDAD (VERDE) ----
-    List<Offset> historyPoints = [];
+    final List<Offset> historyPoints = [];
     for (var r in history) {
-      double h = (r.timestamp - nowMs) / msPerHour;
+      final double h = (r.timestamp - nowMs) / msPerHour;
       historyPoints.add(
         Offset(_getX(h, size.width), _getY(r.value, chartHeight)),
       );
@@ -471,10 +473,10 @@ class ChartPainter extends CustomPainter {
 
     // ---- HISTÓRICO RADIACIÓN (ROJO DASHED) ----
     // ponytail: only draw radiation in the past (<= nowMs) and scale independently from 0 to 1000 W/m2
-    List<Offset> radHistoryPoints = [];
+    final List<Offset> radHistoryPoints = [];
     for (var w in weatherHistory) {
       if (w.timestamp > nowMs) continue;
-      double h = (w.timestamp - nowMs) / msPerHour;
+      final double h = (w.timestamp - nowMs) / msPerHour;
       radHistoryPoints.add(
         Offset(
           _getX(h, size.width),
@@ -495,9 +497,9 @@ class ChartPainter extends CustomPainter {
     // ---- PREDICCIONES (Solo en ETAPA DATOS LISTOS) ----
     if (!isWaitingData) {
       // Prediccion Humedad (Naranja Dashed)
-      List<Offset> predPoints = [];
+      final List<Offset> predPoints = [];
       for (var p in predictions) {
-        double h = (p.timestamp - nowMs) / msPerHour;
+        final double h = (p.timestamp - nowMs) / msPerHour;
         predPoints.add(
           Offset(_getX(h, size.width), _getY(p.predictedHumidity, chartHeight)),
         );
@@ -515,9 +517,9 @@ class ChartPainter extends CustomPainter {
 
     // Forecast Radiacion (Naranja Sólido)
     // ponytail: scale future radiation forecast independently from 0 to 1000 W/m2, show it always
-    List<Offset> radForecastPoints = [];
+    final List<Offset> radForecastPoints = [];
     for (int i = 0; i < radiationForecast.length; i++) {
-      double h = i.toDouble();
+      final double h = i.toDouble();
       radForecastPoints.add(
         Offset(
           _getX(h, size.width),
@@ -579,7 +581,7 @@ class ChartPainter extends CustomPainter {
   }
 
   void _drawXAxisLabels(Canvas canvas, Size size, double chartHeight) {
-    final textStyle = const TextStyle(
+    const textStyle = TextStyle(
       color: Colors.black54,
       fontSize: 11,
       fontWeight: FontWeight.bold,
@@ -620,10 +622,10 @@ class ChartPainter extends CustomPainter {
 
       if (!shouldDrawLabel) continue;
 
-      double x = _getX(h.toDouble(), size.width);
+      final double x = _getX(h.toDouble(), size.width);
 
       if (x >= -20 && x <= size.width + 20) {
-        String label = h == 0 ? "Now" : (h > 0 ? "+${h}h" : "${h}h");
+        final String label = h == 0 ? "Now" : (h > 0 ? "+${h}h" : "${h}h");
 
         final span = TextSpan(text: label, style: textStyle);
         final tp = TextPainter(text: span, textDirection: TextDirection.ltr);
@@ -648,7 +650,7 @@ class ChartPainter extends CustomPainter {
   /// Calcula posición X usando escalas compresivas independientes
   double _getX(double hour, double width) {
     // Si hago scroll positivo, points se mueven a la derecha (sumo el offset a la hora)
-    double shiftedHour = hour + scrollOffset;
+    final double shiftedHour = hour + scrollOffset;
     if (isLeft) {
       // Compresión en el Pasado (Rango de 48h mapeado al 100% de la mitad izquierda)
       return ((shiftedHour + 48) / 48) * width;
@@ -752,7 +754,7 @@ class ChartPainter extends CustomPainter {
   }) {
     if (points.isEmpty) return;
 
-    Path path = Path()..moveTo(points.first.dx, points.first.dy);
+    final Path path = Path()..moveTo(points.first.dx, points.first.dy);
     for (int i = 1; i < points.length; i++) {
       path.lineTo(points[i].dx, points[i].dy);
     }

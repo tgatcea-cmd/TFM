@@ -182,11 +182,11 @@ class _RadiationPainter extends CustomPainter {
 
     // 2. Draw horizontal grid lines
     final gridPaint = Paint()
-      ..color = Colors.black.withOpacity(0.04)
+      ..color = Colors.black.withValues(alpha: 0.04)
       ..strokeWidth = 1;
     for (int i = 0; i <= 4; i++) {
-      double val = i * 250.0;
-      double y = _getY(val, chartHeight);
+      final double val = i * 250.0;
+      final double y = _getY(val, chartHeight);
       canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
     }
 
@@ -195,7 +195,7 @@ class _RadiationPainter extends CustomPainter {
       ..color = Colors.black12
       ..strokeWidth = 1.5;
     
-    final textStyleX = const TextStyle(color: Colors.black54, fontSize: 9, fontWeight: FontWeight.bold);
+    const textStyleX = TextStyle(color: Colors.black54, fontSize: 9, fontWeight: FontWeight.bold);
 
     DateTime tick = chartStart;
     while (tick.isBefore(chartEnd) || tick.isAtSameMomentAs(chartEnd)) {
@@ -216,7 +216,7 @@ class _RadiationPainter extends CustomPainter {
     final nowMs = realNow.millisecondsSinceEpoch;
     final double xNow = _getX(nowMs, size.width);
     final nowDividerPaint = Paint()
-      ..color = redColor.withOpacity(0.35)
+      ..color = redColor.withValues(alpha: 0.35)
       ..strokeWidth = 2;
     canvas.drawLine(
       Offset(xNow, 0),
@@ -305,7 +305,7 @@ class _RadiationPainter extends CustomPainter {
     }
 
     // 6. Draw floating cursor chip displaying current radiation value or hover value
-    double activeX = hoverX ?? xNow;
+    final double activeX = hoverX ?? xNow;
     
     // Find closest point to activeX
     Map<String, dynamic>? closestPoint;
@@ -328,13 +328,13 @@ class _RadiationPainter extends CustomPainter {
       // Draw point circle
       if (hoverX != null) {
         canvas.drawCircle(Offset(cx, cy), 4.0, Paint()..color = chipColor..style = PaintingStyle.fill);
-        canvas.drawCircle(Offset(cx, cy), 6.0, Paint()..color = chipColor.withOpacity(0.3)..style = PaintingStyle.stroke..strokeWidth = 2.0);
+        canvas.drawCircle(Offset(cx, cy), 6.0, Paint()..color = chipColor.withValues(alpha: 0.3)..style = PaintingStyle.stroke..strokeWidth = 2.0);
         
         // Draw vertical hover line
         canvas.drawLine(
           Offset(cx, 0),
           Offset(cx, chartHeight),
-          Paint()..color = chipColor.withOpacity(0.5)..strokeWidth = 1.0,
+          Paint()..color = chipColor.withValues(alpha: 0.5)..strokeWidth = 1.0,
         );
       }
 
@@ -535,12 +535,12 @@ class _HumidityPainter extends CustomPainter {
 
     // 2. Draw horizontal grid lines
     final gridPaint = Paint()
-      ..color = Colors.black.withOpacity(0.04)
+      ..color = Colors.black.withValues(alpha: 0.04)
       ..strokeWidth = 1;
     final double rangeStep = (maxHumidity - minHumidity) / 4.0;
     for (int i = 0; i <= 4; i++) {
-      double val = minHumidity + i * rangeStep;
-      double y = _getY(val, chartHeight);
+      final double val = minHumidity + i * rangeStep;
+      final double y = _getY(val, chartHeight);
       canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
     }
 
@@ -549,7 +549,7 @@ class _HumidityPainter extends CustomPainter {
       ..color = Colors.black12
       ..strokeWidth = 1.5;
     
-    final textStyleX = const TextStyle(color: Colors.black54, fontSize: 9, fontWeight: FontWeight.bold);
+    const textStyleX = TextStyle(color: Colors.black54, fontSize: 9, fontWeight: FontWeight.bold);
 
     DateTime tick = chartStart;
     while (tick.isBefore(chartEnd) || tick.isAtSameMomentAs(chartEnd)) {
@@ -570,7 +570,7 @@ class _HumidityPainter extends CustomPainter {
     final nowMs = realNow.millisecondsSinceEpoch;
     final double xNow = _getX(nowMs, size.width);
     final nowDividerPaint = Paint()
-      ..color = tealColor.withOpacity(0.35)
+      ..color = tealColor.withValues(alpha: 0.35)
       ..strokeWidth = 2;
     canvas.drawLine(
       Offset(xNow, 0),
@@ -635,7 +635,7 @@ class _HumidityPainter extends CustomPainter {
     }
 
     // 7. Draw floating cursor chip displaying current humidity value or hover value
-    double activeX = hoverX ?? xNow;
+    final double activeX = hoverX ?? xNow;
     
     // Find closest point to activeX
     Map<String, dynamic>? closestPoint;
@@ -658,13 +658,13 @@ class _HumidityPainter extends CustomPainter {
       // Draw point circle
       if (hoverX != null) {
         canvas.drawCircle(Offset(cx, cy), 4.0, Paint()..color = chipColor..style = PaintingStyle.fill);
-        canvas.drawCircle(Offset(cx, cy), 6.0, Paint()..color = chipColor.withOpacity(0.3)..style = PaintingStyle.stroke..strokeWidth = 2.0);
+        canvas.drawCircle(Offset(cx, cy), 6.0, Paint()..color = chipColor.withValues(alpha: 0.3)..style = PaintingStyle.stroke..strokeWidth = 2.0);
         
         // Draw vertical hover line
         canvas.drawLine(
           Offset(cx, 0),
           Offset(cx, chartHeight),
-          Paint()..color = chipColor.withOpacity(0.5)..strokeWidth = 1.0,
+          Paint()..color = chipColor.withValues(alpha: 0.5)..strokeWidth = 1.0,
         );
       }
 
