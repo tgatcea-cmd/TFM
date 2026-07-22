@@ -47,8 +47,8 @@ class TestingMainPage extends StatefulWidget {
 
 class _TestingMainPageState extends State<TestingMainPage> {
   late final BleService _bleService;
-  late final ApiClient _apiClient;
-  late final SyncService _syncService;
+  late ApiClient _apiClient;
+  late SyncService _syncService;
   
   bool _isScanning = false;
   bool _isConnected = false;
@@ -61,11 +61,21 @@ class _TestingMainPageState extends State<TestingMainPage> {
   List<SoilHumidityRecord> _humidityHistory = [];
   List<PredictionRecord> _predictions = [];
 
+  int _hourOffset = 0;
+
   @override
   void initState() {
     super.initState();
     _bleService = BleService(handshakeModule: PicoHandshakeModule());
-    _apiClient = ApiClient(baseUrl: "http://localhost:3000/api");
+    
+    final settings = widget.db.getAppSettings();
+    _apiClient = ApiClient(
+      baseUrl: "http://localhost:3000/api",
+      serverUrl: settings.tfmServerUrl.isNotEmpty ? settings.tfmServerUrl : null,
+      port: settings.tfmServerPort != 0 ? settings.tfmServerPort : null,
+      apiKey: settings.tfmServerApiKey.isNotEmpty ? settings.tfmServerApiKey : "secret_tfm_token",
+    );
+    
     _syncService = SyncService(db: widget.db, api: _apiClient);
   }
 
@@ -111,17 +121,88 @@ class _TestingMainPageState extends State<TestingMainPage> {
     }
   }
 
-  Future<void> _connectAndSync(dynamic device) async {
+  Future<void> _showConfigDialog() async {
+    final settings = widget.db.getAppSettings();
+    final locSettings = widget.db.getLocationSettings();
+
+    final urlCtrl = TextEditingController(text: settings.tfmServerUrl);
+    final portCtrl = TextEditingController(text: settings.tfmServerPort.toString());
+    final keyCtrl = TextEditingController(text: settings.tfmServerApiKey);
+    final latCtrl = TextEditingController(text: locSettings.latitude.toString());
+    final lonCtrl = TextEditingController(text: locSettings.longitude.toString());
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Configuration'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: urlCtrl, decoration: const InputDecoration(labelText: 'Server URL (e.g. 192.168.1.10)')),
+              TextField(controller: portCtrl, decoration: const InputDecoration(labelText: 'Server Port'), keyboardType: TextInputType.number),
+              TextField(controller: keyCtrl, decoration: const InputDecoration(labelText: 'API Key')),
+              const Divider(),
+              TextField(controller: latCtrl, decoration: const InputDecoration(labelText: 'OpenMeteo Latitude'), keyboardType: TextInputType.number),
+              TextField(controller: lonCtrl, decoration: const InputDecoration(labelText: 'OpenMeteo Longitude'), keyboardType: TextInputType.number),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              widget.db.saveAppSettings(
+                tfmServerUrl: urlCtrl.text,
+                tfmServerPort: int.tryParse(portCtrl.text) ?? 3000,
+                tfmServerApiKey: keyCtrl.text,
+                selectedTfliteModel: settings.selectedTfliteModel,
+                invertModelOutput: settings.invertModelOutput,
+                permitOpenMeteoFill: settings.permitOpenMeteoFill,
+                alwaysForceInference: settings.alwaysForceInference,
+              );
+              widget.db.saveLocationSettings(
+                double.tryParse(latCtrl.text) ?? 40.4168, 
+                double.tryParse(lonCtrl.text) ?? -3.7038, 
+                locSettings.isGps
+              );
+              
+              setState(() {
+                _apiClient = ApiClient(
+                  baseUrl: "http://localhost:3000/api",
+                  serverUrl: urlCtrl.text.isNotEmpty ? urlCtrl.text : null,
+                  port: int.tryParse(portCtrl.text),
+                  apiKey: keyCtrl.text.isNotEmpty ? keyCtrl.text : "DUMMY_API_KEY",
+                );
+                _syncService = SyncService(db: widget.db, api: _apiClient);
+              });
+
+              Navigator.pop(ctx);
+              _updateStatus('Configuration saved.');
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _connect(dynamic device) async {
     _updateStatus('Connecting to ${device.platformName}...');
     await _bleService.connect(device);
     
     if (mounted) setState(() => _isConnected = true);
+    await _sync();
+  }
+
+  Future<void> _sync() async {
     _updateStatus('Connected! Syncing time...');
     
     await _bleService.syncTime(0);
     
     _updateStatus('Fetching weather & sending forecast...');
-    final meteoClient = OpenMeteoClient(latitude: 40.4168, longitude: -3.7038);
+    final loc = widget.db.getLocationSettings();
+    final meteoClient = OpenMeteoClient(latitude: loc.latitude, longitude: loc.longitude);
     final weatherData = await meteoClient.fetchForecast();
     
     final now = DateTime.now();
@@ -154,7 +235,7 @@ class _TestingMainPageState extends State<TestingMainPage> {
 
     _updateStatus('Parsing data for charts...');
     _parseDataForCharts(rawData, predData, weatherData, currentIndex);
-    
+
     _updateStatus('BLE Sync Complete.');
   }
 
@@ -201,7 +282,7 @@ class _TestingMainPageState extends State<TestingMainPage> {
     }
     
     for (int i = 0; i < 24; i++) {
-       if (currentIndex + i < weatherData.temperature2m.length) {
+       if (currentIndex + i < weatherData.shortwaveRadiation.length) {
           radForecast.add(weatherData.shortwaveRadiation[currentIndex + i]);
        }
     }
@@ -252,10 +333,56 @@ class _TestingMainPageState extends State<TestingMainPage> {
     }
   }
 
+  Future<void> _refreshMockData() async {
+    if (!mounted) return;
+    _updateStatus('Refreshing mock...');
+    await _bleService.clearStorage();
+    await _bleService.forceMock72Hours();
+    await _sync();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Testing Workflow')),
+      appBar: AppBar(
+        title: const Text('Testing Workflow'),
+        actions: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Offset: ${_hourOffset >= 0 ? "+$_hourOffset" : _hourOffset}h',
+                style: const TextStyle(fontSize: 12),
+              ),
+              SizedBox(
+                width: 130,
+                child: Slider(
+                  value: _hourOffset.toDouble(),
+                  min: -5,
+                  max: 5,
+                  divisions: 10,
+                  label: '${_hourOffset}h',
+                  onChanged: (val) {
+                    setState(() {
+                      _hourOffset = val.round();
+                    });
+                  },
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: _refreshMockData,
+                tooltip: 'Refresh Mock Data',
+              ),
+              IconButton(
+                icon: const Icon(Icons.settings),
+                onPressed: _showConfigDialog,
+                tooltip: 'Configuration',
+              ),
+            ],
+          ),
+        ],
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -276,7 +403,7 @@ class _TestingMainPageState extends State<TestingMainPage> {
                 title: Text(d.platformName.isEmpty ? 'Unknown Device' : d.platformName),
                 subtitle: Text(d.remoteId.str),
                 trailing: ElevatedButton(
-                  onPressed: () => _connectAndSync(d),
+                  onPressed: () => _connect(d),
                   child: const Text('Connect & Sync'),
                 ),
               )).toList(),
@@ -292,7 +419,7 @@ class _TestingMainPageState extends State<TestingMainPage> {
                 child: RadiationChart(
                   weatherHistory: _weatherHistory,
                   radiationForecast: _radiationForecast,
-                  timeOffsetHours: 0,
+                  timeOffsetHours: _hourOffset,
                 ),
               ),
               const SizedBox(height: 16),
@@ -301,7 +428,7 @@ class _TestingMainPageState extends State<TestingMainPage> {
                 child: HumidityChart(
                   history: _humidityHistory,
                   predictions: _predictions,
-                  timeOffsetHours: 0,
+                  timeOffsetHours: _hourOffset,
                 ),
               ),
               

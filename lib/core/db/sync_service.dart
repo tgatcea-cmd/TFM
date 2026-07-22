@@ -15,15 +15,33 @@ class SyncService {
 
     print("Syncing ${dirtyDevices.length} devices to server...");
     
-    final payload = dirtyDevices.map((d) => {
-      'deviceIdentifier': d.deviceIdentifier,
-      'updatedAt': d.updatedAt.toIso8601String(),
-      'loraEnabled': d.loraEnabled
-    }).toList();
+    final List<Map<String, dynamic>> records = [];
+    for (var d in dirtyDevices) {
+      for (var val in d.historicValues) {
+        if (val.tsMs != null && val.value != null && val.depthCm != null) {
+          records.add({
+            'deviceIdentifier': d.deviceIdentifier,
+            'tsMs': val.tsMs,
+            'value': val.value,
+            'depthCm': val.depthCm,
+          });
+        }
+      }
+    }
+
+    if (records.isEmpty) {
+      print("No telemetry records to sync, marking devices as synced.");
+      await db.isar.writeTxn(() async {
+        for (var d in dirtyDevices) {
+          d.isSynced = true;
+          await db.isar.devices.put(d);
+        }
+      });
+      return;
+    }
 
     try {
-      // Uses the generic API client
-      await api.post('/sync', {'devices': payload});
+      await api.syncTelemetryPush(records);
 
       // Mark as synced locally
       await db.isar.writeTxn(() async {
@@ -35,6 +53,17 @@ class SyncService {
       print("Sync complete.");
     } catch (e) {
       print("Sync failed: $e");
+    }
+  }
+
+  /// Optional: Pull new telemetry from the server
+  Future<void> pullTelemetry(String deviceId, int sinceMs) async {
+    try {
+      final newRecords = await api.syncTelemetryPull(deviceId, sinceMs);
+      print("Pulled ${newRecords.length} records for $deviceId");
+      // Could be parsed into db...
+    } catch (e) {
+      print("Pull telemetry failed: $e");
     }
   }
 }

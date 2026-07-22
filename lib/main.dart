@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'data/models/processed/daily_weather.dart';
 import 'data/models/weather_data.dart';
-import 'data/models/models.dart';
 import 'data/models/app_settings.dart';
 import 'data/models/location_settings.dart';
 

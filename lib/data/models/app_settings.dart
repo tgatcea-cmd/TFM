@@ -7,9 +7,9 @@ class AppSettings {
   Id id = 1; // Singleton
 
   // App settings
-  String tfmServerUrl = 'http://10.0.2.2';
+  String tfmServerUrl = 'http://localhost';
   int tfmServerPort = 3000;
-  String tfmServerApiKey = '';
+  String tfmServerApiKey = 'secret_tfm_token';
   String selectedTfliteModel = 'random_forest.dart';
   bool invertModelOutput = false;
   bool permitOpenMeteoFill = true;

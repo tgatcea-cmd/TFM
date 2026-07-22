@@ -1,6 +1,5 @@
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
 import '../data/models/models.dart';
 //import 'package:tfm_app/main.dart';
 import 'dart:math' show pi;
