@@ -27,6 +27,7 @@ dependencies:
   isar_community: ^3.3.2             # <-- Changed name & version
   isar_community_flutter_libs: ^3.3.2 # <-- Changed name & version
   path_provider: ^2.1.2
+  flutter_secure_storage: ^10.3.1
   ################
 
   cupertino_icons: ^1.0.8           # Icons font. Use with the CupertinoIcons class for iOS style icons.
@@ -40,6 +41,7 @@ dependencies:
   flutter_map: ^8.3.1
   latlong2: ^0.10.1
   intl: ^0.20.3
+
 
 
 
