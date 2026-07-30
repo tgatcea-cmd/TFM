@@ -1,18 +1,15 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:latlong2/latlong.dart';
 import '../../core/db/database_service.dart';
-import '../../core/api/api_client.dart';
-import '../../main.dart';
+import '../../data/models/app_settings.dart';
+import '../../new_main.dart'; // To access providers
 import '../styles.dart';
 import 'map_picker_dialog.dart';
-import 'package:latlong2/latlong.dart';
 
 class ConfigView extends ConsumerStatefulWidget {
   final DatabaseService db;
-
   const ConfigView({super.key, required this.db});
 
   @override
@@ -20,695 +17,406 @@ class ConfigView extends ConsumerStatefulWidget {
 }
 
 class _ConfigViewState extends ConsumerState<ConfigView> {
-  late final TextEditingController _urlController;
-  late final TextEditingController _portController;
-  late final TextEditingController _apiKeyController;
+  late AppSettings _settings;
 
-  bool _isConnecting = false;
-  bool? _isConnected;
-  List<String> _serverModels = [];
-
-  late String _selectedModel;
-  late bool _invertOutput;
-  late bool _permitFill;
-  late bool _forceInference;
-  late double _minHumidity;
+  // Server
+  late TextEditingController _schemeCtrl;
+  late TextEditingController _urlCtrl;
+  late TextEditingController _portCtrl;
+  late TextEditingController _tokenCtrl;
+  late TextEditingController _syncScheduleCtrl;
 
   @override
   void initState() {
     super.initState();
-    final settings = widget.db.getAppSettings();
-    _urlController = TextEditingController(text: settings.tfmServerUrl);
-    _portController = TextEditingController(
-      text: settings.tfmServerPort.toString(),
-    );
-    _apiKeyController = TextEditingController(text: settings.tfmServerApiKey);
+    _settings = widget.db.getAppSettings();
+    
+    // Clamp values to prevent UI assertion errors with legacy DB states
+    _settings.agronomicDayStart = _settings.agronomicDayStart.clamp(16, 22);
+    _settings.agronomicDayEnd = _settings.agronomicDayEnd.clamp(6, 12);
+    if (!['system', 'light', 'dark'].contains(_settings.themeMode)) {
+      _settings.themeMode = 'system';
+    }
 
-    _selectedModel = settings.selectedTfliteModel;
-    _invertOutput = settings.invertModelOutput;
-    _permitFill = settings.permitOpenMeteoFill;
-    _forceInference = settings.alwaysForceInference;
-    _minHumidity = ref.read(minHumidityProvider);
-
-    // Check server availability asynchronously on load
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_testConnection(silent: true));
-    });
+    _schemeCtrl = TextEditingController(text: _settings.tfmServerScheme);
+    _urlCtrl = TextEditingController(text: _settings.tfmServerUrl);
+    _portCtrl = TextEditingController(text: _settings.tfmServerPort.toString());
+    _tokenCtrl = TextEditingController(text: _settings.tfmServerApiKey);
+    _syncScheduleCtrl = TextEditingController(text: _settings.syncScheduleHours.toString());
   }
 
   @override
   void dispose() {
-    _urlController.dispose();
-    _portController.dispose();
-    _apiKeyController.dispose();
+    _schemeCtrl.dispose();
+    _urlCtrl.dispose();
+    _portCtrl.dispose();
+    _tokenCtrl.dispose();
+    _syncScheduleCtrl.dispose();
     super.dispose();
   }
 
-  void _saveSettings() {
+  void _saveAll() {
     widget.db.saveAppSettings(
-      tfmServerUrl: _urlController.text.trim(),
-      tfmServerPort: int.tryParse(_portController.text.trim()) ?? 3000,
-      tfmServerApiKey: _apiKeyController.text.trim(),
-      selectedTfliteModel: _selectedModel,
-      invertModelOutput: _invertOutput,
-      permitOpenMeteoFill: _permitFill,
-      alwaysForceInference: _forceInference,
+      isFirstTime: false,
+      themeMode: _settings.themeMode,
+      agronomicDayStart: _settings.agronomicDayStart,
+      agronomicDayEnd: _settings.agronomicDayEnd,
+      tfmServerScheme: _schemeCtrl.text.trim(),
+      tfmServerUrl: _urlCtrl.text.trim(),
+      tfmServerPort: int.tryParse(_portCtrl.text.trim()) ?? 3000,
+      tfmServerApiKey: _tokenCtrl.text.trim(),
+      syncScheduleHours: int.tryParse(_syncScheduleCtrl.text.trim()) ?? 24,
     );
-  }
-
-  Future<void> _testConnection({bool silent = false}) async {
-    if (!silent) {
-      setState(() {
-        _isConnecting = true;
-        _isConnected = null;
-      });
-    }
-
-    final client = ApiClient(
-      serverUrl: _urlController.text.trim(),
-      port: int.tryParse(_portController.text.trim()) ?? 3000,
-      apiKey: _apiKeyController.text.trim(),
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Configuration saved!')),
     );
-
-    final ok = await client.testConnection();
-    List<String> models = [];
-    if (ok) {
-      models = await client.listTfliteModels();
-    }
-
-    if (mounted) {
-      setState(() {
-        _isConnecting = false;
-        _isConnected = ok;
-        _serverModels = models;
-        // Keep default selected if empty
-        if (!_serverModels.contains('random_forest.dart')) {
-          _serverModels.insert(0, 'random_forest.dart');
-        }
-        if (!_serverModels.contains(_selectedModel)) {
-          _selectedModel = 'random_forest.dart';
-        }
-      });
-      _saveSettings();
-      if (!silent) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              ok
-                  ? 'Connected successfully! Found ${models.length - 1} models.'
-                  : 'Connection failed.',
-            ),
-            backgroundColor: ok ? Colors.teal : Colors.red,
-          ),
-        );
-      }
+    // Exit if it was first time setup
+    if (_settings.isFirstTime) {
+      Navigator.of(context).pop();
     }
   }
 
-  Future<void> _downloadModel() async {
-    if (_selectedModel == 'random_forest.dart') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Default asset model is pre-loaded.')),
-      );
-      return;
-    }
-
-    setState(() => _isConnecting = true);
-    final client = ApiClient(
-      serverUrl: _urlController.text.trim(),
-      port: int.tryParse(_portController.text.trim()) ?? 3000,
-      apiKey: _apiKeyController.text.trim(),
+  void _revertToDefault() {
+    setState(() {
+      _settings = AppSettings(); // Fresh instance with defaults
+      _schemeCtrl.text = _settings.tfmServerScheme;
+      _urlCtrl.text = _settings.tfmServerUrl;
+      _portCtrl.text = _settings.tfmServerPort.toString();
+      _tokenCtrl.text = _settings.tfmServerApiKey;
+      _syncScheduleCtrl.text = _settings.syncScheduleHours.toString();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Reverted to defaults. Tap Save to apply.')),
     );
-
-    final file = await client.downloadModel(_selectedModel);
-    if (mounted) {
-      setState(() => _isConnecting = false);
-      if (file != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Model $_selectedModel downloaded and set active!'),
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to download model file.')),
-        );
-      }
-    }
-  }
-
-  Future<void> _showUploadDialog() async {
-    final List<String> mockLocalModels = [
-      'custom_model_v1.dart',
-      'custom_model_v2.dart',
-      'farm_optimized.dart',
-    ];
-
-    unawaited(
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Select Local Dart Model to Upload'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: mockLocalModels.map((model) {
-              return ListTile(
-                title: Text(model),
-                leading: const Icon(Icons.psychology, color: Colors.teal),
-                onTap: () {
-                  Navigator.pop(context);
-                  unawaited(_uploadModel(model));
-                },
-              );
-            }).toList(),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _uploadModel(String filename) async {
-    setState(() => _isConnecting = true);
-    final client = ApiClient(
-      serverUrl: _urlController.text.trim(),
-      port: int.tryParse(_portController.text.trim()) ?? 3000,
-      apiKey: _apiKeyController.text.trim(),
-    );
-
-    // Create mock local file to upload
-    final tempDir = await getTemporaryDirectory();
-    final tempFile = File('${tempDir.path}/$filename');
-    await tempFile.writeAsBytes(List<int>.generate(256, (i) => i));
-
-    final ok = await client.uploadModel(tempFile);
-
-    try {
-      await tempFile.delete();
-    } catch (_) {}
-
-    if (mounted) {
-      setState(() => _isConnecting = false);
-      if (ok) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Model $filename uploaded to server!')),
-        );
-        await _testConnection(silent: true);
-      } else {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Upload failed.')));
-      }
-    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // TFM Server Configuration Card
-          Card(
-            elevation: 3,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppStyles.radiusMedium),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'TFM Database Server',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Configuration'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.restore),
+            tooltip: 'Revert to Default',
+            onPressed: _revertToDefault,
+          ),
+          IconButton(
+            icon: const Icon(Icons.save),
+            tooltip: 'Save',
+            onPressed: _saveAll,
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_settings.isFirstTime)
+              Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.amber.shade700),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'First time setup: Please complete all important fields and save.',
+                        style: TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      if (_isConnected != null)
-                        Icon(
-                          _isConnected! ? Icons.cloud_done : Icons.cloud_off,
-                          color: _isConnected! ? Colors.teal : Colors.red,
-                        ),
-                    ],
-                  ),
-                  const Divider(),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _urlController,
-                    decoration: const InputDecoration(
-                      labelText: 'Server URL',
-                      hintText: 'e.g. http://10.0.2.2 or http://your-server-ip',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.link),
                     ),
-                    onChanged: (_) => _saveSettings(),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: TextField(
-                          controller: _portController,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: 'Port',
-                            border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.settings_ethernet),
-                          ),
-                          onChanged: (_) => _saveSettings(),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        flex: 3,
-                        child: TextField(
-                          controller: _apiKeyController,
-                          obscureText: true,
-                          decoration: const InputDecoration(
-                            labelText: 'API Token',
-                            border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.vpn_key),
-                          ),
-                          onChanged: (_) => _saveSettings(),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: _isConnecting
-                            ? null
-                            : () => _testConnection(),
-                        icon: _isConnecting
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.teal,
-                                ),
-                              )
-                            : const Icon(Icons.wifi),
-                        label: const Text('Test & Sync'),
-                      ),
-                      if (_isConnected == true)
-                        OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            backgroundColor: Colors.teal.shade50,
-                            foregroundColor: Colors.teal.shade900,
-                            side: BorderSide(color: Colors.teal.shade200),
-                          ),
-                          onPressed: _isConnecting ? null : _showUploadDialog,
-                          icon: const Icon(Icons.upload_file),
-                          label: const Text('Upload Local Model'),
-                        ),
-                    ],
-                  ),
-                  if (_isConnected == true && _serverModels.isNotEmpty) ...[
-                    const SizedBox(height: 20),
-                    const Text(
-                      'Select Recommendation Model (.dart)',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                      ),
+                  ],
+                ),
+              ),
+
+            // 1. Information Section
+            Card(
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Information', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const Divider(),
+                    const ListTile(
+                      leading: Icon(Icons.info_outline),
+                      title: Text('App Version: 2.0.0 (Ponytail Edition)'),
+                      dense: true,
+                    ),
+                    Consumer(
+                      builder: (context, ref, _) {
+                        final ble = ref.watch(bleServiceProvider);
+                        final devName = ble.connectedDevice?.platformName ?? "None";
+                        return ListTile(
+                          leading: const Icon(Icons.bluetooth),
+                          title: Text('Connected Device: $devName'),
+                          dense: true,
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 2. Agronomic Day time period
+            Card(
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Agronomic Day Period', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const Divider(),
+                    const Text('Defines the "Forecasting Available" zone for the charts.', style: TextStyle(color: Colors.grey)),
+                    const SizedBox(height: 16),
+                    Text('Start Hour: ${_settings.agronomicDayStart}:00', style: const TextStyle(fontWeight: FontWeight.w500)),
+                    Slider(
+                      value: _settings.agronomicDayStart.toDouble(),
+                      min: 16,
+                      max: 22,
+                      divisions: 6,
+                      label: '${_settings.agronomicDayStart}:00',
+                      onChanged: (val) => setState(() => _settings.agronomicDayStart = val.toInt()),
                     ),
                     const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade400),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: _selectedModel,
-                          isExpanded: true,
-                          items: _serverModels.map((model) {
-                            return DropdownMenuItem<String>(
-                              value: model,
-                              child: Text(model),
-                            );
-                          }).toList(),
-                          onChanged: (val) {
-                            if (val != null) {
-                              setState(() => _selectedModel = val);
-                              _saveSettings();
-                            }
-                          },
-                        ),
-                      ),
+                    Text('End Hour: 0${_settings.agronomicDayEnd}:00', style: const TextStyle(fontWeight: FontWeight.w500)),
+                    Slider(
+                      value: _settings.agronomicDayEnd.toDouble(),
+                      min: 6,
+                      max: 12,
+                      divisions: 6,
+                      label: '0${_settings.agronomicDayEnd}:00',
+                      onChanged: (val) => setState(() => _settings.agronomicDayEnd = val.toInt()),
                     ),
-                    if (_selectedModel != 'random_forest.dart') ...[
-                      const SizedBox(height: 10),
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.teal.shade700,
-                          foregroundColor: Colors.white,
-                        ),
-                        onPressed: _isConnecting ? null : _downloadModel,
-                        icon: const Icon(Icons.download_for_offline),
-                        label: const Text('Download Selected Model'),
-                      ),
-                    ],
                   ],
-                ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 16),
+            const SizedBox(height: 16),
 
-          // Inference Logic Card
-          Card(
-            elevation: 3,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppStyles.radiusMedium),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Inference Options',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const Divider(),
-                  SwitchListTile(
-                    title: const Text('Invert Model Output'),
-                    subtitle: const Text(
-                      'Toggle output recommendation classes: 0 to Healthy, 1 to Danger vs inverted.',
+            // 3. Location
+            Card(
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Location', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const Divider(),
+                    const Text('If location permission granted, automatic pull. Otherwise manual setup.', style: TextStyle(color: Colors.grey)),
+                    const SizedBox(height: 16),
+                    ListTile(
+                      leading: const Icon(Icons.my_location),
+                      title: const Text('Update from GPS'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () {
+                        setState(() {
+                          _settings.gpsLat = 40.4168; // Mocked for PoC
+                          _settings.gpsLon = -3.7038;
+                          _settings.isGpsEnabled = true;
+                        });
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('GPS updated (Mocked)')));
+                      },
                     ),
-                    value: _invertOutput,
-                    onChanged: (val) {
-                      setState(() => _invertOutput = val);
-                      _saveSettings();
-                    },
-                    activeThumbColor: Colors.teal,
-                  ),
-                  SwitchListTile(
-                    title: const Text('Permit OpenMeteo filling'),
-                    subtitle: const Text(
-                      'Allow matching missing local station weather points with Open-Meteo predictions.',
-                    ),
-                    value: _permitFill,
-                    onChanged: (val) {
-                      setState(() => _permitFill = val);
-                      _saveSettings();
-                    },
-                    activeThumbColor: Colors.teal,
-                  ),
-                  SwitchListTile(
-                    title: const Text('Always force inference'),
-                    subtitle: const Text(
-                      'Bypass checks on historical logs completeness to force RF recommendation execution.',
-                    ),
-                    value: _forceInference,
-                    onChanged: (val) {
-                      setState(() => _forceInference = val);
-                      _saveSettings();
-                    },
-                    activeThumbColor: Colors.teal,
-                  ),
-                  const Divider(),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'Minimum Humidity Threshold',
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-                            ),
-                            Text(
-                              '${_minHumidity.toStringAsFixed(0)}%',
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.teal),
-                            ),
-                          ],
-                        ),
-                        Slider(
-                          value: _minHumidity,
-                          min: 0.0,
-                          max: 90.0,
-                          divisions: 18,
-                          activeColor: Colors.teal,
-                          inactiveColor: Colors.teal.withValues(alpha: 0.2),
-                          onChanged: (val) {
-                            setState(() => _minHumidity = val);
-                            ref.read(minHumidityProvider.notifier).setMinHumidity(val);
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Location settings
-          Card(
-            elevation: 3,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppStyles.radiusMedium),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Location',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const Divider(),
-                  const SizedBox(height: 10),
-                  ElevatedButton.icon(
-                    onPressed: () async {
-                      final messenger = ScaffoldMessenger.of(context);
-                      await ref.read(locationProvider.notifier).updateFromGps();
-                      messenger.showSnackBar(
-                        const SnackBar(
-                          content: Text('Location updated successfully'),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.my_location),
-                    label: const Text('Refresh Location from GPS'),
-                  ),
-                  const SizedBox(height: 12), // Add spacing
-                  // ADD THE NEW OPENSTREETMAP BUTTON HERE
-                  ElevatedButton.icon(
-                    onPressed: () async {
-                      // 1. Get current saved coordinates to center the map
-                      final currentLoc = ref.read(locationProvider);
-
-                      // 2. Open the OSM Picker Dialog
-                      final LatLng? newLocation = await showDialog<LatLng>(
-                        context: context,
-                        builder: (context) => MapPickerDialog(
-                          initialLat: currentLoc.latitude,
-                          initialLon: currentLoc.longitude,
-                        ),
-                      );
-
-                      // 3. If user saved a location, update the state and DB
-                      if (newLocation != null) {
-                        ref
-                            .read(locationProvider.notifier)
-                            .updateManual(
-                              newLocation.latitude,
-                              newLocation.longitude,
-                            );
-
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Manual location saved! (${newLocation.latitude.toStringAsFixed(3)}, ${newLocation.longitude.toStringAsFixed(3)})',
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                    icon: const Icon(Icons.map),
-                    label: const Text('Pick manually from Map'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Hardware / Station Debug Card
-          const Text(
-            'Time Travel Simulator (UI Debug)',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          Consumer(
-            builder: (context, ref, child) {
-              final offset = ref.watch(timeOffsetProvider);
-              final simulatedTime = DateTime.now().add(Duration(hours: offset));
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Offset: $offset horas -> Hora simulada: ${simulatedTime.hour.toString().padLeft(2, '0')}:${simulatedTime.minute.toString().padLeft(2, '0')}',
-                  ),
-                  Slider(
-                    value: offset.toDouble(),
-                    min: -24,
-                    max: 24,
-                    divisions: 48,
-                    activeColor: Colors.amber.shade700,
-                    label: '${offset > 0 ? '+' : ''}$offset h',
-                    onChanged: (val) {
-                      // Actualizamos la variable y la gráfica se repintará sola
-                      ref.read(timeOffsetProvider.notifier).state = val.toInt();
-                    },
-                  ),
-                ],
-              );
-            },
-          ),
-          Card(
-            elevation: 3,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppStyles.radiusMedium),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Station Debug (BLE)',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const Divider(),
-                  const SizedBox(height: 10),
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.amber.shade100,
-                      foregroundColor: Colors.amber.shade900,
-                    ),
-                    onPressed: () async {
-                      final ble = ref.read(bleServiceProvider);
-                      if (ble.isConnected) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Injecting 48h mock data to station...',
-                            ),
+                    ListTile(
+                      leading: const Icon(Icons.map),
+                      title: const Text('Manual Map Setup'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () async {
+                        final LatLng? newLocation = await showDialog<LatLng>(
+                          context: context,
+                          builder: (context) => MapPickerDialog(
+                            initialLat: _settings.manualLat,
+                            initialLon: _settings.manualLon,
                           ),
                         );
 
-                        // ponytail: sync clock first so Pico do  es not write underflowed uptime timestamps
-                        await ble.syncTime(ref.watch(timeOffsetProvider));
-                        await Future.delayed(const Duration(milliseconds: 300));
-                        await ble.forceMock72Hours();
+                        if (newLocation != null && mounted) {
+                          setState(() {
+                            _settings.manualLat = newLocation.latitude;
+                            _settings.manualLon = newLocation.longitude;
+                            _settings.isGpsEnabled = false;
+                          });
 
-                        if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Finished injecting mock data!'),
+                            SnackBar(
+                              content: Text(
+                                'Manual location saved! (${newLocation.latitude.toStringAsFixed(3)}, ${newLocation.longitude.toStringAsFixed(3)})',
+                              ),
                             ),
                           );
                         }
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Connect to a station first.'),
-                          ),
-                        );
-                      }
-                    },
-                    icon: const Icon(Icons.bug_report),
-                    label: const Text('Inject 48h Mock Data to Pico'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Database maintenance
-          Card(
-            elevation: 3,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppStyles.radiusMedium),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Database Maintenance',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const Divider(),
-                  const SizedBox(height: 10),
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red.shade100,
-                      foregroundColor: Colors.red.shade900,
+                      },
                     ),
-                    onPressed: () {
-                      showDialog(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Text('Purge Local Database'),
-                          content: const Text(
-                            'Warning: All historical records, weather information, and predictions will be permanently deleted.',
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text('Cancel'),
-                            ),
-                            TextButton(
-                              style: TextButton.styleFrom(
-                                foregroundColor: Colors.red,
-                              ),
-                              onPressed: () {
-                                widget.db.clearAllData();
-                                Navigator.pop(context);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Database cleared successfully!',
-                                    ),
-                                  ),
-                                );
-                              },
-                              child: const Text('Clear Database'),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.delete_forever),
-                    label: const Text('Clear Database'),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 16),
+
+            // 4. Server Connection
+            Card(
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Server Connection', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const Divider(),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 1,
+                          child: TextField(
+                            controller: _schemeCtrl,
+                            decoration: const InputDecoration(labelText: 'Scheme', border: OutlineInputBorder()),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 3,
+                          child: TextField(
+                            controller: _urlCtrl,
+                            decoration: const InputDecoration(labelText: 'IP / Domain', border: OutlineInputBorder()),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 1,
+                          child: TextField(
+                            controller: _portCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'Port', border: OutlineInputBorder()),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 3,
+                          child: TextField(
+                            controller: _tokenCtrl,
+                            obscureText: true,
+                            decoration: const InputDecoration(labelText: 'API Token', border: OutlineInputBorder()),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _syncScheduleCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'Automatic sync schedule (hours)', border: OutlineInputBorder()),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 5. Local Database
+            Card(
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Local Database', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const Divider(),
+                    const Text('Database size: ~1.2 MB (Estimated)'), // Mocked size
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            label: const Text('Clear DB', style: TextStyle(color: Colors.red)),
+                            onPressed: () {
+                              widget.db.clearAllData();
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Database cleared')));
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Consumer(
+                            builder: (context, ref, _) {
+                              return ElevatedButton.icon(
+                                icon: const Icon(Icons.cloud_sync),
+                                label: const Text('Sync Now'),
+                                onPressed: () {
+                                  ref.read(syncServiceProvider).syncDirtyDevices();
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Manual sync triggered')));
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    )
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 6. Theme
+            Card(
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Theme', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const Divider(),
+                    DropdownButtonFormField<String>(
+                      value: _settings.themeMode,
+                      decoration: const InputDecoration(border: OutlineInputBorder()),
+                      items: const [
+                        DropdownMenuItem(value: 'system', child: Text('System Default')),
+                        DropdownMenuItem(value: 'light', child: Text('Light Mode')),
+                        DropdownMenuItem(value: 'dark', child: Text('Dark Mode')),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) setState(() => _settings.themeMode = val);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            
+            const SizedBox(height: 32),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                backgroundColor: AppStyles.primaryTeal(context),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: _saveAll,
+              child: const Text('Save & Apply', style: TextStyle(fontSize: 18)),
+            ),
+            const SizedBox(height: 48),
+          ],
+        ),
       ),
     );
   }

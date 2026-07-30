@@ -70,23 +70,35 @@ class DatabaseService {
   }
   
   void saveAppSettings({
-    required String tfmServerUrl,
-    required int tfmServerPort,
-    required String tfmServerApiKey,
-    required String selectedTfliteModel,
-    required bool invertModelOutput,
-    required bool permitOpenMeteoFill,
-    required bool alwaysForceInference,
+    bool? isFirstTime,
+    String? themeMode,
+    String? tfmServerScheme,
+    String? tfmServerUrl,
+    int? tfmServerPort,
+    String? tfmServerApiKey,
+    int? syncScheduleHours,
+    String? selectedTfliteModel,
+    bool? invertModelOutput,
+    bool? permitOpenMeteoFill,
+    bool? alwaysForceInference,
+    int? agronomicDayStart,
+    int? agronomicDayEnd,
   }) {
     isar.writeTxnSync(() {
       final s = getAppSettings();
-      s.tfmServerUrl = tfmServerUrl;
-      s.tfmServerPort = tfmServerPort;
-      s.tfmServerApiKey = tfmServerApiKey;
-      s.selectedTfliteModel = selectedTfliteModel;
-      s.invertModelOutput = invertModelOutput;
-      s.permitOpenMeteoFill = permitOpenMeteoFill;
-      s.alwaysForceInference = alwaysForceInference;
+      if (isFirstTime != null) s.isFirstTime = isFirstTime;
+      if (themeMode != null) s.themeMode = themeMode;
+      if (tfmServerScheme != null) s.tfmServerScheme = tfmServerScheme;
+      if (tfmServerUrl != null) s.tfmServerUrl = tfmServerUrl;
+      if (tfmServerPort != null) s.tfmServerPort = tfmServerPort;
+      if (tfmServerApiKey != null) s.tfmServerApiKey = tfmServerApiKey;
+      if (syncScheduleHours != null) s.syncScheduleHours = syncScheduleHours;
+      if (selectedTfliteModel != null) s.selectedTfliteModel = selectedTfliteModel;
+      if (invertModelOutput != null) s.invertModelOutput = invertModelOutput;
+      if (permitOpenMeteoFill != null) s.permitOpenMeteoFill = permitOpenMeteoFill;
+      if (alwaysForceInference != null) s.alwaysForceInference = alwaysForceInference;
+      if (agronomicDayStart != null) s.agronomicDayStart = agronomicDayStart;
+      if (agronomicDayEnd != null) s.agronomicDayEnd = agronomicDayEnd;
       isar.appSettings.putSync(s);
     });
   }
@@ -143,31 +155,46 @@ class DatabaseService {
     });
   }
 
-  // --- STUBS for deprecated global methods to keep UI compiling ---
-  // The new architecture uses device.historicValues instead of global records.
-  
-  void saveWeather(int timestamp, double temp, double hum, double rad, double prec) {}
-  
-  List<WeatherRecord> getWeatherHistory() { return []; }
-  
-  List<SoilHumidityRecord> getSoilHumidityHistory() {
-    return [];
+  // --- Telemetry & Prediction Helpers for New Architecture ---
+
+  void appendTelemetry(String deviceId, List<HistoricValue> newValues) {
+    isar.writeTxnSync(() {
+      final dev = isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
+      if (dev != null) {
+        dev.historicValues = List.from(dev.historicValues)..addAll(newValues);
+        dev.updatedAt = DateTime.now();
+        dev.isSynced = false;
+        isar.devices.putSync(dev);
+      }
+    });
   }
 
-  int getSoilHumidityCount(int sinceMs) {
-    return 0;
+  List<HistoricValue> getDeviceTelemetry(String deviceId, {String? kind, double? depthCm, int? sinceMs}) {
+    final dev = isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
+    if (dev == null) return [];
+    
+    // ponytail: filter in-memory since lists are small enough (YAGNI complex Isar relations)
+    return dev.historicValues.where((v) {
+      if (kind != null && v.kind != kind) return false;
+      if (depthCm != null && v.depthCm != depthCm) return false;
+      if (sinceMs != null && v.tsMs != null && v.tsMs! < sinceMs) return false;
+      return true;
+    }).toList();
   }
 
-  int getWeatherCount(int sinceMs) {
-    return 0;
+  void updatePredictions(String deviceId, List<Prediction> predictions) {
+    isar.writeTxnSync(() {
+      final dev = isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
+      if (dev != null) {
+        dev.previousPredictions = dev.newPredictions;
+        dev.newPredictions = predictions;
+        dev.updatedAt = DateTime.now();
+        dev.isSynced = false;
+        isar.devices.putSync(dev);
+      }
+    });
   }
 
-  List<PredictionRecord> getPredictionHistory() {
-    return [];
-  }
-  
-  void savePrediction(int ts, double predHum, String rec) {}
-  
   void clearAllData() {
     isar.writeTxnSync(() {
       isar.devices.clearSync();
@@ -177,4 +204,13 @@ class DatabaseService {
   void close() {
     isar.close();
   }
+
+  // --- STUBS for deprecated global methods to keep UI compiling ---
+  void saveWeather(int timestamp, double temp, double hum, double rad, double prec) {}
+  List<WeatherRecord> getWeatherHistory() => [];
+  List<SoilHumidityRecord> getSoilHumidityHistory() => [];
+  int getSoilHumidityCount(int sinceMs) => 0;
+  int getWeatherCount(int sinceMs) => 0;
+  List<PredictionRecord> getPredictionHistory() => [];
+  void savePrediction(int ts, double predHum, String rec) {}
 }

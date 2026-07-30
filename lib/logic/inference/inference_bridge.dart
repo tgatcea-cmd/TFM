@@ -21,6 +21,22 @@ class InferenceBridge {
   Future<void> _loadModelFromSettings() async {}
 
   Future<void> runIrrigationRecommendation([String? deviceId]) async {
+    final settings = _db.getAppSettings();
+    final now = DateTime.now();
+    final h = now.hour;
+    final startH = settings.agronomicDayStart; // e.g. 19
+    final endH = settings.agronomicDayEnd;     // e.g. 9
+
+    final bool isYellowZone = (endH < startH) 
+        ? (h >= endH && h < startH)
+        : (h >= endH || h < startH);
+
+    if (isYellowZone && !settings.alwaysForceInference) {
+      status.value = "Restricted: Yellow Zone (Gathering). Inference allowed only in Green Zone ($startH:00 - $endH:00).";
+      isRunning.value = false;
+      return;
+    }
+
     isRunning.value = true;
     progress.value = 0.1;
     status.value = "Loading ML Model...";
@@ -49,13 +65,14 @@ class InferenceBridge {
     progress.value = 0.8;
     status.value = "Running RF Classifier...";
 
-    // TODO: implement proper radiation sum from new weather models
-    const radSum = 0.0; 
+    final weatherHistory = _db.getWeatherHistory();
+    final double radSum = weatherHistory.isNotEmpty
+        ? weatherHistory.fold(0.0, (sum, record) => sum + record.radiation)
+        : 0.0;
     
     final probs = rf.score([radSum, predHum]);
     int resultClass = (probs.length > 1 && probs[1] > probs[0]) ? 1 : 0;
 
-    final settings = _db.getAppSettings();
     if (settings.invertModelOutput) {
       resultClass = resultClass == 1 ? 0 : 1;
     }

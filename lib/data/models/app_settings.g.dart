@@ -17,61 +17,91 @@ const AppSettingsSchema = CollectionSchema(
   name: r'AppSettings',
   id: -5633561779022347008,
   properties: {
-    r'alwaysForceInference': PropertySchema(
+    r'agronomicDayEnd': PropertySchema(
       id: 0,
+      name: r'agronomicDayEnd',
+      type: IsarType.long,
+    ),
+    r'agronomicDayStart': PropertySchema(
+      id: 1,
+      name: r'agronomicDayStart',
+      type: IsarType.long,
+    ),
+    r'alwaysForceInference': PropertySchema(
+      id: 2,
       name: r'alwaysForceInference',
       type: IsarType.bool,
     ),
-    r'gpsLat': PropertySchema(id: 1, name: r'gpsLat', type: IsarType.double),
-    r'gpsLon': PropertySchema(id: 2, name: r'gpsLon', type: IsarType.double),
+    r'gpsLat': PropertySchema(id: 3, name: r'gpsLat', type: IsarType.double),
+    r'gpsLon': PropertySchema(id: 4, name: r'gpsLon', type: IsarType.double),
     r'invertModelOutput': PropertySchema(
-      id: 3,
+      id: 5,
       name: r'invertModelOutput',
       type: IsarType.bool,
     ),
+    r'isFirstTime': PropertySchema(
+      id: 6,
+      name: r'isFirstTime',
+      type: IsarType.bool,
+    ),
     r'isGpsEnabled': PropertySchema(
-      id: 4,
+      id: 7,
       name: r'isGpsEnabled',
       type: IsarType.bool,
     ),
     r'manualLat': PropertySchema(
-      id: 5,
+      id: 8,
       name: r'manualLat',
       type: IsarType.double,
     ),
     r'manualLon': PropertySchema(
-      id: 6,
+      id: 9,
       name: r'manualLon',
       type: IsarType.double,
     ),
     r'minHumidity': PropertySchema(
-      id: 7,
+      id: 10,
       name: r'minHumidity',
       type: IsarType.double,
     ),
     r'permitOpenMeteoFill': PropertySchema(
-      id: 8,
+      id: 11,
       name: r'permitOpenMeteoFill',
       type: IsarType.bool,
     ),
     r'selectedTfliteModel': PropertySchema(
-      id: 9,
+      id: 12,
       name: r'selectedTfliteModel',
       type: IsarType.string,
     ),
+    r'syncScheduleHours': PropertySchema(
+      id: 13,
+      name: r'syncScheduleHours',
+      type: IsarType.long,
+    ),
     r'tfmServerApiKey': PropertySchema(
-      id: 10,
+      id: 14,
       name: r'tfmServerApiKey',
       type: IsarType.string,
     ),
     r'tfmServerPort': PropertySchema(
-      id: 11,
+      id: 15,
       name: r'tfmServerPort',
       type: IsarType.long,
     ),
+    r'tfmServerScheme': PropertySchema(
+      id: 16,
+      name: r'tfmServerScheme',
+      type: IsarType.string,
+    ),
     r'tfmServerUrl': PropertySchema(
-      id: 12,
+      id: 17,
       name: r'tfmServerUrl',
+      type: IsarType.string,
+    ),
+    r'themeMode': PropertySchema(
+      id: 18,
+      name: r'themeMode',
       type: IsarType.string,
     ),
   },
@@ -99,7 +129,9 @@ int _appSettingsEstimateSize(
   var bytesCount = offsets.last;
   bytesCount += 3 + object.selectedTfliteModel.length * 3;
   bytesCount += 3 + object.tfmServerApiKey.length * 3;
+  bytesCount += 3 + object.tfmServerScheme.length * 3;
   bytesCount += 3 + object.tfmServerUrl.length * 3;
+  bytesCount += 3 + object.themeMode.length * 3;
   return bytesCount;
 }
 
@@ -109,19 +141,25 @@ void _appSettingsSerialize(
   List<int> offsets,
   Map<Type, List<int>> allOffsets,
 ) {
-  writer.writeBool(offsets[0], object.alwaysForceInference);
-  writer.writeDouble(offsets[1], object.gpsLat);
-  writer.writeDouble(offsets[2], object.gpsLon);
-  writer.writeBool(offsets[3], object.invertModelOutput);
-  writer.writeBool(offsets[4], object.isGpsEnabled);
-  writer.writeDouble(offsets[5], object.manualLat);
-  writer.writeDouble(offsets[6], object.manualLon);
-  writer.writeDouble(offsets[7], object.minHumidity);
-  writer.writeBool(offsets[8], object.permitOpenMeteoFill);
-  writer.writeString(offsets[9], object.selectedTfliteModel);
-  writer.writeString(offsets[10], object.tfmServerApiKey);
-  writer.writeLong(offsets[11], object.tfmServerPort);
-  writer.writeString(offsets[12], object.tfmServerUrl);
+  writer.writeLong(offsets[0], object.agronomicDayEnd);
+  writer.writeLong(offsets[1], object.agronomicDayStart);
+  writer.writeBool(offsets[2], object.alwaysForceInference);
+  writer.writeDouble(offsets[3], object.gpsLat);
+  writer.writeDouble(offsets[4], object.gpsLon);
+  writer.writeBool(offsets[5], object.invertModelOutput);
+  writer.writeBool(offsets[6], object.isFirstTime);
+  writer.writeBool(offsets[7], object.isGpsEnabled);
+  writer.writeDouble(offsets[8], object.manualLat);
+  writer.writeDouble(offsets[9], object.manualLon);
+  writer.writeDouble(offsets[10], object.minHumidity);
+  writer.writeBool(offsets[11], object.permitOpenMeteoFill);
+  writer.writeString(offsets[12], object.selectedTfliteModel);
+  writer.writeLong(offsets[13], object.syncScheduleHours);
+  writer.writeString(offsets[14], object.tfmServerApiKey);
+  writer.writeLong(offsets[15], object.tfmServerPort);
+  writer.writeString(offsets[16], object.tfmServerScheme);
+  writer.writeString(offsets[17], object.tfmServerUrl);
+  writer.writeString(offsets[18], object.themeMode);
 }
 
 AppSettings _appSettingsDeserialize(
@@ -131,20 +169,26 @@ AppSettings _appSettingsDeserialize(
   Map<Type, List<int>> allOffsets,
 ) {
   final object = AppSettings();
-  object.alwaysForceInference = reader.readBool(offsets[0]);
-  object.gpsLat = reader.readDouble(offsets[1]);
-  object.gpsLon = reader.readDouble(offsets[2]);
+  object.agronomicDayEnd = reader.readLong(offsets[0]);
+  object.agronomicDayStart = reader.readLong(offsets[1]);
+  object.alwaysForceInference = reader.readBool(offsets[2]);
+  object.gpsLat = reader.readDouble(offsets[3]);
+  object.gpsLon = reader.readDouble(offsets[4]);
   object.id = id;
-  object.invertModelOutput = reader.readBool(offsets[3]);
-  object.isGpsEnabled = reader.readBool(offsets[4]);
-  object.manualLat = reader.readDouble(offsets[5]);
-  object.manualLon = reader.readDouble(offsets[6]);
-  object.minHumidity = reader.readDouble(offsets[7]);
-  object.permitOpenMeteoFill = reader.readBool(offsets[8]);
-  object.selectedTfliteModel = reader.readString(offsets[9]);
-  object.tfmServerApiKey = reader.readString(offsets[10]);
-  object.tfmServerPort = reader.readLong(offsets[11]);
-  object.tfmServerUrl = reader.readString(offsets[12]);
+  object.invertModelOutput = reader.readBool(offsets[5]);
+  object.isFirstTime = reader.readBool(offsets[6]);
+  object.isGpsEnabled = reader.readBool(offsets[7]);
+  object.manualLat = reader.readDouble(offsets[8]);
+  object.manualLon = reader.readDouble(offsets[9]);
+  object.minHumidity = reader.readDouble(offsets[10]);
+  object.permitOpenMeteoFill = reader.readBool(offsets[11]);
+  object.selectedTfliteModel = reader.readString(offsets[12]);
+  object.syncScheduleHours = reader.readLong(offsets[13]);
+  object.tfmServerApiKey = reader.readString(offsets[14]);
+  object.tfmServerPort = reader.readLong(offsets[15]);
+  object.tfmServerScheme = reader.readString(offsets[16]);
+  object.tfmServerUrl = reader.readString(offsets[17]);
+  object.themeMode = reader.readString(offsets[18]);
   return object;
 }
 
@@ -156,30 +200,42 @@ P _appSettingsDeserializeProp<P>(
 ) {
   switch (propertyId) {
     case 0:
-      return (reader.readBool(offset)) as P;
-    case 1:
-      return (reader.readDouble(offset)) as P;
-    case 2:
-      return (reader.readDouble(offset)) as P;
-    case 3:
-      return (reader.readBool(offset)) as P;
-    case 4:
-      return (reader.readBool(offset)) as P;
-    case 5:
-      return (reader.readDouble(offset)) as P;
-    case 6:
-      return (reader.readDouble(offset)) as P;
-    case 7:
-      return (reader.readDouble(offset)) as P;
-    case 8:
-      return (reader.readBool(offset)) as P;
-    case 9:
-      return (reader.readString(offset)) as P;
-    case 10:
-      return (reader.readString(offset)) as P;
-    case 11:
       return (reader.readLong(offset)) as P;
+    case 1:
+      return (reader.readLong(offset)) as P;
+    case 2:
+      return (reader.readBool(offset)) as P;
+    case 3:
+      return (reader.readDouble(offset)) as P;
+    case 4:
+      return (reader.readDouble(offset)) as P;
+    case 5:
+      return (reader.readBool(offset)) as P;
+    case 6:
+      return (reader.readBool(offset)) as P;
+    case 7:
+      return (reader.readBool(offset)) as P;
+    case 8:
+      return (reader.readDouble(offset)) as P;
+    case 9:
+      return (reader.readDouble(offset)) as P;
+    case 10:
+      return (reader.readDouble(offset)) as P;
+    case 11:
+      return (reader.readBool(offset)) as P;
     case 12:
+      return (reader.readString(offset)) as P;
+    case 13:
+      return (reader.readLong(offset)) as P;
+    case 14:
+      return (reader.readString(offset)) as P;
+    case 15:
+      return (reader.readLong(offset)) as P;
+    case 16:
+      return (reader.readString(offset)) as P;
+    case 17:
+      return (reader.readString(offset)) as P;
+    case 18:
       return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -286,6 +342,116 @@ extension AppSettingsQueryWhere
 
 extension AppSettingsQueryFilter
     on QueryBuilder<AppSettings, AppSettings, QFilterCondition> {
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  agronomicDayEndEqualTo(int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'agronomicDayEnd', value: value),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  agronomicDayEndGreaterThan(int value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'agronomicDayEnd',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  agronomicDayEndLessThan(int value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'agronomicDayEnd',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  agronomicDayEndBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'agronomicDayEnd',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  agronomicDayStartEqualTo(int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'agronomicDayStart', value: value),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  agronomicDayStartGreaterThan(int value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'agronomicDayStart',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  agronomicDayStartLessThan(int value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'agronomicDayStart',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  agronomicDayStartBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'agronomicDayStart',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
+      );
+    });
+  }
+
   QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
   alwaysForceInferenceEqualTo(bool value) {
     return QueryBuilder.apply(this, (query) {
@@ -512,6 +678,15 @@ extension AppSettingsQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(property: r'invertModelOutput', value: value),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  isFirstTimeEqualTo(bool value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'isFirstTime', value: value),
       );
     });
   }
@@ -904,6 +1079,61 @@ extension AppSettingsQueryFilter
   }
 
   QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  syncScheduleHoursEqualTo(int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'syncScheduleHours', value: value),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  syncScheduleHoursGreaterThan(int value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'syncScheduleHours',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  syncScheduleHoursLessThan(int value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'syncScheduleHours',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  syncScheduleHoursBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'syncScheduleHours',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
   tfmServerApiKeyEqualTo(String value, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
@@ -1100,6 +1330,147 @@ extension AppSettingsQueryFilter
   }
 
   QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  tfmServerSchemeEqualTo(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'tfmServerScheme',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  tfmServerSchemeGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'tfmServerScheme',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  tfmServerSchemeLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'tfmServerScheme',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  tfmServerSchemeBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'tfmServerScheme',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  tfmServerSchemeStartsWith(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.startsWith(
+          property: r'tfmServerScheme',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  tfmServerSchemeEndsWith(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.endsWith(
+          property: r'tfmServerScheme',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  tfmServerSchemeContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.contains(
+          property: r'tfmServerScheme',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  tfmServerSchemeMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.matches(
+          property: r'tfmServerScheme',
+          wildcard: pattern,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  tfmServerSchemeIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'tfmServerScheme', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  tfmServerSchemeIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(property: r'tfmServerScheme', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
   tfmServerUrlEqualTo(String value, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
@@ -1239,6 +1610,147 @@ extension AppSettingsQueryFilter
       );
     });
   }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  themeModeEqualTo(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'themeMode',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  themeModeGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'themeMode',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  themeModeLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'themeMode',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  themeModeBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'themeMode',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  themeModeStartsWith(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.startsWith(
+          property: r'themeMode',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  themeModeEndsWith(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.endsWith(
+          property: r'themeMode',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  themeModeContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.contains(
+          property: r'themeMode',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  themeModeMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.matches(
+          property: r'themeMode',
+          wildcard: pattern,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  themeModeIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'themeMode', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+  themeModeIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(property: r'themeMode', value: ''),
+      );
+    });
+  }
 }
 
 extension AppSettingsQueryObject
@@ -1249,6 +1761,33 @@ extension AppSettingsQueryLinks
 
 extension AppSettingsQuerySortBy
     on QueryBuilder<AppSettings, AppSettings, QSortBy> {
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy> sortByAgronomicDayEnd() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'agronomicDayEnd', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+  sortByAgronomicDayEndDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'agronomicDayEnd', Sort.desc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+  sortByAgronomicDayStart() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'agronomicDayStart', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+  sortByAgronomicDayStartDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'agronomicDayStart', Sort.desc);
+    });
+  }
+
   QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
   sortByAlwaysForceInference() {
     return QueryBuilder.apply(this, (query) {
@@ -1298,6 +1837,18 @@ extension AppSettingsQuerySortBy
   sortByInvertModelOutputDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'invertModelOutput', Sort.desc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy> sortByIsFirstTime() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isFirstTime', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy> sortByIsFirstTimeDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isFirstTime', Sort.desc);
     });
   }
 
@@ -1378,6 +1929,20 @@ extension AppSettingsQuerySortBy
     });
   }
 
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+  sortBySyncScheduleHours() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'syncScheduleHours', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+  sortBySyncScheduleHoursDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'syncScheduleHours', Sort.desc);
+    });
+  }
+
   QueryBuilder<AppSettings, AppSettings, QAfterSortBy> sortByTfmServerApiKey() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'tfmServerApiKey', Sort.asc);
@@ -1404,6 +1969,19 @@ extension AppSettingsQuerySortBy
     });
   }
 
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy> sortByTfmServerScheme() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'tfmServerScheme', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+  sortByTfmServerSchemeDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'tfmServerScheme', Sort.desc);
+    });
+  }
+
   QueryBuilder<AppSettings, AppSettings, QAfterSortBy> sortByTfmServerUrl() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'tfmServerUrl', Sort.asc);
@@ -1416,10 +1994,49 @@ extension AppSettingsQuerySortBy
       return query.addSortBy(r'tfmServerUrl', Sort.desc);
     });
   }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy> sortByThemeMode() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'themeMode', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy> sortByThemeModeDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'themeMode', Sort.desc);
+    });
+  }
 }
 
 extension AppSettingsQuerySortThenBy
     on QueryBuilder<AppSettings, AppSettings, QSortThenBy> {
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy> thenByAgronomicDayEnd() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'agronomicDayEnd', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+  thenByAgronomicDayEndDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'agronomicDayEnd', Sort.desc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+  thenByAgronomicDayStart() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'agronomicDayStart', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+  thenByAgronomicDayStartDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'agronomicDayStart', Sort.desc);
+    });
+  }
+
   QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
   thenByAlwaysForceInference() {
     return QueryBuilder.apply(this, (query) {
@@ -1481,6 +2098,18 @@ extension AppSettingsQuerySortThenBy
   thenByInvertModelOutputDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'invertModelOutput', Sort.desc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy> thenByIsFirstTime() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isFirstTime', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy> thenByIsFirstTimeDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isFirstTime', Sort.desc);
     });
   }
 
@@ -1561,6 +2190,20 @@ extension AppSettingsQuerySortThenBy
     });
   }
 
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+  thenBySyncScheduleHours() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'syncScheduleHours', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+  thenBySyncScheduleHoursDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'syncScheduleHours', Sort.desc);
+    });
+  }
+
   QueryBuilder<AppSettings, AppSettings, QAfterSortBy> thenByTfmServerApiKey() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'tfmServerApiKey', Sort.asc);
@@ -1587,6 +2230,19 @@ extension AppSettingsQuerySortThenBy
     });
   }
 
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy> thenByTfmServerScheme() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'tfmServerScheme', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+  thenByTfmServerSchemeDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'tfmServerScheme', Sort.desc);
+    });
+  }
+
   QueryBuilder<AppSettings, AppSettings, QAfterSortBy> thenByTfmServerUrl() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'tfmServerUrl', Sort.asc);
@@ -1599,10 +2255,36 @@ extension AppSettingsQuerySortThenBy
       return query.addSortBy(r'tfmServerUrl', Sort.desc);
     });
   }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy> thenByThemeMode() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'themeMode', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy> thenByThemeModeDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'themeMode', Sort.desc);
+    });
+  }
 }
 
 extension AppSettingsQueryWhereDistinct
     on QueryBuilder<AppSettings, AppSettings, QDistinct> {
+  QueryBuilder<AppSettings, AppSettings, QDistinct>
+  distinctByAgronomicDayEnd() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'agronomicDayEnd');
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QDistinct>
+  distinctByAgronomicDayStart() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'agronomicDayStart');
+    });
+  }
+
   QueryBuilder<AppSettings, AppSettings, QDistinct>
   distinctByAlwaysForceInference() {
     return QueryBuilder.apply(this, (query) {
@@ -1626,6 +2308,12 @@ extension AppSettingsQueryWhereDistinct
   distinctByInvertModelOutput() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'invertModelOutput');
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QDistinct> distinctByIsFirstTime() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'isFirstTime');
     });
   }
 
@@ -1670,6 +2358,13 @@ extension AppSettingsQueryWhereDistinct
     });
   }
 
+  QueryBuilder<AppSettings, AppSettings, QDistinct>
+  distinctBySyncScheduleHours() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'syncScheduleHours');
+    });
+  }
+
   QueryBuilder<AppSettings, AppSettings, QDistinct> distinctByTfmServerApiKey({
     bool caseSensitive = true,
   }) {
@@ -1687,11 +2382,30 @@ extension AppSettingsQueryWhereDistinct
     });
   }
 
+  QueryBuilder<AppSettings, AppSettings, QDistinct> distinctByTfmServerScheme({
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(
+        r'tfmServerScheme',
+        caseSensitive: caseSensitive,
+      );
+    });
+  }
+
   QueryBuilder<AppSettings, AppSettings, QDistinct> distinctByTfmServerUrl({
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'tfmServerUrl', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QDistinct> distinctByThemeMode({
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'themeMode', caseSensitive: caseSensitive);
     });
   }
 }
@@ -1701,6 +2415,18 @@ extension AppSettingsQueryProperty
   QueryBuilder<AppSettings, int, QQueryOperations> idProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'id');
+    });
+  }
+
+  QueryBuilder<AppSettings, int, QQueryOperations> agronomicDayEndProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'agronomicDayEnd');
+    });
+  }
+
+  QueryBuilder<AppSettings, int, QQueryOperations> agronomicDayStartProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'agronomicDayStart');
     });
   }
 
@@ -1727,6 +2453,12 @@ extension AppSettingsQueryProperty
   invertModelOutputProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'invertModelOutput');
+    });
+  }
+
+  QueryBuilder<AppSettings, bool, QQueryOperations> isFirstTimeProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'isFirstTime');
     });
   }
 
@@ -1768,6 +2500,12 @@ extension AppSettingsQueryProperty
     });
   }
 
+  QueryBuilder<AppSettings, int, QQueryOperations> syncScheduleHoursProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'syncScheduleHours');
+    });
+  }
+
   QueryBuilder<AppSettings, String, QQueryOperations>
   tfmServerApiKeyProperty() {
     return QueryBuilder.apply(this, (query) {
@@ -1781,9 +2519,22 @@ extension AppSettingsQueryProperty
     });
   }
 
+  QueryBuilder<AppSettings, String, QQueryOperations>
+  tfmServerSchemeProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'tfmServerScheme');
+    });
+  }
+
   QueryBuilder<AppSettings, String, QQueryOperations> tfmServerUrlProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'tfmServerUrl');
+    });
+  }
+
+  QueryBuilder<AppSettings, String, QQueryOperations> themeModeProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'themeMode');
     });
   }
 }

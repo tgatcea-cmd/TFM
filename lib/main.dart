@@ -71,7 +71,6 @@ class LocationNotifier extends StateNotifier<LocationSettings> {
   }
 }
 
-// ponytail: Reactive provider for configurable minimum humidity measurement
 final minHumidityProvider = StateNotifierProvider<MinHumidityNotifier, double>((ref) {
   return MinHumidityNotifier(ref.watch(dbProvider));
 });
@@ -85,6 +84,10 @@ class MinHumidityNotifier extends StateNotifier<double> {
     state = value;
   }
 }
+
+// Chart customizable parameters
+final forecastZoneStartHourProvider = StateProvider<int>((ref) => 19);
+final forecastZoneEndHourProvider = StateProvider<int>((ref) => 9);
 
 final bleServiceProvider = Provider<BleService>((ref) {
   final service = BleService(handshakeModule: PicoHandshakeModule());
@@ -214,7 +217,6 @@ enum SyncStage {
   connecting,
   pairing,
   refreshing,
-  waitingBypass,
   completed,
   failed,
 }
@@ -226,7 +228,6 @@ class SyncProgressState {
   final double refreshingProgress;
   final String statusMessage;
   final String? errorMessage;
-  final int hoursToWait;
 
   SyncProgressState({
     required this.stage,
@@ -235,7 +236,6 @@ class SyncProgressState {
     required this.refreshingProgress,
     required this.statusMessage,
     this.errorMessage,
-    this.hoursToWait = 0,
   });
 
   SyncProgressState copyWith({
@@ -245,7 +245,6 @@ class SyncProgressState {
     double? refreshingProgress,
     String? statusMessage,
     String? errorMessage,
-    int? hoursToWait,
   }) {
     return SyncProgressState(
       stage: stage ?? this.stage,
@@ -254,15 +253,12 @@ class SyncProgressState {
       refreshingProgress: refreshingProgress ?? this.refreshingProgress,
       statusMessage: statusMessage ?? this.statusMessage,
       errorMessage: errorMessage ?? this.errorMessage,
-      hoursToWait: hoursToWait ?? this.hoursToWait,
     );
   }
 }
 
 class ConnectionSyncProgressNotifier extends StateNotifier<SyncProgressState> {
   final Ref _ref;
-  final Map<String, DateTime> _lockouts = {};
-  Completer<bool>? _bypassCompleter;
 
   ConnectionSyncProgressNotifier(this._ref)
     : super(
@@ -283,58 +279,10 @@ class ConnectionSyncProgressNotifier extends StateNotifier<SyncProgressState> {
       refreshingProgress: 0.0,
       statusMessage: '',
     );
-    _bypassCompleter = null;
-  }
-
-  Future<bool> requestBypass(int hours, String deviceId) async {
-    _bypassCompleter = Completer<bool>();
-    state = state.copyWith(
-      stage: SyncStage.waitingBypass,
-      hoursToWait: hours,
-      statusMessage: 'Station has insufficient data ($hours hrs missing).',
-    );
-    final proceed = await _bypassCompleter!.future;
-    _bypassCompleter = null;
-    if (!proceed) {
-      _lockouts[deviceId] = DateTime.now().add(Duration(hours: hours));
-    }
-    return proceed;
-  }
-
-  void submitBypassDecision(bool proceed) {
-    if (_bypassCompleter != null && !_bypassCompleter!.isCompleted) {
-      _bypassCompleter!.complete(proceed);
-    }
   }
 
   Future<bool> startSequence(BluetoothDevice device) async {
     final bleService = _ref.read(bleServiceProvider);
-    final deviceId = device.remoteId.toString();
-
-    // Check lockout first
-    final lockoutUntil = _lockouts[deviceId];
-    if (lockoutUntil != null && DateTime.now().isBefore(lockoutUntil)) {
-      final remaining = lockoutUntil.difference(DateTime.now());
-      final hoursRemaining = (remaining.inSeconds / 3600.0).ceil();
-
-      _bypassCompleter = Completer<bool>();
-      state = SyncProgressState(
-        stage: SyncStage.waitingBypass,
-        connectingProgress: 0.0,
-        pairingProgress: 0.0,
-        refreshingProgress: 0.0,
-        hoursToWait: hoursRemaining,
-        statusMessage:
-            'Device has a pending wait time ($hoursRemaining hrs remaining).',
-      );
-
-      final proceed = await _bypassCompleter!.future;
-      _bypassCompleter = null;
-      if (!proceed) {
-        state = state.copyWith(stage: SyncStage.idle);
-        return false;
-      }
-    }
 
     state = SyncProgressState(
       stage: SyncStage.connecting,
@@ -501,150 +449,32 @@ class ConnectionSyncProgressNotifier extends StateNotifier<SyncProgressState> {
     BleService ble,
     List<double> hourly,
   ) async {
-    print('SyncOrchestrator: Starting BLE refresh sequence...');
+    // ponytail: One fast, linear sync matching testing_main.dart. No lockouts, no over-engineering.
+    state = state.copyWith(refreshingProgress: 0.2, statusMessage: 'Synchronizing time...');
+    await ble.syncTime(_ref.read(timeOffsetProvider));
 
-    state = state.copyWith(
-      refreshingProgress: 0.1,
-      statusMessage: 'Synchronizing time...',
-    );
-    final timeOffset = _ref.read(timeOffsetProvider);
-    await ble.syncTime(timeOffset);
-    await Future.delayed(const Duration(milliseconds: 100));
-
-    // Request raw history telemetry first to see if station has memory
-    state = state.copyWith(
-      refreshingProgress: 0.2,
-      statusMessage: 'Requesting raw history telemetry...',
-    );
-    final rawCompleter1 = Completer<void>();
-    final rawSub1 = ble.dataStream.listen((data) {
-      if (data is List && data.any((item) => item is Map && item['kind'] == 'soil_moisture')) {
-        rawCompleter1.complete();
-      }
-    });
-    await ble.requestData('raw');
-    await rawCompleter1.future.timeout(const Duration(seconds: 3)).catchError((_) {});
-    await rawSub1.cancel();
-    await Future.delayed(const Duration(milliseconds: 100));
-
-    // Check if we got any data. If not, station has no registry, so inject mock data.
-    final sinceMs = DateTime.now().add(Duration(hours: timeOffset)).subtract(const Duration(hours: 48)).millisecondsSinceEpoch;
-    final initialCount = db.getSoilHumidityCount(sinceMs);
-    if (initialCount == 0) {
-      state = state.copyWith(
-        refreshingProgress: 0.4,
-        statusMessage: 'Station has no registry. Injecting automatic mock data...',
-      );
-      await ble.forceMock72Hours();
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      // Request raw data again after mocking
-      state = state.copyWith(
-        refreshingProgress: 0.6,
-        statusMessage: 'Requesting mocked raw history telemetry...',
-      );
-      final rawCompleter2 = Completer<void>();
-      final rawSub2 = ble.dataStream.listen((data) {
-        if (data is List && data.any((item) => item is Map && item['kind'] == 'soil_moisture')) {
-          rawCompleter2.complete();
-        }
-      });
-      await ble.requestData('raw');
-      await rawCompleter2.future.timeout(const Duration(seconds: 5)).catchError((_) {});
-      await rawSub2.cancel();
-      await Future.delayed(const Duration(milliseconds: 100));
-    }
-
-    state = state.copyWith(
-      refreshingProgress: 0.7,
-      statusMessage: 'Sending weather forecast to station...',
-    );
+    state = state.copyWith(refreshingProgress: 0.4, statusMessage: 'Sending forecast...');
     if (appSettings.permitOpenMeteoFill && hourly.isNotEmpty) {
       await ble.sendHourlyForecast([], hourly);
-      await Future.delayed(const Duration(milliseconds: 300));
     }
 
-    // Data is already requested, we don't need to do it again here.
+    state = state.copyWith(refreshingProgress: 0.6, statusMessage: 'Requesting telemetry...');
+    final rawFuture = ble.dataStream.firstWhere((d) => d is List).timeout(const Duration(seconds: 10), onTimeout: () => []);
+    await ble.requestData('raw');
+    await rawFuture;
 
-    state = state.copyWith(
-      refreshingProgress: 0.9,
-      statusMessage: 'Checking data completeness...',
-    );
-    final debugTime = DateTime.now().add(Duration(hours: timeOffset));
-    final sinceMsForCheck = debugTime
-        .subtract(const Duration(hours: 48))
-        .millisecondsSinceEpoch;
-    final count = db.getSoilHumidityCount(sinceMsForCheck);
-    final allHistory = db.getSoilHumidityHistory();
-    print('SyncOrchestrator: sinceMs = $sinceMs (${DateTime.fromMillisecondsSinceEpoch(sinceMs)})');
-    print('SyncOrchestrator: Total SoilHumidityRecord count in DB = ${allHistory.length}');
-    if (allHistory.isNotEmpty) {
-      print('SyncOrchestrator: First record timestamp = ${allHistory.first.timestamp} (${DateTime.fromMillisecondsSinceEpoch(allHistory.first.timestamp)})');
-      print('SyncOrchestrator: Last record timestamp = ${allHistory.last.timestamp} (${DateTime.fromMillisecondsSinceEpoch(allHistory.last.timestamp)})');
-    }
-    print(
-      'SyncOrchestrator: Local SoilHumidityRecord count in last 48h = $count',
-    );
-
-    if (count < 48 && !appSettings.alwaysForceInference) {
-      final hoursToWait = 48 - count;
-      final proceed = await requestBypass(
-        hoursToWait,
-        ble.connectedDevice!.remoteId.toString(),
-      );
-      if (!proceed) {
-        throw Exception(
-          'Sync cancelled: Insufficient telemetry data ($hoursToWait hours missing).',
-        );
-      }
-    }
-
-    if (count < 48 && !appSettings.permitOpenMeteoFill) {
-      state = state.copyWith(
-        refreshingProgress: 0.9,
-        statusMessage: 'Sending fill average instruction...',
-      );
-      await ble.sendFillAverageInstruction();
-      await Future.delayed(const Duration(milliseconds: 300));
-    }
-
-    state = state.copyWith(
-      refreshingProgress: 0.95,
-      statusMessage: 'Requesting prediction telemetry...',
-    );
-    // Condition for inference: hour >= 19 or hour < 10 of debug time
-    final debugTimeForInfer = DateTime.now().add(Duration(hours: timeOffset));
-    final hour = debugTimeForInfer.hour;
-    final isWithinInferenceWindow = hour >= 19 || hour < 10;
-    
-    if (isWithinInferenceWindow) {
-      state = state.copyWith(
-        refreshingProgress: 0.9,
-        statusMessage: 'Triggering station machine learning inference...',
-      );
+    final hour = DateTime.now().add(Duration(hours: _ref.read(timeOffsetProvider))).hour;
+    if (hour >= 19 || hour < 10) {
+      state = state.copyWith(refreshingProgress: 0.8, statusMessage: 'Running ML inference...');
       await ble.triggerInference();
-      // Wait briefly for inference to finish on the IoT station (takes ~270ms on Pico 2 W)
-      await Future.delayed(const Duration(milliseconds: 500));
-    } else {
-      print('SyncOrchestrator: Skipping ML inference trigger outside 19:00-10:00 window (current debug hour: $hour)');
     }
 
-    // Fetch the new predictions
-    final predCompleter = Completer<void>();
-    final predSub = ble.dataStream.listen((data) {
-      if (data is List && data.any((item) => item is Map && item['kind'] == 'hs30_forecast')) {
-        predCompleter.complete();
-      }
-    });
+    state = state.copyWith(refreshingProgress: 0.9, statusMessage: 'Requesting predictions...');
+    final predFuture = ble.dataStream.firstWhere((d) => d is List).timeout(const Duration(seconds: 10), onTimeout: () => []);
     await ble.requestData('pred');
-    await predCompleter.future.timeout(const Duration(seconds: 5)).catchError((_) {});
-    await predSub.cancel();
-    await Future.delayed(const Duration(milliseconds: 100));
-    
-    state = state.copyWith(
-      refreshingProgress: 1.0,
-      statusMessage: 'Synchronized.',
-    );
+    await predFuture;
+
+    state = state.copyWith(refreshingProgress: 1.0, statusMessage: 'Synchronized.');
   }
 }
 

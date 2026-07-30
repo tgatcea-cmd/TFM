@@ -9,7 +9,7 @@ import 'core/db/sync_service.dart';
 import 'core/api/open_meteo_client.dart';
 import 'data/models/models.dart';
 import 'data/models/device.dart';
-import 'ui/separate_charts.dart';
+import 'ui/widgets/charts/unified_chart.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -60,6 +60,7 @@ class _TestingMainPageState extends State<TestingMainPage> {
   List<double> _radiationForecast = [];
   List<SoilHumidityRecord> _humidityHistory = [];
   List<PredictionRecord> _predictions = [];
+  List<double> _temperatureForecast = [];
 
   int _hourOffset = 0;
 
@@ -287,12 +288,20 @@ class _TestingMainPageState extends State<TestingMainPage> {
        }
     }
 
+    final List<double> tempForecast = [];
+    for (int i = 0; i < 24; i++) {
+       if (currentIndex + i < weatherData.temperature2m.length) {
+          tempForecast.add(weatherData.temperature2m[currentIndex + i]);
+       }
+    }
+
     if (mounted) {
       setState(() {
         _humidityHistory = humHistory;
         _predictions = preds;
         _weatherHistory = wHistory;
         _radiationForecast = radForecast;
+        _temperatureForecast = tempForecast;
       });
     }
   }
@@ -412,24 +421,19 @@ class _TestingMainPageState extends State<TestingMainPage> {
             const SizedBox(height: 24),
             
             if (_isConnected) ...[
-              const Text('3. Render Separate Charts', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const Text('3. Unified Chart Dashboard', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
-              SizedBox(
-                height: 300,
-                child: RadiationChart(
-                  weatherHistory: _weatherHistory,
-                  radiationForecast: _radiationForecast,
-                  timeOffsetHours: _hourOffset,
-                ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 300,
-                child: HumidityChart(
-                  history: _humidityHistory,
-                  predictions: _predictions,
-                  timeOffsetHours: _hourOffset,
-                ),
+              UnifiedChart(
+                history: _humidityHistory,
+                predictions: _predictions,
+                radiationForecast: _radiationForecast,
+                temperatureForecast: _temperatureForecast,
+                weatherHistory: _weatherHistory,
+                deviceHistory: const [], // empty for basic testing tool
+                minHumidity: widget.db.getMinHumidity(),
+                timeOffsetHours: _hourOffset,
+                forecastZoneStartHour: 19,
+                forecastZoneEndHour: 9,
               ),
               
               const SizedBox(height: 24),
