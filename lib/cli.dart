@@ -195,6 +195,11 @@ class _CliScreenState extends State<CliScreen> {
           _executeBleApiCall('requestStationData', () => widget.routines.requestStationData('raw', limit: 150));
           return true;
         }
+        // ponytail: Migrated 'p' keystroke to entry screen when connected
+        if (event.character == 'p') {
+          _executeBleApiCall('fetchLatestPredictionFromConnectedDevice', () => widget.routines.fetchLatestPredictionFromConnectedDevice());
+          return true;
+        }
         if (event.character == 'f') {
           _executeBleApiCall('triggerStationInference', () => widget.routines.triggerStationInference());
           return true;
@@ -318,7 +323,7 @@ class _CliScreenState extends State<CliScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Available Station API Commands: [t] Sync Time | [s] Read Status | [c] Read Config | [m] Read Pinmap\n[d] Request Data | [f] Trigger Infer | [w] Send Weather | [x] Clear Storage | [b] Debug Mode | [k] Force Mock 72h',
+                'Available Station API Commands: [t] Sync Time | [s] Read Status | [c] Read Config | [m] Read Pinmap\n[d] Request Data | [p] Read Prediction | [f] Trigger Infer | [w] Send Weather | [x] Clear Storage | [b] Debug Mode | [k] Force Mock 72h',
                 style: TextStyle(color: Colors.yellowAccent, fontFamily: 'monospace', fontSize: 12),
               ),
             ],
@@ -345,6 +350,7 @@ class _CliScreenState extends State<CliScreen> {
           {'key': 'c', 'desc': 'Read Config'},
           {'key': 'm', 'desc': 'Read Pinmap'},
           {'key': 'd', 'desc': 'Request Data'},
+          {'key': 'p', 'desc': 'Read Prediction'},
           {'key': 'f', 'desc': 'Trigger Infer'},
           {'key': 'w', 'desc': 'Send Weather'},
           {'key': 'x', 'desc': 'Clear Storage'},
@@ -355,7 +361,6 @@ class _CliScreenState extends State<CliScreen> {
         return [
           {'key': 'n', 'desc': 'Re-scan BLE'},
           {'key': 's', 'desc': 'Select Device'},
-          {'key': 'p', 'desc': 'Read Prediction'},
         ];
       case ScreenMode.localDb:
         return [

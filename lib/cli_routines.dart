@@ -112,7 +112,13 @@ class CliRoutines {
   Future<bool> connectToDevice(BluetoothDevice device, String sharedSecret) async {
     print('Setting up handshake module with secret and connecting...');
     bleService.handshakeModule = PicoHandshakeModule(sharedSecret: sharedSecret);
-    return await bleService.connect(device);
+    final connected = await bleService.connect(device);
+    if (connected) {
+      // ponytail: ensure device entry exists in local DB upon connection
+      final name = device.platformName.isNotEmpty ? device.platformName : device.remoteId.str;
+      db.saveDeviceBasic(device.remoteId.str, name);
+    }
+    return connected;
   }
 
   /// Routine: Read station status and update local DB

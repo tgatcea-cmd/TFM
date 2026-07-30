@@ -174,39 +174,46 @@ class DatabaseService {
   bool upsertTelemetry(String deviceId, List<HistoricValue> newValues, {bool isFromCloud = false}) {
     bool hasChanges = false;
     isar.writeTxnSync(() {
-      final dev = isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
-      if (dev != null) {
-        final existingList = List<HistoricValue>.from(dev.historicValues);
+      var dev = isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
+      if (dev == null) {
+        // ponytail: auto-create device entry if missing so it is persisted & displayed in local DB
+        dev = Device()
+          ..deviceIdentifier = deviceId
+          ..name = deviceId
+          ..handshakePassword = ''
+          ..isSynced = isFromCloud;
+        hasChanges = true;
+      }
+      final existingList = List<HistoricValue>.from(dev.historicValues);
+      
+      for (var incoming in newValues) {
+        if (incoming.tsMs == null) continue;
         
-        for (var incoming in newValues) {
-          if (incoming.tsMs == null) continue;
-          
-          final index = existingList.indexWhere((e) =>
-              e.tsMs == incoming.tsMs && e.depthCm == incoming.depthCm && e.kind == incoming.kind);
-          
-          if (index != -1) {
-            if (existingList[index].value != incoming.value) {
-              existingList[index].value = incoming.value;
-              existingList[index].kind = incoming.kind ?? existingList[index].kind;
-              existingList[index].port = incoming.port ?? existingList[index].port;
-              hasChanges = true;
-            }
-          } else {
-            existingList.add(incoming);
+        final index = existingList.indexWhere((e) =>
+            e.tsMs == incoming.tsMs && e.depthCm == incoming.depthCm && e.kind == incoming.kind);
+        
+        if (index != -1) {
+          if (existingList[index].value != incoming.value) {
+            existingList[index].value = incoming.value;
+            existingList[index].kind = incoming.kind ?? existingList[index].kind;
+            existingList[index].port = incoming.port ?? existingList[index].port;
             hasChanges = true;
           }
+        } else {
+          existingList.add(incoming);
+          hasChanges = true;
         }
+      }
 
-        if (hasChanges || isFromCloud) {
-          dev.historicValues = existingList;
-          dev.updatedAt = DateTime.now();
-          if (!isFromCloud) {
-            dev.isSynced = false;
-          } else {
-            dev.isSynced = true;
-          }
-          isar.devices.putSync(dev);
+      if (hasChanges || isFromCloud) {
+        dev.historicValues = existingList;
+        dev.updatedAt = DateTime.now();
+        if (!isFromCloud) {
+          dev.isSynced = false;
+        } else {
+          dev.isSynced = true;
         }
+        isar.devices.putSync(dev);
       }
     });
     return hasChanges;
@@ -255,63 +262,82 @@ class DatabaseService {
 
   void markDeviceSynced(String deviceId) {
     isar.writeTxnSync(() {
-      final dev = isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
-      if (dev != null) {
-        dev.isSynced = true;
-        dev.latestSynchronizedTime = DateTime.now();
-        isar.devices.putSync(dev);
-      }
+      var dev = isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
+      // ponytail: auto-create device entry if missing
+      dev ??= Device()
+        ..deviceIdentifier = deviceId
+        ..name = deviceId
+        ..handshakePassword = '';
+      dev.isSynced = true;
+      dev.latestSynchronizedTime = DateTime.now();
+      dev.updatedAt = DateTime.now();
+      isar.devices.putSync(dev);
     });
   }
 
   void updateDeviceStatus(String deviceId, Map<String, dynamic> status, {bool isFromCloud = false}) {
     isar.writeTxnSync(() {
-      final dev = isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
-      if (dev != null) {
-        final lat = (status['lat'] ?? status['latitude'] as num?)?.toDouble();
-        final lon = (status['lon'] ?? status['longitude'] as num?)?.toDouble();
-        if (lat != null) dev.latitude = lat;
-        if (lon != null) dev.longitude = lon;
-        dev.latestSynchronizedTime = DateTime.now();
-        dev.updatedAt = DateTime.now();
-        if (isFromCloud) {
-          dev.isSynced = true;
-        } else {
-          dev.isSynced = false;
-        }
-        isar.devices.putSync(dev);
+      var dev = isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
+      // ponytail: auto-create device entry if missing
+      dev ??= Device()
+        ..deviceIdentifier = deviceId
+        ..name = deviceId
+        ..handshakePassword = ''
+        ..isSynced = isFromCloud;
+
+      final lat = (status['lat'] ?? status['latitude'] as num?)?.toDouble();
+      final lon = (status['lon'] ?? status['longitude'] as num?)?.toDouble();
+      if (lat != null) dev.latitude = lat;
+      if (lon != null) dev.longitude = lon;
+      dev.latestSynchronizedTime = DateTime.now();
+      dev.updatedAt = DateTime.now();
+      if (isFromCloud) {
+        dev.isSynced = true;
+      } else {
+        dev.isSynced = false;
       }
+      isar.devices.putSync(dev);
     });
   }
 
   void updateDeviceConfig(String deviceId, Map<String, dynamic> config) {
     isar.writeTxnSync(() {
-      final dev = isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
-      if (dev != null) {
-        dev.localInferenceCapabilities = config['infer_dev'] == true || config['local_inference'] == true;
-        dev.loraEnabled = config['lora_enabled'] == true;
-        dev.updatedAt = DateTime.now();
-        dev.isSynced = false;
-        isar.devices.putSync(dev);
-      }
+      var dev = isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
+      // ponytail: auto-create device entry if missing
+      dev ??= Device()
+        ..deviceIdentifier = deviceId
+        ..name = deviceId
+        ..handshakePassword = ''
+        ..isSynced = false;
+
+      dev.localInferenceCapabilities = config['infer_dev'] == true || config['local_inference'] == true;
+      dev.loraEnabled = config['lora_enabled'] == true;
+      dev.updatedAt = DateTime.now();
+      dev.isSynced = false;
+      isar.devices.putSync(dev);
     });
   }
 
   void updatePredictions(String deviceId, List<Prediction> predictions, {bool isFromCloud = false}) {
     isar.writeTxnSync(() {
-      final dev = isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
-      if (dev != null) {
-        dev.previousPredictions = List.from(dev.newPredictions);
-        dev.newPredictions = predictions;
-        dev.latestInferenceTriggerDate = DateTime.now();
-        dev.updatedAt = DateTime.now();
-        if (isFromCloud) {
-          dev.isSynced = true;
-        } else {
-          dev.isSynced = false;
-        }
-        isar.devices.putSync(dev);
+      var dev = isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
+      // ponytail: auto-create device entry if missing
+      dev ??= Device()
+        ..deviceIdentifier = deviceId
+        ..name = deviceId
+        ..handshakePassword = ''
+        ..isSynced = isFromCloud;
+
+      dev.previousPredictions = List.from(dev.newPredictions);
+      dev.newPredictions = predictions;
+      dev.latestInferenceTriggerDate = DateTime.now();
+      dev.updatedAt = DateTime.now();
+      if (isFromCloud) {
+        dev.isSynced = true;
+      } else {
+        dev.isSynced = false;
       }
+      isar.devices.putSync(dev);
     });
   }
 

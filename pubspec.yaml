@@ -23,7 +23,6 @@ dependencies:
   ##############################
 
   ### DATABASE ###
-  #realm: ^20.2.0                    # Database managing.
   isar_community: ^3.3.2             # <-- Changed name & version
   isar_community_flutter_libs: ^3.3.2 # <-- Changed name & version
   path_provider: ^2.1.2

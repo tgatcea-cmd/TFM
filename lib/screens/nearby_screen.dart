@@ -215,17 +215,12 @@ class _NearbyScreenState extends State<NearbyScreen> {
       _searchNearby();
       return true;
     }
-    if (event.character == 'p') {
-      if (!widget.routines.bleService.isConnected) {
-        setState(() => _statusMsg = 'No BLE device connected.');
-      } else {
-        setState(() => _statusMsg = 'Requesting prediction from connected device...');
-        widget.routines.fetchLatestPredictionFromConnectedDevice().then((result) {
-          if (mounted) setState(() => _statusMsg = result);
-        }).catchError((err) {
-          if (mounted) setState(() => _statusMsg = 'Error reading prediction: $err');
-        });
-      }
+    if (event.character == 's') {
+      setState(() {
+        _isSelecting = true;
+        _selectionInput = '';
+        _statusMsg = 'Select device number:';
+      });
       return true;
     }
 
@@ -252,7 +247,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
         content += '[$i] $name (${d.device.remoteId})\n';
       }
     }
-    content += '\nShortcuts:\n  [n] Refresh/Scan  | [s] Select Device\n  [p] Read Stored Prediction  | [Alt+D] Disconnect\n  [ESC] Back to Main Menu\n';
+    content += '\nShortcuts:\n  [n] Refresh/Scan  | [s] Select Device  | [Alt+D] Disconnect\n  [ESC] Back to Main Menu\n';
 
     return KeyboardListener(
       focusNode: _focusNode,
