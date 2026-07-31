@@ -2,6 +2,7 @@ import "dart:async";
 import 'package:signals/signals.dart';
 import 'package:flutter/material.dart';
 import 'package:isar_community/isar.dart';
+import 'package:tfm_app/features/ble/ble_service.dart';
 import 'random_forest.dart' as rf;
 import 'package:tfm_app/core/database/app_database.dart';
 import 'package:tfm_app/core/models/device.dart';
@@ -67,9 +68,12 @@ class InferenceBridge {
     progress.value = 0.8;
     status.value = "Running RF Classifier...";
 
-    final refDate = latestPrediction.tsMs != null 
+    DateTime refDate = latestPrediction.tsMs != null 
         ? DateTime.fromMillisecondsSinceEpoch(latestPrediction.tsMs!)
-        : _db.getReferenceTime(device.deviceIdentifier);
+        : _db.getReferenceTime(device.deviceIdentifier, isConnected: BleService.instance?.isConnected ?? false);
+    if (refDate.isAfter(now)) {
+      refDate = now;
+    }
         
     final cutoffMs = refDate.subtract(const Duration(hours: 48)).millisecondsSinceEpoch;
 

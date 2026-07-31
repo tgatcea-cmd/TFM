@@ -27,7 +27,9 @@ class CliRoutines {
     // - bluetooth MUST BE enabled
     try {
       if (!await FlutterBluePlus.isSupported) {
-        print('CLI Routines Warning: Bluetooth is not supported on this platform.');
+        print(
+          'CLI Routines Warning: Bluetooth is not supported on this platform.',
+        );
       }
     } catch (e) {
       print('CLI Routines Warning: Failed to check Bluetooth support: $e');
@@ -74,15 +76,19 @@ class CliRoutines {
       print('No telemetry found for device.');
       return;
     }
-    
+
     // Map to the JSON format expected by the backend
-    final records = telemetry.map<Map<String, dynamic>>((v) => {
-      'tsMs': v.tsMs,
-      'port': v.port,
-      'kind': v.kind,
-      'value': v.value,
-      'depthCm': v.depthCm,
-    }).toList();
+    final records = telemetry
+        .map<Map<String, dynamic>>(
+          (v) => {
+            'tsMs': v.tsMs,
+            'port': v.port,
+            'kind': v.kind,
+            'value': v.value,
+            'depthCm': v.depthCm,
+          },
+        )
+        .toList();
 
     try {
       await cloudApi.syncTelemetryPush(records);
@@ -99,15 +105,6 @@ class CliRoutines {
     print('Inference finished. Verdict: ${inferenceBridge.status.value}');
   }
 
-
-
-
-
-
-
-
-
-
   /// Routine: Search for Nearby BLE Stations
   // Future<List<ScanResult>> searchNearbyDevices() async {
   //   print('Searching for nearby BLE devices...');
@@ -116,7 +113,6 @@ class CliRoutines {
   //   await bleService.stopScan();
   //   return bleService.cachedDevices;
   // }
-
 
   // // Routine: Connect to BLE Device
   // Future<bool> connectToDevice(BluetoothDevice device, String sharedSecret) async {
@@ -135,35 +131,28 @@ class CliRoutines {
     bleService.startScan();
   }
 
-  /// Routine: Connect to BLE Device                                   
-  Future<bool> connectToDevice(BluetoothDevice device, String sharedSecret) async {                                                  
-    // 1. ponytail: stop active scan before connecting to avoid BLE radio conflicts                                                        
-    await bleService.stopScan();                                          
-    // 2. ponytail: disconnect if already connected to a different device                                                                                                                                  
+  /// Routine: Connect to BLE Device
+  Future<bool> connectToDevice(
+    BluetoothDevice device,
+    String sharedSecret,
+  ) async {
+    // 1. ponytail: stop active scan before connecting to avoid BLE radio conflicts
+    await bleService.stopScan();
+    // 2. ponytail: disconnect if already connected to a different device
     print('Setting up handshake module with secret and connecting...');
-    bleService.handshakeModule = PicoHandshakeModule(sharedSecret: sharedSecret);                                                         
-    final connected = await bleService.connect(device);                
-    if (connected) {                                                   
-      final name = device.platformName.isNotEmpty ? device.platformName : device.remoteId.str;                                                 
-      db.saveDeviceBasic(device.remoteId.str, name);                   
-    }                                                                  
-    
-    return connected;                                                  
-  }                                                                    
-              
+    bleService.handshakeModule = PicoHandshakeModule(
+      sharedSecret: sharedSecret,
+    );
+    final connected = await bleService.connect(device);
+    if (connected) {
+      final name = device.platformName.isNotEmpty
+          ? device.platformName
+          : device.remoteId.str;
+      db.saveDeviceBasic(device.remoteId.str, name);
+    }
 
-
-
-
-
-
-
-
-
-
-
-
-
+    return connected;
+  }
 
   /// Routine: Read station status and update local DB
   Future<Map<String, dynamic>?> readStationStatus() async {
@@ -190,7 +179,9 @@ class CliRoutines {
   /// Routine: Request station telemetry data and save into local DB
   Future<Object?> requestStationData(String kind, {int? limit = 150}) async {
     final devId = bleService.connectedDevice?.remoteId.str;
-    final futureData = bleService.dataStream.first.timeout(const Duration(seconds: 4));
+    final futureData = bleService.dataStream.first.timeout(
+      const Duration(seconds: 4),
+    );
     await bleService.requestData(kind, limit: limit);
     try {
       final data = await futureData;
@@ -198,17 +189,28 @@ class CliRoutines {
         final List<HistoricValue> parsed = [];
         for (var item in data) {
           if (item is Map) {
-            parsed.add(HistoricValue()
-              ..tsMs = item['ts_ms'] as int? ?? item['tsMs'] as int? ?? item['hour_ms'] as int?
-              ..value = (item['value'] as num?)?.toDouble() ?? (item['mean'] as num?)?.toDouble()
-              ..depthCm = (item['depth_cm'] as num?)?.toDouble() ?? (item['depthCm'] as num?)?.toDouble()
-              ..kind = item['kind'] as String? ?? 'soil_moisture'
-              ..port = item['port'] as int?);
+            parsed.add(
+              HistoricValue()
+                ..tsMs =
+                    item['ts_ms'] as int? ??
+                    item['tsMs'] as int? ??
+                    item['hour_ms'] as int?
+                ..value =
+                    (item['value'] as num?)?.toDouble() ??
+                    (item['mean'] as num?)?.toDouble()
+                ..depthCm =
+                    (item['depth_cm'] as num?)?.toDouble() ??
+                    (item['depthCm'] as num?)?.toDouble()
+                ..kind = item['kind'] as String? ?? 'soil_moisture'
+                ..port = item['port'] as int?,
+            );
           }
         }
         if (parsed.isNotEmpty) {
           db.upsertTelemetry(devId, parsed, isFromCloud: false);
-          print('Persisted ${parsed.length} telemetry records to DB for $devId.');
+          print(
+            'Persisted ${parsed.length} telemetry records to DB for $devId.',
+          );
         }
       }
       return data;
@@ -221,23 +223,40 @@ class CliRoutines {
   /// Routine: Fetch weather forecast from Open-Meteo API, send to BLE station, and persist in local DB
   Future<void> sendHourlyForecast({DateTime? targetReferenceDate}) async {
     final devId = bleService.connectedDevice?.remoteId.str;
-    final refDate = targetReferenceDate ?? (devId != null ? db.getReferenceTime(devId) : DateTime.now());
+    final bool isConnected = bleService.isConnected;
+    final refDate =
+        targetReferenceDate ??
+        (devId != null
+            ? db.getReferenceTime(devId, isConnected: isConnected)
+            : DateTime.now());
     final now = DateTime.now();
-    final bool isEmulated = refDate.day != now.day || refDate.month != now.month || refDate.year != now.year;
+    final bool isEmulated =
+        refDate.day != now.day ||
+        refDate.month != now.month ||
+        refDate.year != now.year;
 
     if (isEmulated) {
       print('=== [EMULATION NOTICE] ===');
-      print('Operating relative to historical device reference timestamp: $refDate (Target Date: ${refDate.toIso8601String().split('T')[0]})');
+      print(
+        'Operating relative to historical device reference timestamp: $refDate (Target Date: ${refDate.toIso8601String().split('T')[0]})',
+      );
       print('==========================');
     }
 
     print('Fetching location settings...');
     final loc = db.getLocationSettings();
-    print('Fetching weather forecast for (${loc.latitude}, ${loc.longitude}) for reference timestamp $refDate via Open-Meteo...');
-    final client = OpenMeteoClient(latitude: loc.latitude, longitude: loc.longitude);
+    print(
+      'Fetching weather forecast for (${loc.latitude}, ${loc.longitude}) for reference timestamp $refDate via Open-Meteo...',
+    );
+    final client = OpenMeteoClient(
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+    );
     final weatherData = await client.fetchForecast(referenceDate: refDate);
 
-    print('Fetched ${weatherData.temperature2m.length} hourly temperature records.');
+    print(
+      'Fetched ${weatherData.temperature2m.length} hourly temperature records.',
+    );
     final temps = weatherData.temperature2m;
 
     List<double> past;
@@ -258,7 +277,9 @@ class CliRoutines {
       print('Persisted weather forecast records to DB for $devId.');
     }
 
-    print('Sending forecast (Past: ${past.length}h, Future: ${future.length}h) to BLE station...');
+    print(
+      'Sending forecast (Past: ${past.length}h, Future: ${future.length}h) to BLE station...',
+    );
     await bleService.sendHourlyForecast(past, future);
     print('Hourly forecast successfully transmitted to BLE station.');
   }
@@ -271,40 +292,52 @@ class CliRoutines {
 
     print('[BLE Routine] Requesting latest prediction stored on device...');
     try {
-      final streamFuture = bleService.dataStream.first.timeout(const Duration(seconds: 5));
+      final streamFuture = bleService.dataStream.first.timeout(
+        const Duration(seconds: 5),
+      );
       await bleService.requestData('pred', limit: 24);
       final rawData = await streamFuture;
-      
+
       print('[BLE Routine] Raw prediction payload received: $rawData');
-      
+
       final devId = bleService.connectedDevice?.remoteId.str;
       if (devId != null && devId.isNotEmpty) {
         final List<Prediction> parsedPreds = [];
         if (rawData is List) {
           for (var item in rawData) {
             if (item is Map) {
-              parsedPreds.add(Prediction()
-                ..tsMs = item['ts_ms'] as int? ?? item['tsMs'] as int?
-                ..value = (item['value'] as num?)?.toDouble()
-                ..depthCm = (item['depth_cm'] as num?)?.toDouble() ?? (item['depthCm'] as num?)?.toDouble()
-                ..kind = item['kind'] as String? ?? 'soil_humidity'
-                ..confidence = (item['confidence'] as num?)?.toDouble()
-                ..model = item['model'] as String? ?? 'LSTM');
+              parsedPreds.add(
+                Prediction()
+                  ..tsMs = item['ts_ms'] as int? ?? item['tsMs'] as int?
+                  ..value = (item['value'] as num?)?.toDouble()
+                  ..depthCm =
+                      (item['depth_cm'] as num?)?.toDouble() ??
+                      (item['depthCm'] as num?)?.toDouble()
+                  ..kind = item['kind'] as String? ?? 'soil_humidity'
+                  ..confidence = (item['confidence'] as num?)?.toDouble()
+                  ..model = item['model'] as String? ?? 'LSTM',
+              );
             }
           }
         } else if (rawData is Map) {
-          parsedPreds.add(Prediction()
-            ..tsMs = rawData['ts_ms'] as int? ?? rawData['tsMs'] as int?
-            ..value = (rawData['value'] as num?)?.toDouble()
-            ..depthCm = (rawData['depth_cm'] as num?)?.toDouble() ?? (rawData['depthCm'] as num?)?.toDouble()
-            ..kind = rawData['kind'] as String? ?? 'soil_humidity'
-            ..confidence = (rawData['confidence'] as num?)?.toDouble()
-            ..model = rawData['model'] as String? ?? 'LSTM');
+          parsedPreds.add(
+            Prediction()
+              ..tsMs = rawData['ts_ms'] as int? ?? rawData['tsMs'] as int?
+              ..value = (rawData['value'] as num?)?.toDouble()
+              ..depthCm =
+                  (rawData['depth_cm'] as num?)?.toDouble() ??
+                  (rawData['depthCm'] as num?)?.toDouble()
+              ..kind = rawData['kind'] as String? ?? 'soil_humidity'
+              ..confidence = (rawData['confidence'] as num?)?.toDouble()
+              ..model = rawData['model'] as String? ?? 'LSTM',
+          );
         }
 
         if (parsedPreds.isNotEmpty) {
           db.updatePredictions(devId, parsedPreds, isFromCloud: false);
-          print('[BLE Routine] Saved ${parsedPreds.length} prediction record(s) to local DB for $devId.');
+          print(
+            '[BLE Routine] Saved ${parsedPreds.length} prediction record(s) to local DB for $devId.',
+          );
         }
       }
       return 'Prediction: $rawData';
@@ -314,97 +347,180 @@ class CliRoutines {
     }
   }
 
-  /// Routine: Trigger station LSTM inference, poll for predictions, and persist in local DB (Steps 7-11)
+  /// Routine: Trigger LSTM inference based on station mode ('forward' vs 'local')
   Future<String> triggerStationInference() async {
     if (!bleService.isConnected) {
       throw Exception('No BLE device connected.');
     }
 
-    await sendHourlyForecast();
-
-    print('Step 7: Fetching latest prediction baseline from station...');
-    Object? initialPred;
-    try {
-      final initialFuture = bleService.dataStream.first.timeout(const Duration(seconds: 4));
-      await bleService.requestData('pred', limit: 24);
-      initialPred = await initialFuture;
-      print('Baseline prediction received: $initialPred');
-    } catch (_) {
-      print('Baseline prediction timeout/empty.');
-    }
-
-    print('Step 8: Sending inference trigger command...');
-    await bleService.triggerInference();
-
-    print('Steps 9 & 10: Polling station for new prediction result (up to 6 attempts)...');
-    Object? newPred = initialPred;
-    bool detectedNew = false;
-
-    for (int attempt = 1; attempt <= 6; attempt++) {
-      print('Polling attempt $attempt/6... waiting 3 seconds...');
-      await Future.delayed(const Duration(seconds: 3));
-
-      try {
-        final pollFuture = bleService.dataStream.first.timeout(const Duration(seconds: 4));
-        await bleService.requestData('pred', limit: 24);
-        final polledData = await pollFuture;
-
-        if (polledData.toString() != initialPred.toString()) {
-          newPred = polledData;
-          detectedNew = true;
-          print('>>> New inference result detected on attempt $attempt! <<<');
-          break;
-        }
-      } catch (_) {}
-    }
-
-    print('Step 11: Finalizing inference result...');
     final devId = bleService.connectedDevice?.remoteId.str;
-    if (devId != null && newPred != null) {
-      final List<Prediction> parsedPreds = [];
-      if (newPred is List) {
-        for (var item in newPred) {
-          if (item is Map) {
-            parsedPreds.add(Prediction()
-              ..tsMs = item['ts_ms'] as int? ?? item['tsMs'] as int?
-              ..value = (item['value'] as num?)?.toDouble()
-              ..depthCm = (item['depth_cm'] as num?)?.toDouble() ?? (item['depthCm'] as num?)?.toDouble()
-              ..kind = item['kind'] as String? ?? 'soil_humidity'
-              ..confidence = (item['confidence'] as num?)?.toDouble()
-              ..model = item['model'] as String? ?? 'LSTM');
+    if (devId == null) throw Exception('Device ID is null.');
+
+    print('Step 1: Reading station status to determine inference mode...');
+    // We reuse your existing readStationStatus() to get the latest state[cite: 2]
+    final status = await readStationStatus();
+    final mode = status?['mode'] as String? ?? 'local';
+    print('Station mode detected: $mode');
+
+    if (mode == 'forward') {
+      // =========================================================
+      // BRANCH A: "FORWARD" MODE (Inference on the App)
+      // =========================================================
+      print('=== FORWARD MODE INFERENCE ===');
+
+      print(
+        'Step 2 (Forward): Syncing latest telemetry from BLE device to local DB...',
+      );
+      // Ensure we have the latest raw data for the app-side LSTM[cite: 2]
+      await requestStationData('raw', limit: 150);
+
+      print('Step 3 (Forward): Fetching weather forecast for the local DB...');
+      final loc = db.getLocationSettings(); //[cite: 2]
+      final client = OpenMeteoClient(
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+      ); //[cite: 2]
+      final weatherData = await client.fetchForecast(
+        referenceDate: DateTime.now(),
+      ); //[cite: 2]
+
+      // Save weather so your new inference core can access it from the DB[cite: 2]
+      db.saveWeatherForecast(devId, weatherData);
+      print('Weather forecast updated in local DB.');
+
+      print('Step 4 (Forward): Triggering Local LSTM Inference Core...');
+
+      // TODO: Hook in your new inference API here!
+      // Example: await inferenceBridge.runLocalLstmInference(devId);
+
+      return 'Forward Inference Triggered (Executed locally on App)';
+    } else {
+      // =========================================================
+      // BRANCH B: "LOCAL" MODE (Inference on the BLE Station)
+      // =========================================================
+      print('=== LOCAL MODE INFERENCE ===');
+
+      print(
+        'Step 2 (Local): Fetching and transmitting latest weather forecast to station...',
+      );
+      try {
+        await sendHourlyForecast(); // Your existing weather transmission logic[cite: 2]
+        print('Weather forecast transmitted successfully.');
+      } catch (e) {
+        print('Failed to send weather forecast: $e');
+        throw Exception(
+          'Aborting inference: Could not send required weather data ($e)',
+        );
+      }
+
+      print(
+        'Step 3 (Local): Fetching latest prediction baseline from station...',
+      );
+      Object? initialPred;
+      try {
+        final initialFuture = bleService.dataStream.first.timeout(
+          const Duration(seconds: 4),
+        ); //[cite: 2]
+        await bleService.requestData('pred', limit: 24); //[cite: 2]
+        initialPred = await initialFuture;
+        print('Baseline prediction received: $initialPred');
+      } catch (_) {
+        print('Baseline prediction timeout/empty.');
+      }
+
+      print(
+        'Step 4 (Local): Sending inference trigger command to BLE device...',
+      );
+      await bleService.triggerInference(); //[cite: 2]
+
+      print(
+        'Steps 5 & 6 (Local): Polling station for new prediction result (up to 6 attempts)...',
+      );
+      Object? newPred = initialPred;
+      bool detectedNew = false;
+
+      for (int attempt = 1; attempt <= 6; attempt++) {
+        print('Polling attempt $attempt/6... waiting 3 seconds...');
+        await Future.delayed(const Duration(seconds: 3));
+
+        try {
+          final pollFuture = bleService.dataStream.first.timeout(
+            const Duration(seconds: 4),
+          ); //[cite: 2]
+          await bleService.requestData('pred', limit: 24); //[cite: 2]
+          final polledData = await pollFuture;
+
+          if (polledData.toString() != initialPred.toString()) {
+            newPred = polledData;
+            detectedNew = true;
+            print('>>> New inference result detected on attempt $attempt! <<<');
+            break;
+          }
+        } catch (_) {}
+      }
+
+      print('Step 7 (Local): Finalizing inference result...');
+      if (newPred != null) {
+        final List<Prediction> parsedPreds = [];
+        if (newPred is List) {
+          for (var item in newPred) {
+            if (item is Map) {
+              parsedPreds.add(
+                Prediction()
+                  ..tsMs = item['ts_ms'] as int? ?? item['tsMs'] as int?
+                  ..value = (item['value'] as num?)?.toDouble()
+                  ..depthCm =
+                      (item['depth_cm'] as num?)?.toDouble() ??
+                      (item['depthCm'] as num?)?.toDouble()
+                  ..kind = item['kind'] as String? ?? 'soil_humidity'
+                  ..confidence = (item['confidence'] as num?)?.toDouble()
+                  ..model = item['model'] as String? ?? 'LSTM',
+              ); //[cite: 2]
+            }
           }
         }
+        if (parsedPreds.isNotEmpty) {
+          db.updatePredictions(devId, parsedPreds); //[cite: 2]
+          print(
+            'Persisted ${parsedPreds.length} predictions to DB for $devId.',
+          ); //[cite: 2]
+        }
       }
-      if (parsedPreds.isNotEmpty) {
-        db.updatePredictions(devId, parsedPreds);
-        print('Persisted ${parsedPreds.length} predictions to DB for $devId.');
-      }
-    }
 
-    final resultStr = 'Inference Complete (${detectedNew ? "New Result Detected" : "Baseline Kept"}):\n$newPred';
-    print(resultStr);
-    return resultStr;
+      final resultStr =
+          'Local Inference Complete (${detectedNew ? "New Result Detected" : "Baseline Kept"}):\n$newPred'; //[cite: 2]
+      print(resultStr);
+      return resultStr;
+    }
   }
 
   /// Routine: Perform Cloud Emulation purely in RAM (dynamic memory) without mutating local Isar DB
-  Future<Map<String, dynamic>> emulateCloudRecommendationInMemory(String deviceId) async {
+  Future<Map<String, dynamic>> emulateCloudRecommendationInMemory(
+    String deviceId,
+  ) async {
     print('[Cloud Emulation RAM Verbose] === START RAM EMULATION ROUTINE ===');
     print('[Cloud Emulation RAM Verbose] Station ID: $deviceId');
-    
+
     // 1. Fetch station details (location / coordinates)
     double lat = 40.4168; // Default Madrid
     double lon = -3.7038;
     try {
       final status = await cloudApi.getStationStatus(deviceId);
-      print('[Cloud Emulation RAM Verbose] Station status payload from cloud: $status');
+      print(
+        '[Cloud Emulation RAM Verbose] Station status payload from cloud: $status',
+      );
       if (status['location'] is Map) {
         lat = (status['location']['lat'] as num?)?.toDouble() ?? lat;
         lon = (status['location']['lon'] as num?)?.toDouble() ?? lon;
       }
     } catch (e) {
-      print('[Cloud Emulation RAM Verbose] Station status fetch skipped/defaulted: $e');
+      print(
+        '[Cloud Emulation RAM Verbose] Station status fetch skipped/defaulted: $e',
+      );
     }
-    print('[Cloud Emulation RAM Verbose] Target Coordinates: Lat=$lat, Lon=$lon');
+    print(
+      '[Cloud Emulation RAM Verbose] Target Coordinates: Lat=$lat, Lon=$lon',
+    );
 
     // 2. Fetch latest predictions from Cloud
     double predHum = 0.30;
@@ -412,10 +528,14 @@ class CliRoutines {
 
     try {
       final cloudPreds = await cloudApi.syncPredictionsPull(deviceId, 0);
-      print('[Cloud Emulation RAM Verbose] Cloud predictions returned count: ${cloudPreds.length}');
+      print(
+        '[Cloud Emulation RAM Verbose] Cloud predictions returned count: ${cloudPreds.length}',
+      );
       if (cloudPreds.isNotEmpty) {
         final lastPred = cloudPreds.last;
-        print('[Cloud Emulation RAM Verbose] Latest cloud prediction raw record: $lastPred');
+        print(
+          '[Cloud Emulation RAM Verbose] Latest cloud prediction raw record: $lastPred',
+        );
         if (lastPred is Map) {
           predHum = (lastPred['value'] as num?)?.toDouble() ?? predHum;
           final tsMs = lastPred['tsMs'] as int?;
@@ -424,25 +544,35 @@ class CliRoutines {
           }
         }
       } else {
-        print('[Cloud Emulation RAM Verbose] No predictions returned from Cloud API. Defaulting to now ($refDate) and predHum=$predHum');
+        print(
+          '[Cloud Emulation RAM Verbose] No predictions returned from Cloud API. Defaulting to now ($refDate) and predHum=$predHum',
+        );
       }
     } catch (e) {
       print('[Cloud Emulation RAM Verbose] Prediction pull failed: $e');
     }
 
-    print('[Cloud Emulation RAM Verbose] Reference Timestamp: $refDate (ms: ${refDate.millisecondsSinceEpoch}) | Raw predHum: $predHum');
+    print(
+      '[Cloud Emulation RAM Verbose] Reference Timestamp: $refDate (ms: ${refDate.millisecondsSinceEpoch}) | Raw predHum: $predHum',
+    );
 
     // 3. Fetch weather for reference date using OpenMeteoClient
-    print('[Cloud Emulation RAM Verbose] Fetching 48h weather forecast from Open-Meteo for ($lat, $lon) relative to $refDate...');
+    print(
+      '[Cloud Emulation RAM Verbose] Fetching 48h weather forecast from Open-Meteo for ($lat, $lon) relative to $refDate...',
+    );
     final weatherClient = OpenMeteoClient(latitude: lat, longitude: lon);
     final weather = await weatherClient.fetchForecast(referenceDate: refDate);
-    print('[Cloud Emulation RAM Verbose] Open-Meteo returned ${weather.shortwaveRadiation.length} shortwave radiation hourly records.');
+    print(
+      '[Cloud Emulation RAM Verbose] Open-Meteo returned ${weather.shortwaveRadiation.length} shortwave radiation hourly records.',
+    );
 
     final double radSum = weather.shortwaveRadiation.isNotEmpty
         ? weather.shortwaveRadiation.reduce((a, b) => a + b)
         : 0.0;
 
-    print('[Cloud Emulation RAM Verbose] Calculated 48h Shortwave Radiation Sum: $radSum J/m²');
+    print(
+      '[Cloud Emulation RAM Verbose] Calculated 48h Shortwave Radiation Sum: $radSum J/m²',
+    );
 
     // 4. Run local Random Forest model in RAM
     final settings = db.getAppSettings();
@@ -454,7 +584,9 @@ class CliRoutines {
       verbosePrefix: '[Cloud RAM Verbose]',
     );
 
-    print('[Cloud Emulation RAM Verbose] Local RF Model Execution Finished in RAM! Verdict: ${result['verdict']}');
+    print(
+      '[Cloud Emulation RAM Verbose] Local RF Model Execution Finished in RAM! Verdict: ${result['verdict']}',
+    );
     print('[Cloud Emulation RAM Verbose] === END RAM EMULATION ROUTINE ===');
     return {
       'deviceIdentifier': deviceId,

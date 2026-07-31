@@ -237,10 +237,17 @@ class DatabaseService {
   }
 
   /// Calculates the reference timestamp of local device information.
-  /// Used to emulate and query weather/inference relative to historical data.
-  DateTime getReferenceTime(String deviceId) {
+  /// Prioritizes live real-time (DateTime.now()) if connected or recently synced,
+  /// otherwise falls back to historical telemetry timestamps.
+  DateTime getReferenceTime(String deviceId, {bool isConnected = false}) {
     final dev = isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
     if (dev == null) return DateTime.now();
+
+    final now = DateTime.now();
+    // ponytail: prioritize live time if connected or synced within last 2 hours
+    if (isConnected || (dev.latestSynchronizedTime != null && now.difference(dev.latestSynchronizedTime!).inHours < 2)) {
+      return now;
+    }
 
     int? maxTs;
     for (var h in dev.historicValues) {
@@ -250,7 +257,8 @@ class DatabaseService {
     }
 
     if (maxTs != null) {
-      return DateTime.fromMillisecondsSinceEpoch(maxTs);
+      final ref = DateTime.fromMillisecondsSinceEpoch(maxTs);
+      return ref.isAfter(now) ? now : ref;
     }
     return dev.latestSynchronizedTime ?? dev.updatedAt;
   }
