@@ -1,367 +1,470 @@
-import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 import 'package:tfm_app/cli_routines.dart';
+import 'package:tfm_app/core/database/db_sync.dart';
+import 'package:tfm_app/core/theme/app_styles.dart';
 
-class ConfigScreen extends StatefulWidget {
+class CloudScreen extends StatefulWidget {
   final CliRoutines routines;
   final VoidCallback onBack;
+  final Function(String) onStatusChange;
 
-  const ConfigScreen({super.key, required this.routines, required this.onBack, required void Function(String msg) onStatusChange});
+  const CloudScreen({
+    super.key,
+    required this.routines,
+    required this.onBack,
+    required this.onStatusChange,
+  });
 
   @override
-  State<ConfigScreen> createState() => _ConfigScreenState();
+  State<CloudScreen> createState() => _CloudScreenState();
 }
 
-class _ConfigScreenState extends State<ConfigScreen> {
-  final FocusNode _focusNode = FocusNode();
-
-  late String _cloudScheme;
-  late String _cloudUrl;
-  late int _cloudPort;
-  late int _agronomicDayStart; // Prediction start
-  late int _agronomicDayEnd; // Prediction end / Irrigation start - 1
-
-  bool _isEditingCloudIp = false;
-  String _inputBuffer = '';
-
-  String _openMeteoStatus = 'Checking...';
-  String _cloudPingStatus = 'Checking...';
-  String _statusMsg = '';
-
-  Timer? _clockTimer;
-  DateTime _now = DateTime.now();
-
-  late int _baseDayStart;
-  late int _baseDayEnd;
+class _CloudScreenState extends State<CloudScreen> {
+  List<dynamic> _cloudDevices = [];
+  int? _selectedIndex;
+  
+  bool _isLoadingDevices = false;
+  bool _isTesting = false;
+  bool _isSyncing = false;
+  bool _isEmulating = false;
+  
+  String _connStatus = 'UNKNOWN';
+  int _unsyncedDevicesCount = 0;
+  
+  // Replaced the string with a Map to feed our visual card
+  Map<String, dynamic>? _emulationResultMap;
 
   @override
   void initState() {
     super.initState();
-    _focusNode.requestFocus();
+    _checkStatus();
+    _loadCloudDevices();
+  }
 
-    final settings = widget.routines.db.getAppSettings();
-    _cloudScheme = settings.tfmServerScheme;
-    _cloudUrl = settings.tfmServerUrl;
-    _cloudPort = settings.tfmServerPort;
-    _agronomicDayStart = settings.agronomicDayStart;
-    _agronomicDayEnd = settings.agronomicDayEnd;
-    _baseDayStart = settings.agronomicDayStart;
-    _baseDayEnd = settings.agronomicDayEnd;
-
-    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) {
-        setState(() => _now = DateTime.now());
-      }
+  void _checkStatus() {
+    final devices = widget.routines.db.getSavedDevices();
+    setState(() {
+      _unsyncedDevicesCount = devices.where((d) => !d.isSynced).length;
     });
-
-    _checkOpenMeteo();
-    _checkCloudPing();
   }
 
-  // ponytail: enforce non-overlapping valid periods by auto-shifting the opposing boundary
-  void _adjustDayStart(int delta) {
-    final newVal = (_agronomicDayStart + delta) % 24;
-    final diff = ((newVal - _baseDayStart + 36) % 24) - 12;
-    if (diff.abs() <= 3) {
-      setState(() {
-        _agronomicDayStart = newVal;
-        // Ensure prediction & irrigation both maintain at least 1h window
-        if ((_agronomicDayStart - _agronomicDayEnd + 24) % 24 <= 1) {
-          _agronomicDayEnd = (_agronomicDayStart - 2 + 24) % 24;
-        }
-        _statusMsg =
-            'Prediction start: $_agronomicDayStart:00 (${diff >= 0 ? "+$diff" : "$diff"}h). Boundaries forced to prevent overlap.';
-      });
-    } else {
-      setState(
-        () => _statusMsg =
-            'Limit reached: Prediction start can only be adjusted ±3h from base ($_baseDayStart:00).',
-      );
-    }
-  }
-
-  void _adjustDayEnd(int delta) {
-    final newVal = (_agronomicDayEnd + delta) % 24;
-    final diff = ((newVal - _baseDayEnd + 36) % 24) - 12;
-    if (diff.abs() <= 3) {
-      setState(() {
-        _agronomicDayEnd = newVal;
-        // Ensure prediction & irrigation both maintain at least 1h window
-        if ((_agronomicDayStart - _agronomicDayEnd + 24) % 24 <= 1) {
-          _agronomicDayStart = (_agronomicDayEnd + 2) % 24;
-        }
-        _statusMsg =
-            'Irrigation end: $_agronomicDayEnd:00 (${diff >= 0 ? "+$diff" : "$diff"}h). Boundaries forced to prevent overlap.';
-      });
-    } else {
-      setState(
-        () => _statusMsg =
-            'Limit reached: Irrigation end can only be adjusted ±3h from base ($_baseDayEnd:00).',
-      );
-    }
-  }
-
-  @override
-  void dispose() {
-    _clockTimer?.cancel();
-    _focusNode.dispose();
-    super.dispose();
-  }
-
-  Future<void> _checkOpenMeteo() async {
+  String _formatDateString(String isoString) {
     try {
-      final res = await http
-          .get(
-            Uri.parse(
-              'https://api.open-meteo.com/v1/forecast?latitude=40.4168&longitude=-3.7038&current_weather=true',
-            ),
-          )
-          .timeout(const Duration(seconds: 4));
+      final date = DateTime.parse(isoString);
+      return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year} '
+          '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return isoString;
+    }
+  }
+
+  Future<void> _loadCloudDevices() async {
+    if (_isLoadingDevices) return;
+    setState(() => _isLoadingDevices = true);
+    
+    try {
+      final devices = await widget.routines.cloudApi.getRegisteredDevices(); //[cite: 3]
       if (mounted) {
         setState(() {
-          _openMeteoStatus = (res.statusCode == 200)
-              ? 'OK (200)'
-              : 'Error (${res.statusCode})';
+          _cloudDevices = devices;
+          if (_selectedIndex != null && _selectedIndex! >= _cloudDevices.length) {
+            _selectedIndex = _cloudDevices.isNotEmpty ? 0 : null;
+          }
         });
       }
     } catch (_) {
-      if (mounted) {
-        setState(() => _openMeteoStatus = 'Offline / Failed');
-      }
+    } finally {
+      if (mounted) setState(() => _isLoadingDevices = false);
     }
   }
 
-  Future<void> _checkCloudPing() async {
-    setState(() => _cloudPingStatus = 'Testing...');
-    final sw = Stopwatch()..start();
+  Future<void> _testConnection() async {
+    if (_isTesting) return;
+    setState(() => _isTesting = true);
+    widget.onStatusChange('Testing connection to Cloud Server...');
 
-    for (final path in ['/health', '/api/ping']) {
-      try {
-        final res = await http.get(Uri.parse('$_cloudScheme://$_cloudUrl:$_cloudPort$path')).timeout(const Duration(seconds: 3));
-        if (res.statusCode == 200) {
-          final data = jsonDecode(res.body);
-          if (mounted) setState(() => _cloudPingStatus = '${data['status']?.toString().toUpperCase() ?? 'OK'} (${sw.elapsedMilliseconds} ms)');
-          return;
-        }
-      } catch (_) {}
-    }
-
-    if (mounted) setState(() => _cloudPingStatus = 'Unreachable / Failed');
-  }
-
-  void _saveConfiguration() {
-    widget.routines.db.saveAppSettings(
-      tfmServerScheme: _cloudScheme,
-      tfmServerUrl: _cloudUrl,
-      tfmServerPort: _cloudPort,
-      agronomicDayStart: _agronomicDayStart,
-      agronomicDayEnd: _agronomicDayEnd,
-    );
-    widget.routines.cloudApi.updateEndpoint(_cloudScheme, _cloudUrl, _cloudPort);
-    setState(() {
-      _statusMsg = 'Configuration applied and saved to database & live ApiClient!';
-    });
-  }
-
-  void _parseAndSetCloudEndpoint(String rawInput) {
-    if (rawInput.trim().isEmpty) return;
-    String input = rawInput.trim();
-    if (!input.contains('://')) {
-      input = '$_cloudScheme://$input';
-    }
     try {
-      final uri = Uri.parse(input);
-      if (uri.scheme.isNotEmpty) {
-        _cloudScheme = uri.scheme;
+      final success = await widget.routines.cloudApi.testConnection(); //[cite: 3]
+      if (mounted) {
+        setState(() {
+          _connStatus = success ? 'CONNECTED' : 'UNREACHABLE';
+        });
       }
-      if (uri.host.isNotEmpty) {
-        _cloudUrl = uri.host;
-      }
-      if (uri.hasPort) {
-        _cloudPort = uri.port;
-      }
-    } catch (_) {}
+      widget.onStatusChange(success
+          ? 'Cloud API server is online and responding.'
+          : 'Cloud API server returned no response or error.'); //[cite: 3]
+      await _loadCloudDevices();
+    } catch (e) {
+      if (mounted) setState(() => _connStatus = 'ERROR');
+      widget.onStatusChange('Cloud API test failed: $e');
+    } finally {
+      if (mounted) setState(() => _isTesting = false);
+    }
   }
 
-  bool _onKey(KeyEvent event) {
-    if (event is! KeyDownEvent) return false;
+  Future<void> _handleSync() async {
+    if (_isSyncing) return;
+    setState(() => _isSyncing = true);
+    widget.onStatusChange('Initiating Cloud Synchronization...');
 
-    if (_isEditingCloudIp) {
-      if (event.logicalKey == LogicalKeyboardKey.enter) {
+    try {
+      final syncService = SyncService(
+        db: widget.routines.db,
+        api: widget.routines.cloudApi,
+      );
+      await syncService.syncDirtyDevices(); //[cite: 3]
+      await syncService.discoverAndSyncCloudDevices(); //[cite: 3]
+      _checkStatus();
+      await _loadCloudDevices(); //[cite: 3]
+      widget.onStatusChange('Cloud sync finished.');
+    } catch (e) {
+      widget.onStatusChange('Cloud sync error: $e');
+    } finally {
+      if (mounted) setState(() => _isSyncing = false);
+    }
+  }
+
+  Future<void> _handleCloudEmulation() async {
+    if (_isEmulating) return;
+    if (_cloudDevices.isEmpty) {
+      await _loadCloudDevices(); //[cite: 3]
+    }
+
+    if (_cloudDevices.isEmpty) {
+      widget.onStatusChange('Emulation Aborted: No registered station found on Cloud server.'); //[cite: 3]
+      return;
+    }
+
+    if (_selectedIndex == null || _selectedIndex! >= _cloudDevices.length) {
+      widget.onStatusChange('No station selected! Please select a cloud station first.');
+      return;
+    }
+
+    final devMap = _cloudDevices[_selectedIndex!];
+    final devId = (devMap['deviceIdentifier'] ?? devMap['id'] ?? devMap['device_id'] ?? devMap['deviceId'] ?? 'pico_01').toString(); //[cite: 3]
+    final name = (devMap['name'] ?? devMap['deviceName'] ?? devId).toString(); //[cite: 3]
+
+    setState(() {
+      _isEmulating = true;
+      _emulationResultMap = null;
+    });
+    widget.onStatusChange('Executing Local RF Recommendation in RAM for [$name] ($devId)...');
+
+    try {
+      final result = await widget.routines.emulateCloudRecommendationInMemory(devId); //[cite: 3]
+      
+      if (mounted) {
         setState(() {
-          if (_inputBuffer.isNotEmpty) {
-            _parseAndSetCloudEndpoint(_inputBuffer);
-          }
-          _isEditingCloudIp = false;
-          _inputBuffer = '';
-          _statusMsg =
-              'Cloud endpoint updated to $_cloudScheme://$_cloudUrl:$_cloudPort. Press [a] to apply permanently.';
+          _emulationResultMap = result;
         });
-        _checkCloudPing();
-        return true;
-      } else if (event.logicalKey == LogicalKeyboardKey.escape) {
-        setState(() {
-          _isEditingCloudIp = false;
-          _inputBuffer = '';
-          _statusMsg = 'Cloud endpoint edit cancelled.';
-        });
-        return true;
-      } else if (event.logicalKey == LogicalKeyboardKey.backspace) {
-        setState(() {
-          if (_inputBuffer.isNotEmpty) {
-            _inputBuffer = _inputBuffer.substring(0, _inputBuffer.length - 1);
-          }
-        });
-        return true;
-      } else if (event.character != null &&
-          !event.character!.contains(RegExp(r'[\x00-\x1F]'))) {
-        setState(() {
-          _inputBuffer += event.character!;
-        });
-        return true;
       }
-      return false;
+      widget.onStatusChange('In-Memory Cloud Emulation Finished: ${result['verdict']}'); //[cite: 3]
+    } catch (e) {
+      widget.onStatusChange('In-Memory Cloud Emulation Error: $e'); //[cite: 3]
+    } finally {
+      if (mounted) setState(() => _isEmulating = false);
     }
+  }
 
-    if (event.logicalKey == LogicalKeyboardKey.escape) {
-      widget.onBack();
-      return true;
-    }
+  Widget _buildApiStatusCard() {
+    final settings = widget.routines.db.getAppSettings(); //[cite: 3]
+    final serverUrl = widget.routines.cloudApi.baseUrl; //[cite: 3]
+    final hasApiKey = settings.tfmServerApiKey.isNotEmpty; //[cite: 3]
 
-    if (event.character == 'c') {
-      setState(() {
-        _isEditingCloudIp = true;
-        _inputBuffer = '';
-        _statusMsg =
-            'Enter Cloud Endpoint (e.g. http://192.168.1.50:3000) or press Enter to keep current:';
-      });
-      return true;
-    }
+    final statusColor = _connStatus == 'CONNECTED'
+        ? Colors.greenAccent
+        : (_connStatus == 'UNREACHABLE' || _connStatus == 'ERROR'
+            ? Colors.redAccent
+            : Colors.yellowAccent); //[cite: 3]
 
-    if (event.character == 'i') {
-      _adjustDayEnd(1);
-      return true;
-    }
-    if (event.character == 'I' || event.character == 'u') {
-      _adjustDayEnd(-1);
-      return true;
-    }
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.black45,
+        border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.3)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'API CONNECTION STATUS',
+                style: TextStyle(
+                  color: Colors.greenAccent,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: AppStyles.consoleFontFamily,
+                ),
+              ),
+              Row(
+                children: [
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.network_ping),
+                    label: const Text('Test API'),
+                    onPressed: _isTesting ? null : _testConnection,
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.sync),
+                    label: Text('Sync ($_unsyncedDevicesCount dirty)'),
+                    onPressed: _isSyncing ? null : _handleSync,
+                  ),
+                ],
+              )
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Target Endpoint : $serverUrl',
+            style: const TextStyle(color: Colors.white, fontFamily: AppStyles.consoleFontFamily, fontSize: 13), //[cite: 3]
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'API Authorization: ${hasApiKey ? "Configured [OK]" : "Missing/Empty"}',
+            style: TextStyle(
+              color: hasApiKey ? Colors.greenAccent : Colors.orangeAccent,
+              fontFamily: AppStyles.consoleFontFamily, //[cite: 3]
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              const Text('Connection State : ', style: TextStyle(color: Colors.white, fontFamily: AppStyles.consoleFontFamily, fontSize: 13)), //[cite: 3]
+              Text(
+                _connStatus, //[cite: 3]
+                style: TextStyle(
+                  color: statusColor,
+                  fontFamily: AppStyles.consoleFontFamily,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
-    if (event.character == 'p') {
-      _adjustDayStart(1);
-      return true;
-    }
-    if (event.character == 'P' || event.character == 'o') {
-      _adjustDayStart(-1);
-      return true;
-    }
+  Widget _buildEmulationCard() {
+    if (_emulationResultMap == null) return const SizedBox.shrink();
 
-    if (event.character == 'a') {
-      _saveConfiguration();
-      return true;
-    }
+    final verdict = _emulationResultMap!['verdict'] as String? ?? 'UNKNOWN';
+    final predHum = _emulationResultMap!['predictedHumidity'] as double?;
+    final radSum = _emulationResultMap!['shortwaveRadiationSum48h'] as double?;
+    final refDate = _emulationResultMap!['referenceDate'] as String?;
 
-    return false;
+    final bool isIrrigate = verdict.toUpperCase().contains('IRRIGATE') && !verdict.toUpperCase().contains('DO NOT');
+    final color = isIrrigate ? Colors.blueAccent : Colors.cyanAccent;
+    final icon = isIrrigate ? Icons.water_drop : Icons.cloud_done;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        border: Border.all(color: color, width: 2),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 26),
+              const SizedBox(width: 12),
+              Text(
+                'IN-MEMORY CLOUD EMULATION',
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                  fontFamily: AppStyles.consoleFontFamily,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            verdict,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Divider(color: Colors.white24),
+          const SizedBox(height: 8),
+          if (predHum != null && radSum != null && refDate != null)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.water, color: Colors.white70, size: 16),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Predicted Base Humidity: ${(predHum * 100).toStringAsFixed(1)}%',
+                      style: const TextStyle(color: Colors.white70, fontFamily: AppStyles.consoleFontFamily, fontSize: 13),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(Icons.wb_sunny, color: Colors.white70, size: 16),
+                    const SizedBox(width: 8),
+                    Text(
+                      '48h Radiation Sum: ${radSum.toStringAsFixed(1)} J/m²',
+                      style: const TextStyle(color: Colors.white70, fontFamily: AppStyles.consoleFontFamily, fontSize: 13),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(Icons.access_time, color: Colors.white70, size: 16),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Reference Timestamp: ${_formatDateString(refDate)}',
+                      style: const TextStyle(color: Colors.white70, fontFamily: AppStyles.consoleFontFamily, fontSize: 13),
+                    ),
+                  ],
+                )
+              ],
+            )
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final day = _now.day.toString().padLeft(2, '0');
-    final month = _now.month.toString().padLeft(2, '0');
-    final year = _now.year.toString().substring(2);
-    final hour = _now.hour.toString().padLeft(2, '0');
-    final min = _now.minute.toString().padLeft(2, '0');
-    final dateStr =
-        '$day/$month/$year $hour:$min (${_now.millisecondsSinceEpoch})';
-
-    final locSettings = widget.routines.db.getLocationSettings();
-    final locStr =
-        'Lat: ${locSettings.latitude.toStringAsFixed(4)}, Lon: ${locSettings.longitude.toStringAsFixed(4)} (${locSettings.isGps ? 'GPS' : 'Manual'})';
-
-    final irrStart = (_agronomicDayEnd + 1) % 24;
-    final irrEnd = (_agronomicDayStart - 1 + 24) % 24;
-    final predStart = _agronomicDayStart;
-    final predEnd = _agronomicDayEnd;
-
-    final content =
-        '''
-=== CONFIGURATION MENU ===
-
-1. System Date & Time:
-   $dateStr
-
-2. Location Status:
-   $locStr
-
-3. Open-Meteo API Status:
-   $_openMeteoStatus
-
-4. Cloud Server Settings:
-   Endpoint: $_cloudScheme://$_cloudUrl:$_cloudPort
-   Ping Status: $_cloudPingStatus
-
-5. Agronomic Day Hours:
-   • Irrigation Period (Cyan Zone):  ${irrStart.toString().padLeft(2, '0')}hrs to ${irrEnd.toString().padLeft(2, '0')}hrs
-   • Prediction Period (Yellow Zone): ${predStart.toString().padLeft(2, '0')}hrs to ${predEnd.toString().padLeft(2, '0')}hrs
-
----------------------------------------------------------
-Shortcuts:
-  [c]       Configure Cloud Endpoint
-  [i] / [u] Adjust Irrigation Period (+1h / -1h, max ±3h)
-  [p] / [o] Adjust Prediction Period (+1h / -1h, max ±3h)
-  [a]       Apply & Save Configuration
-  [ESC]     Back to Entry Menu
-''';
-
-    return KeyboardListener(
-      focusNode: _focusNode,
-      onKeyEvent: _onKey,
-      autofocus: true,
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.greenAccent),
-              ),
-              child: Text(
-                content,
-                style: const TextStyle(
-                  color: Colors.greenAccent,
-                  fontFamily: 'monospace',
-                  fontSize: 16,
-                ),
-              ),
-            ),
+          Text(
+            'Cloud Services & Emulation',
+            style: Theme.of(context).textTheme.headlineSmall,
           ),
           const SizedBox(height: 16),
-          if (_isEditingCloudIp)
-            Text(
-              '> Cloud Endpoint: ${_inputBuffer.isNotEmpty ? _inputBuffer : "($_cloudScheme://$_cloudUrl:$_cloudPort)"}_',
-              style: const TextStyle(
-                color: Colors.yellowAccent,
-                fontFamily: 'monospace',
-                fontSize: 16,
-              ),
+
+          _buildApiStatusCard(),
+
+          const SizedBox(height: 16),
+          
+          if (_isTesting || _isSyncing || _isEmulating || _isLoadingDevices) //[cite: 3]
+            const Padding(
+              padding: EdgeInsets.only(bottom: 16.0),
+              child: LinearProgressIndicator(),
             ),
-          if (_statusMsg.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 8.0),
-              child: Text(
-                _statusMsg,
-                style: const TextStyle(
-                  color: Colors.cyanAccent,
-                  fontFamily: 'monospace',
-                  fontSize: 14,
-                ),
-              ),
-            ),
+
+          const Text(
+            'Registered Cloud Stations:',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          const SizedBox(height: 8),
+
+          Expanded(
+            child: _cloudDevices.isEmpty
+                ? Center(
+                    child: Text(
+                      'No registered stations found on Cloud Server.\nTest the connection or run a Sync.', //[cite: 3]
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey.shade600, fontSize: 16),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: _cloudDevices.length, //[cite: 3]
+                    itemBuilder: (context, index) {
+                      final devMap = _cloudDevices[index]; //[cite: 3]
+                      final isSelected = _selectedIndex == index; //[cite: 3]
+                      final devId = (devMap['deviceIdentifier'] ?? devMap['id'] ?? devMap['device_id'] ?? 'pico_$index').toString(); //[cite: 3]
+                      final name = (devMap['name'] ?? devMap['deviceName'] ?? devId).toString(); //[cite: 3]
+                      final lat = devMap['lat'] ?? devMap['latitude'] ?? 'N/A'; //[cite: 3]
+                      final lon = devMap['lon'] ?? devMap['longitude'] ?? 'N/A'; //[cite: 3]
+
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        shape: RoundedRectangleBorder(
+                          side: BorderSide(
+                            color: isSelected ? Colors.greenAccent : Colors.white12,
+                            width: isSelected ? 2 : 1,
+                          ),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: () {
+                            setState(() {
+                              _selectedIndex = index; //[cite: 3]
+                              _emulationResultMap = null;
+                            });
+                            widget.onStatusChange('Selected Cloud Station: $name'); //[cite: 3]
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.cloud,
+                                      color: isSelected ? Colors.greenAccent : Colors.white54,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Text(
+                                      name, //[cite: 3]
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: isSelected ? Colors.greenAccent : Colors.white,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      '($devId)', //[cite: 3]
+                                      style: const TextStyle(
+                                        color: Colors.grey,
+                                        fontFamily: AppStyles.consoleFontFamily,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Coordinates: Lat $lat, Lon $lon', //[cite: 3]
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontFamily: AppStyles.consoleFontFamily,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                if (isSelected) ...[
+                                  const SizedBox(height: 12),
+                                  ElevatedButton.icon(
+                                    icon: const Icon(Icons.memory),
+                                    label: const Text('Emulate Cloud Station'),
+                                    onPressed: _isEmulating ? null : _handleCloudEmulation,
+                                  ),
+                                  _buildEmulationCard(),
+                                ]
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
         ],
       ),
     );

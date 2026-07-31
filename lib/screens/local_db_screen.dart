@@ -1,9 +1,9 @@
-// ponytail: Minimal CLI Local DB Explorer & Inference runner
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:tfm_app/cli_routines.dart';
 import 'package:tfm_app/core/models/device.dart';
 import 'package:tfm_app/core/database/db_sync.dart';
+import 'package:tfm_app/core/theme/app_styles.dart';
 
 class LocalDbScreen extends StatefulWidget {
   final CliRoutines routines;
@@ -22,24 +22,18 @@ class LocalDbScreen extends StatefulWidget {
 }
 
 class _LocalDbScreenState extends State<LocalDbScreen> {
-  final FocusNode _focusNode = FocusNode();
   List<Device> _devices = [];
   int? _selectedIndex;
   bool _isSyncing = false;
   bool _isInferring = false;
-  String _inferenceResult = '';
+
+  // Stats for the active prediction recommendation card
+  Map<String, dynamic>? _predictionStats;
 
   @override
   void initState() {
     super.initState();
-    _focusNode.requestFocus();
     _loadDevices();
-  }
-
-  @override
-  void dispose() {
-    _focusNode.dispose();
-    super.dispose();
   }
 
   void _loadDevices() {
@@ -49,13 +43,43 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
         _selectedIndex = _devices.isNotEmpty ? 0 : null;
       }
     });
+
+    if (_selectedIndex != null && _selectedIndex! < _devices.length) {
+      _extractPredictionStats(_devices[_selectedIndex!]);
+    }
+  }
+
+  String _formatDate(int ms) {
+    final date = DateTime.fromMillisecondsSinceEpoch(ms);
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year} '
+        '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+  }
+
+  void _extractPredictionStats(Device dev, {String? overrideVerdict}) {
+    double? minHum;
+    int? minTs;
+
+    for (var p in dev.newPredictions) {
+      if (minHum == null || (p.value != null && p.value! < minHum)) {
+        minHum = p.value;
+        minTs = p.tsMs;
+      }
+    }
+
+    setState(() {
+      _predictionStats = {
+        'verdict':
+            overrideVerdict ?? widget.routines.inferenceBridge.status.value,
+        'minHumidity': minHum,
+        'minDateMs': minTs,
+        'predictionCount': dev.newPredictions.length,
+      };
+    });
   }
 
   Future<void> _handleSync() async {
     if (_isSyncing) return;
-    setState(() {
-      _isSyncing = true;
-    });
+    setState(() => _isSyncing = true);
     widget.onStatusChange('Syncing with Cloud API...');
 
     try {
@@ -63,11 +87,11 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
         db: widget.routines.db,
         api: widget.routines.cloudApi,
       );
-      
+
       // Push dirty devices first
       await syncService.syncDirtyDevices();
 
-      // Discover registered devices from cloud (populates local DB if empty)
+      // Discover registered devices from cloud
       await syncService.discoverAndSyncCloudDevices();
 
       // Pull latest telemetry for each existing device
@@ -81,221 +105,337 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
       }
 
       _loadDevices();
-      widget.onStatusChange('Cloud sync completed. Loaded ${_devices.length} devices from cloud/local DB.');
+      widget.onStatusChange(
+        'Cloud sync completed. Loaded ${_devices.length} devices from cloud/local DB.',
+      );
     } catch (e) {
-      widget.onStatusChange('Cloud Sync Error: Connection unavailable or failed ($e)');
+      widget.onStatusChange(
+        'Cloud Sync Error: Connection unavailable or failed ($e)',
+      );
     } finally {
-      if (mounted) {
-        setState(() {
-          _isSyncing = false;
-        });
-      }
+      if (mounted) setState(() => _isSyncing = false);
     }
   }
 
   Future<void> _handleInference() async {
     if (_selectedIndex == null || _selectedIndex! >= _devices.length) {
-      widget.onStatusChange('No device selected! Press [1-9] to select a device first.');
+      widget.onStatusChange('No device selected! Select a device first.');
       return;
     }
     if (_isInferring) return;
 
     final dev = _devices[_selectedIndex!];
-    setState(() {
-      _isInferring = true;
-      _inferenceResult = '';
-    });
-    widget.onStatusChange('Running Random Forest Inference for ${dev.name} (${dev.deviceIdentifier})...');
+    setState(() => _isInferring = true);
+    widget.onStatusChange(
+      'Running Random Forest Inference for ${dev.name} (${dev.deviceIdentifier})...',
+    );
 
     try {
       await widget.routines.runLocalInference(dev.deviceIdentifier);
       final verdict = widget.routines.inferenceBridge.status.value;
+
       if (mounted) {
-        setState(() {
-          _inferenceResult = verdict;
-        });
+        _extractPredictionStats(dev, overrideVerdict: verdict);
       }
       widget.onStatusChange('RF Inference Finished: $verdict');
     } catch (e) {
       widget.onStatusChange('Inference Failed: $e');
     } finally {
-      if (mounted) {
-        setState(() {
-          _isInferring = false;
-        });
-      }
+      if (mounted) setState(() => _isInferring = false);
     }
   }
 
   void _handleClearDb() {
-    widget.routines.clearLocalDatabase();
-    _loadDevices();
-    setState(() {
-      _inferenceResult = '';
-    });
-    widget.onStatusChange('Local DB records cleared successfully.');
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear Local Database?'),
+        content: const Text(
+          'This will delete all saved station telemetry and prediction records stored locally.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade900,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              widget.routines.clearLocalDatabase();
+              _loadDevices();
+              setState(() {
+                _selectedIndex = null;
+                _predictionStats = null;
+              });
+              widget.onStatusChange('Local DB records cleared successfully.');
+            },
+            child: const Text('Clear All Data'),
+          ),
+        ],
+      ),
+    );
   }
 
-  bool _onKey(KeyEvent event) {
-    if (event is! KeyDownEvent) return false;
+  // Visual Prediction Recommendation Card mirroring HomeScreen
+  Widget _buildPredictionCard() {
+    if (_predictionStats == null) return const SizedBox.shrink();
 
-    // Number keys 1-9 for selecting device
-    final char = event.character;
-    if (char != null && RegExp(r'^[1-9]$').hasMatch(char)) {
-      final idx = int.parse(char) - 1;
-      if (idx < _devices.length) {
-        setState(() {
-          _selectedIndex = idx;
-          _inferenceResult = '';
-        });
-        widget.onStatusChange('Selected device #${idx + 1}: ${_devices[idx].name}');
-        return true;
-      }
-    }
+    final verdict = _predictionStats!['verdict'] as String? ?? 'NOT CALCULATED';
+    final minHum = _predictionStats!['minHumidity'] as double?;
+    final minTs = _predictionStats!['minDateMs'] as int?;
 
-    if (event.logicalKey == LogicalKeyboardKey.keyS) {
-      _handleSync();
-      return true;
-    }
+    final bool isIrrigate =
+        verdict.toUpperCase().contains('IRRIGATE') &&
+        !verdict.toUpperCase().contains('DO NOT');
+    final color = isIrrigate ? Colors.blueAccent : Colors.greenAccent;
+    final icon = isIrrigate ? Icons.water_drop : Icons.eco;
 
-    if (event.logicalKey == LogicalKeyboardKey.keyR) {
-      _handleInference();
-      return true;
-    }
-
-    if (event.logicalKey == LogicalKeyboardKey.keyX) {
-      _handleClearDb();
-      return true;
-    }
-
-    if (event.logicalKey == LogicalKeyboardKey.escape) {
-      widget.onBack();
-      return true;
-    }
-
-    return false;
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        border: Border.all(color: color, width: 2),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 26),
+              const SizedBox(width: 12),
+              Text(
+                'RANDOM FOREST RECOMMENDATION',
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                  fontFamily: AppStyles.consoleFontFamily,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            verdict,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Divider(color: Colors.white24),
+          const SizedBox(height: 8),
+          if (minHum != null && minTs != null)
+            Row(
+              children: [
+                const Icon(Icons.show_chart, color: Colors.white70, size: 16),
+                const SizedBox(width: 8),
+                Text(
+                  'Minimum predicted humidity: ${(minHum * 100).toStringAsFixed(1)}%\nExpected at: ${_formatDate(minTs)}',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontFamily: AppStyles.consoleFontFamily,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            )
+          else
+            const Text(
+              'No predictions stored for this device yet.',
+              style: TextStyle(
+                color: Colors.white70,
+                fontFamily: AppStyles.consoleFontFamily,
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return KeyboardListener(
-      focusNode: _focusNode,
-      onKeyEvent: _onKey,
-      autofocus: true,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.greenAccent),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '=== LOCAL DATABASE DEVICE EXPLORER ===',
-              style: TextStyle(
-                color: Colors.greenAccent,
-                fontFamily: 'monospace',
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header & Top Actions
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Local DB Devices',
+                style: Theme.of(context).textTheme.headlineSmall,
               ),
-            ),
-            const SizedBox(height: 12),
-            if (_isSyncing || _isInferring)
-              const LinearProgressIndicator(
-                color: Colors.greenAccent,
-                backgroundColor: Colors.black26,
+              Row(
+                children: [
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.cloud_download),
+                    label: const Text('Sync Cloud'),
+                    onPressed: _isSyncing || _isInferring ? null : _handleSync,
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.delete_sweep),
+                    label: const Text('Clear DB'),
+                    style: ElevatedButton.styleFrom(
+                      foregroundColor: Colors.redAccent,
+                      side: const BorderSide(color: Colors.redAccent),
+                    ),
+                    onPressed: _isSyncing || _isInferring
+                        ? null
+                        : _handleClearDb,
+                  ),
+                ],
               ),
-            const SizedBox(height: 8),
-            if (_devices.isEmpty)
-              const Text(
-                'No saved devices found in Local DB.\nPair a BLE station or run sync with Cloud to populate.',
-                style: TextStyle(color: Colors.yellowAccent, fontFamily: 'monospace', fontSize: 14),
-              )
-            else
-              Expanded(
-                child: ListView.builder(
-                  itemCount: _devices.length,
-                  itemBuilder: (context, index) {
-                    final dev = _devices[index];
-                    final isSelected = _selectedIndex == index;
-                    final syncStatus = dev.isSynced ? '[SYNCED]' : '[UNSYNCED]';
-                    final syncColor = dev.isSynced ? Colors.greenAccent : Colors.orangeAccent;
-                    final telemetryCount = dev.historicValues.length;
+            ],
+          ),
+          const SizedBox(height: 12),
 
-                    return Container(
-                      margin: const EdgeInsets.symmetric(vertical: 4),
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: isSelected ? Colors.greenAccent.withValues(alpha: 0.15) : Colors.transparent,
-                        border: Border.all(
-                          color: isSelected ? Colors.greenAccent : Colors.white24,
+          if (_isSyncing || _isInferring)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 12.0),
+              child: LinearProgressIndicator(),
+            ),
+
+          // Device List / Details View
+          Expanded(
+            child: _devices.isEmpty
+                ? Center(
+                    child: Text(
+                      'No saved devices found in Local DB.\nPair a BLE station or run sync with Cloud to populate.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 16,
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: _devices.length,
+                    itemBuilder: (context, index) {
+                      final dev = _devices[index];
+                      final isSelected = _selectedIndex == index;
+                      final syncColor = dev.isSynced
+                          ? Colors.greenAccent
+                          : Colors.orangeAccent;
+
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        shape: RoundedRectangleBorder(
+                          side: BorderSide(
+                            color: isSelected
+                                ? Colors.greenAccent
+                                : Colors.white12,
+                            width: isSelected ? 2 : 1,
+                          ),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                '[${index + 1}] ',
-                                style: const TextStyle(
-                                  color: Colors.yellowAccent,
-                                  fontFamily: 'monospace',
-                                  fontWeight: FontWeight.bold,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: () {
+                            setState(() {
+                              _selectedIndex = index;
+                            });
+                            _extractPredictionStats(dev);
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.all(14.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.memory,
+                                      color: isSelected
+                                          ? Colors.greenAccent
+                                          : Colors.white54,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Text(
+                                      dev.name,
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: isSelected
+                                            ? Colors.greenAccent
+                                            : Colors.white,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      '(${dev.deviceIdentifier})',
+                                      style: const TextStyle(
+                                        color: Colors.grey,
+                                        fontFamily: AppStyles.consoleFontFamily,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: syncColor.withValues(alpha: 0.1),
+                                        border: Border.all(color: syncColor),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        dev.isSynced ? 'SYNCED' : 'UNSYNCED',
+                                        style: TextStyle(
+                                          color: syncColor,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          fontFamily:
+                                              AppStyles.consoleFontFamily,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                              Text(
-                                '${dev.name} (${dev.deviceIdentifier})',
-                                style: TextStyle(
-                                  color: isSelected ? Colors.greenAccent : Colors.white,
-                                  fontFamily: 'monospace',
-                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Telemetry Records: ${dev.historicValues.length}  |  Predictions: ${dev.newPredictions.length}'
+                                  '${dev.latitude != null ? "  |  Lat: ${dev.latitude?.toStringAsFixed(3)}, Lon: ${dev.longitude?.toStringAsFixed(3)}" : ""}',
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontFamily: AppStyles.consoleFontFamily,
+                                    fontSize: 12,
+                                  ),
                                 ),
-                              ),
-                              const Spacer(),
-                              Text(
-                                syncStatus,
-                                style: TextStyle(
-                                  color: syncColor,
-                                  fontFamily: 'monospace',
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '  Telemetry Records: $telemetryCount | Predictions: ${dev.newPredictions.length} | Lat: ${dev.latitude?.toStringAsFixed(3)}, Lon: ${dev.longitude?.toStringAsFixed(3)}',
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontFamily: 'monospace',
-                              fontSize: 12,
+
+                                // Expand details and prediction card if selected
+                                if (isSelected) ...[
+                                  const SizedBox(height: 12),
+                                  ElevatedButton.icon(
+                                    icon: const Icon(Icons.psychology),
+                                    label: const Text('Run RF Inference'),
+                                    onPressed: _isInferring
+                                        ? null
+                                        : _handleInference,
+                                  ),
+                                  _buildPredictionCard(),
+                                ],
+                              ],
                             ),
                           ),
-                          if (isSelected && _inferenceResult.isNotEmpty) ...[
-                            const SizedBox(height: 6),
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              color: Colors.cyanAccent.withValues(alpha: 0.15),
-                              child: Text(
-                                '>> RF INFERENCE VERDICT: $_inferenceResult',
-                                style: const TextStyle(
-                                  color: Colors.cyanAccent,
-                                  fontFamily: 'monospace',
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-          ],
-        ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }

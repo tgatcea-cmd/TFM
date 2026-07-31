@@ -314,11 +314,8 @@ class DatabaseService {
       if (lat != null) dev.latitude = lat;
       if (lon != null) dev.longitude = lon;
       dev.latestSynchronizedTime = DateTime.now();
-      dev.updatedAt = DateTime.now();
       if (isFromCloud) {
         dev.isSynced = true;
-      } else {
-        dev.isSynced = false;
       }
       isar.devices.putSync(dev);
     });
