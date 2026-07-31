@@ -2,6 +2,7 @@
 
 APP: abre la PANTALLA DE INICIO
 
+PANTALLA DE INICIO:
     Si no hay dispositivo conectado.
         ^n: abre PANTALLA NEARBY
         ^c: abre PANTALLA CLOUD
@@ -20,3 +21,6 @@ APP: abre la PANTALLA DE INICIO
         x: clear storage
         b: toggle debug
         k: force mock
+
+PANTALLA NEARBY:
+    

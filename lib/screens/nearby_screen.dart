@@ -8,7 +8,7 @@ class NearbyScreen extends StatefulWidget {
   final CliRoutines routines;
   final VoidCallback onBack;
 
-  const NearbyScreen({super.key, required this.routines, required this.onBack});
+  const NearbyScreen({super.key, required this.routines, required this.onBack, required void Function(String msg) onStatusChange});
 
   @override
   State<NearbyScreen> createState() => _NearbyScreenState();

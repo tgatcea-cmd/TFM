@@ -248,11 +248,6 @@ class DatabaseService {
         maxTs = h.tsMs;
       }
     }
-    for (var p in dev.newPredictions) {
-      if (p.tsMs != null && (maxTs == null || p.tsMs! > maxTs)) {
-        maxTs = p.tsMs;
-      }
-    }
 
     if (maxTs != null) {
       return DateTime.fromMillisecondsSinceEpoch(maxTs);

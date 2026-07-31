@@ -245,12 +245,12 @@ class _CliScreenState extends State<CliScreen> {
       case ScreenMode.nearby:
         return NearbyScreen(
           routines: widget.routines,
-          onBack: () => setState(() => _mode = ScreenMode.entry),
+          onBack: () => setState(() => _mode = ScreenMode.entry), onStatusChange: (String msg) {  },
         );
       case ScreenMode.config:
         return ConfigScreen(
           routines: widget.routines,
-          onBack: () => setState(() => _mode = ScreenMode.entry),
+          onBack: () => setState(() => _mode = ScreenMode.entry), onStatusChange: (String msg) {  },
         );
       case ScreenMode.localDb:
         return LocalDbScreen(

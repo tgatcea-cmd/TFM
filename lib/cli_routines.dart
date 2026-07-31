@@ -320,6 +320,8 @@ class CliRoutines {
       throw Exception('No BLE device connected.');
     }
 
+    await sendHourlyForecast();
+
     print('Step 7: Fetching latest prediction baseline from station...');
     Object? initialPred;
     try {

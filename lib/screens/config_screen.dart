@@ -9,7 +9,7 @@ class ConfigScreen extends StatefulWidget {
   final CliRoutines routines;
   final VoidCallback onBack;
 
-  const ConfigScreen({super.key, required this.routines, required this.onBack});
+  const ConfigScreen({super.key, required this.routines, required this.onBack, required void Function(String msg) onStatusChange});
 
   @override
   State<ConfigScreen> createState() => _ConfigScreenState();
