@@ -1,0 +1,22 @@
+# User Interaction
+
+APP: abre la PANTALLA DE INICIO
+
+    Si no hay dispositivo conectado.
+        ^n: abre PANTALLA NEARBY
+        ^c: abre PANTALLA CLOUD
+        ^l: abre PANTALLA LOCAL_DB
+        ^c: abre PANTALL CONFIGURACION
+
+    Si hay dispositivo conectado:  
+        t: sync time
+        s: read status
+        c: read config
+        m: read pinout
+        d: read data
+        p: read prediction
+        f: trigger inference
+        w: send weather
+        x: clear storage
+        b: toggle debug
+        k: force mock

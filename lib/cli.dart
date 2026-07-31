@@ -10,14 +10,16 @@ import 'package:tfm_app/screens/cloud_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   final routines = CliRoutines();
   await routines.init();
-  
-  runApp(MaterialApp(
-    debugShowCheckedModeBanner: false,
-    home: CliScreen(routines: routines),
-  ));
+
+  runApp(
+    MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: CliScreen(routines: routines),
+    ),
+  );
 }
 
 enum ScreenMode { entry, nearby, cloud, localDb, config }
@@ -45,10 +47,14 @@ class _CliScreenState extends State<CliScreen> {
     _focusNode.requestFocus();
 
     // Listen to BLE connection state changes to refresh UI
-    _connSub = widget.routines.bleService.connectionStateStream.listen((isConnected) {
+    _connSub = widget.routines.bleService.connectionStateStream.listen((
+      isConnected,
+    ) {
       if (mounted) {
         setState(() {
-          _statusMsg = isConnected ? 'BLE Device Connected.' : 'BLE Device Disconnected.';
+          _statusMsg = isConnected
+              ? 'BLE Device Connected.'
+              : 'BLE Device Disconnected.';
         });
       }
     });
@@ -83,12 +89,17 @@ class _CliScreenState extends State<CliScreen> {
     }
   }
 
-  Future<void> _executeBleApiCall(String name, Future<dynamic> Function() call) async {
+  Future<void> _executeBleApiCall(
+    String name,
+    Future<dynamic> Function() call,
+  ) async {
     _setStatus('Executing BLE API: $name...');
     _setConsoleOutput('Executing $name...');
     try {
       final res = await call();
-      _setConsoleOutput('API Call "$name" Result:\n${res ?? "Success (Void/No Output)"}');
+      _setConsoleOutput(
+        'API Call "$name" Result:\n${res ?? "Success (Void/No Output)"}',
+      );
       _setStatus('BLE API $name Completed.');
     } catch (e) {
       _setConsoleOutput('API Call "$name" Failed:\n$e');
@@ -148,7 +159,8 @@ class _CliScreenState extends State<CliScreen> {
     }
 
     // ESC -> Return to Main Entry Screen
-    if (event.logicalKey == LogicalKeyboardKey.escape && _mode != ScreenMode.entry) {
+    if (event.logicalKey == LogicalKeyboardKey.escape &&
+        _mode != ScreenMode.entry) {
       setState(() {
         _mode = ScreenMode.entry;
         _statusMsg = '';
@@ -157,69 +169,71 @@ class _CliScreenState extends State<CliScreen> {
     }
 
     // --- 2. ENTRY SCREEN SPECIFIC KEYSTROKES ---
-    if (_mode == ScreenMode.entry) {
-      if (!isConnected) {
-        // Disconnected Entry Shortcuts
-        if (event.character == 'n') {
-          setState(() => _mode = ScreenMode.nearby);
-          return true;
-        }
-        if (event.character == 'c') {
-          setState(() => _mode = ScreenMode.cloud);
-          return true;
-        }
-        if (event.character == 'l') {
-          setState(() => _mode = ScreenMode.localDb);
-          return true;
-        }
-      } else {
-        // Connected Entry Shortcuts (Direct BLE Service API Calls)
-        final ble = widget.routines.bleService;
-        if (event.character == 't') {
-          _executeBleApiCall('syncTime', () => ble.syncTime(0));
-          return true;
-        }
-        if (event.character == 's') {
-          _executeBleApiCall('readStationStatus', () => widget.routines.readStationStatus());
-          return true;
-        }
-        if (event.character == 'c') {
-          _executeBleApiCall('readStationConfig', () => widget.routines.readStationConfig());
-          return true;
-        }
-        if (event.character == 'm') {
-          _executeBleApiCall('readPinmap', () => ble.readPinmap());
-          return true;
-        }
-        if (event.character == 'd') {
-          _executeBleApiCall('requestStationData', () => widget.routines.requestStationData('raw', limit: 150));
-          return true;
-        }
-        // ponytail: Migrated 'p' keystroke to entry screen when connected
-        if (event.character == 'p') {
-          _executeBleApiCall('fetchLatestPredictionFromConnectedDevice', () => widget.routines.fetchLatestPredictionFromConnectedDevice());
-          return true;
-        }
-        if (event.character == 'f') {
-          _executeBleApiCall('triggerStationInference', () => widget.routines.triggerStationInference());
-          return true;
-        }
-        if (event.character == 'w') {
-          _executeBleApiCall('sendHourlyForecast', () => widget.routines.sendHourlyForecast());
-          return true;
-        }
-        if (event.character == 'x') {
-          _executeBleApiCall('clearStorage', () => ble.clearStorage());
-          return true;
-        }
-        if (event.character == 'b') {
-          _executeBleApiCall('toggleDebugMode', () => ble.toggleDebugMode());
-          return true;
-        }
-        if (event.character == 'k') {
-          _executeBleApiCall('forceMock', () => ble.forceMock());
-          return true;
-        }
+    if (_mode == ScreenMode.entry && isConnected) {
+      // Connected Entry Shortcuts (Direct BLE Service API Calls)
+      final ble = widget.routines.bleService;
+      if (event.character == 't') {
+        _executeBleApiCall('syncTime', () => ble.syncTime(0));
+        return true;
+      }
+      if (event.character == 's') {
+        _executeBleApiCall(
+          'readStationStatus',
+          () => widget.routines.readStationStatus(),
+        );
+        return true;
+      }
+      if (event.character == 'c') {
+        _executeBleApiCall(
+          'readStationConfig',
+          () => widget.routines.readStationConfig(),
+        );
+        return true;
+      }
+      if (event.character == 'm') {
+        _executeBleApiCall('readPinmap', () => ble.readPinmap());
+        return true;
+      }
+      if (event.character == 'd') {
+        _executeBleApiCall(
+          'requestStationData',
+          () => widget.routines.requestStationData('raw', limit: 150),
+        );
+        return true;
+      }
+      // ponytail: Migrated 'p' keystroke to entry screen when connected
+      if (event.character == 'p') {
+        _executeBleApiCall(
+          'fetchLatestPredictionFromConnectedDevice',
+          () => widget.routines.fetchLatestPredictionFromConnectedDevice(),
+        );
+        return true;
+      }
+      if (event.character == 'f') {
+        _executeBleApiCall(
+          'triggerStationInference',
+          () => widget.routines.triggerStationInference(),
+        );
+        return true;
+      }
+      if (event.character == 'w') {
+        _executeBleApiCall(
+          'sendHourlyForecast',
+          () => widget.routines.sendHourlyForecast(),
+        );
+        return true;
+      }
+      if (event.character == 'x') {
+        _executeBleApiCall('clearStorage', () => ble.clearStorage());
+        return true;
+      }
+      if (event.character == 'b') {
+        _executeBleApiCall('toggleDebugMode', () => ble.toggleDebugMode());
+        return true;
+      }
+      if (event.character == 'k') {
+        _executeBleApiCall('forceMock', () => ble.forceMock());
+        return true;
       }
     }
 
@@ -267,17 +281,31 @@ class _CliScreenState extends State<CliScreen> {
               children: [
                 Text(
                   '=== SAVIA IOT STATION CLI ===',
-                  style: TextStyle(color: Colors.greenAccent, fontFamily: 'monospace', fontSize: 18, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: Colors.greenAccent,
+                    fontFamily: 'monospace',
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 SizedBox(height: 24),
                 Text(
                   '[ Waiting for BLE Device Connection... ]',
-                  style: TextStyle(color: Colors.yellowAccent, fontFamily: 'monospace', fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: Colors.yellowAccent,
+                    fontFamily: 'monospace',
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 SizedBox(height: 12),
                 Text(
                   'No BLE station connected currently.\nUse [n] or [Alt+N] to open the Nearby Scanner and pair a Pico device.',
-                  style: TextStyle(color: Colors.white70, fontFamily: 'monospace', fontSize: 14),
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontFamily: 'monospace',
+                    fontSize: 14,
+                  ),
                 ),
               ],
             ),
@@ -305,7 +333,12 @@ class _CliScreenState extends State<CliScreen> {
               const SizedBox(height: 8),
               const Text(
                 '[ BLE API CONSOLE OUTPUT ]',
-                style: TextStyle(color: Colors.cyanAccent, fontFamily: 'monospace', fontSize: 13, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: Colors.cyanAccent,
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 6),
               Expanded(
@@ -316,7 +349,11 @@ class _CliScreenState extends State<CliScreen> {
                   child: SingleChildScrollView(
                     child: Text(
                       _bleConsoleOutput,
-                      style: const TextStyle(color: Colors.white, fontFamily: 'monospace', fontSize: 13),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontFamily: 'monospace',
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                 ),
@@ -324,7 +361,11 @@ class _CliScreenState extends State<CliScreen> {
               const SizedBox(height: 8),
               const Text(
                 'Available Station API Commands: [t] Sync Time | [s] Read Status | [c] Read Config | [m] Read Pinmap\n[d] Request Data | [p] Read Prediction | [f] Trigger Infer | [w] Send Weather | [x] Clear Storage | [b] Debug Mode | [k] Force Mock 72h',
-                style: TextStyle(color: Colors.yellowAccent, fontFamily: 'monospace', fontSize: 12),
+                style: TextStyle(
+                  color: Colors.yellowAccent,
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                ),
               ),
             ],
           ),
@@ -338,11 +379,7 @@ class _CliScreenState extends State<CliScreen> {
     switch (_mode) {
       case ScreenMode.entry:
         if (!isConnected) {
-          return [
-            {'key': 'n', 'desc': 'Nearby Scanner'},
-            {'key': 'c', 'desc': 'Cloud Status'},
-            {'key': 'l', 'desc': 'Local DB Explorer'},
-          ];
+          return [];
         }
         return [
           {'key': 't', 'desc': 'Sync Time'},
@@ -419,12 +456,54 @@ class _CliScreenState extends State<CliScreen> {
             ),
           ),
           const SizedBox(height: 6),
-          const Text('ESC   : Main Menu', style: TextStyle(color: Colors.white, fontFamily: 'monospace', fontSize: 13)),
-          const Text('Alt+D : Disconnect BLE', style: TextStyle(color: Colors.white, fontFamily: 'monospace', fontSize: 13)),
-          const Text('Alt+C : Config Menu', style: TextStyle(color: Colors.white, fontFamily: 'monospace', fontSize: 13)),
-          const Text('Alt+N : Nearby Scanner', style: TextStyle(color: Colors.white, fontFamily: 'monospace', fontSize: 13)),
-          const Text('Alt+L : Local DB', style: TextStyle(color: Colors.white, fontFamily: 'monospace', fontSize: 13)),
-          const Text('Alt+K : Cloud Services', style: TextStyle(color: Colors.white, fontFamily: 'monospace', fontSize: 13)),
+          const Text(
+            'ESC   : Main Menu',
+            style: TextStyle(
+              color: Colors.white,
+              fontFamily: 'monospace',
+              fontSize: 13,
+            ),
+          ),
+          const Text(
+            'Alt+D : Disconnect BLE',
+            style: TextStyle(
+              color: Colors.white,
+              fontFamily: 'monospace',
+              fontSize: 13,
+            ),
+          ),
+          const Text(
+            'Alt+C : Config Menu',
+            style: TextStyle(
+              color: Colors.white,
+              fontFamily: 'monospace',
+              fontSize: 13,
+            ),
+          ),
+          const Text(
+            'Alt+N : Nearby Scanner',
+            style: TextStyle(
+              color: Colors.white,
+              fontFamily: 'monospace',
+              fontSize: 13,
+            ),
+          ),
+          const Text(
+            'Alt+L : Local DB',
+            style: TextStyle(
+              color: Colors.white,
+              fontFamily: 'monospace',
+              fontSize: 13,
+            ),
+          ),
+          const Text(
+            'Alt+K : Cloud Services',
+            style: TextStyle(
+              color: Colors.white,
+              fontFamily: 'monospace',
+              fontSize: 13,
+            ),
+          ),
           const SizedBox(height: 16),
           Text(
             '--- SPECIFIC (${_mode.name.toUpperCase()}) ---',
@@ -436,31 +515,46 @@ class _CliScreenState extends State<CliScreen> {
             ),
           ),
           const SizedBox(height: 6),
-          ...specific.map((item) => Padding(
-                padding: const EdgeInsets.only(bottom: 4.0),
-                child: Row(
-                  children: [
-                    Text(
-                      '${item['key']!.padRight(5)} : ',
-                      style: const TextStyle(color: Colors.greenAccent, fontFamily: 'monospace', fontSize: 13, fontWeight: FontWeight.bold),
+          ...specific.map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: 4.0),
+              child: Row(
+                children: [
+                  Text(
+                    '${item['key']!.padRight(5)} : ',
+                    style: const TextStyle(
+                      color: Colors.greenAccent,
+                      fontFamily: 'monospace',
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
                     ),
-                    Expanded(
-                      child: Text(
-                        item['desc']!,
-                        style: const TextStyle(color: Colors.white, fontFamily: 'monospace', fontSize: 13),
-                        overflow: TextOverflow.ellipsis,
+                  ),
+                  Expanded(
+                    child: Text(
+                      item['desc']!,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontFamily: 'monospace',
+                        fontSize: 13,
                       ),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ],
-                ),
-              )),
+                  ),
+                ],
+              ),
+            ),
+          ),
           const Spacer(),
           Container(
             padding: const EdgeInsets.all(6),
             color: Colors.white10,
             child: Text(
               'Active Mode: ${_mode.name.toUpperCase()}',
-              style: const TextStyle(color: Colors.yellowAccent, fontFamily: 'monospace', fontSize: 11),
+              style: const TextStyle(
+                color: Colors.yellowAccent,
+                fontFamily: 'monospace',
+                fontSize: 11,
+              ),
             ),
           ),
         ],

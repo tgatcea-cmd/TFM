@@ -241,6 +241,9 @@ class BleService {
     try {
       print('Connecting to ${device.platformName}...');
       
+      if (_connectedDevice?.remoteId == device.remoteId) return true;      
+      if (_connectedDevice != null) await disconnect();   
+
       // WORKAROUND: Force unbond before connecting to ensure Android initiates 
       // an encrypted pairing flow every time. This prevents the Pico from 
       // instantly dropping unencrypted reconnects before Android can encrypt them.

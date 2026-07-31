@@ -99,27 +99,71 @@ class CliRoutines {
     print('Inference finished. Verdict: ${inferenceBridge.status.value}');
   }
 
+
+
+
+
+
+
+
+
+
   /// Routine: Search for Nearby BLE Stations
-  Future<List<ScanResult>> searchNearbyDevices() async {
-    print('Searching for nearby BLE devices...');
-    await bleService.startScan();
-    await Future.delayed(const Duration(seconds: 1));
-    await bleService.stopScan();
-    return bleService.cachedDevices;
+  // Future<List<ScanResult>> searchNearbyDevices() async {
+  //   print('Searching for nearby BLE devices...');
+  //   await bleService.startScan();
+  //   await Future.delayed(const Duration(seconds: 1));
+  //   await bleService.stopScan();
+  //   return bleService.cachedDevices;
+  // }
+
+
+  // // Routine: Connect to BLE Device
+  // Future<bool> connectToDevice(BluetoothDevice device, String sharedSecret) async {
+  //   print('Setting up handshake module with secret and connecting...');
+  //   bleService.handshakeModule = PicoHandshakeModule(sharedSecret: sharedSecret);
+  //   final connected = await bleService.connect(device);
+  //   if (connected) {
+  //     // ponytail: ensure device entry exists in local DB upon connection
+  //     final name = device.platformName.isNotEmpty ? device.platformName : device.remoteId.str;
+  //     db.saveDeviceBasic(device.remoteId.str, name);
+  //   }
+  //   return connected;
+  // }
+
+  void searchNearbyDevices() {
+    bleService.startScan();
   }
 
-  // Routine: Connect to BLE Device
-  Future<bool> connectToDevice(BluetoothDevice device, String sharedSecret) async {
+  /// Routine: Connect to BLE Device                                   
+  Future<bool> connectToDevice(BluetoothDevice device, String sharedSecret) async {                                                  
+    // 1. ponytail: stop active scan before connecting to avoid BLE radio conflicts                                                        
+    await bleService.stopScan();                                          
+    // 2. ponytail: disconnect if already connected to a different device                                                                                                                                  
     print('Setting up handshake module with secret and connecting...');
-    bleService.handshakeModule = PicoHandshakeModule(sharedSecret: sharedSecret);
-    final connected = await bleService.connect(device);
-    if (connected) {
-      // ponytail: ensure device entry exists in local DB upon connection
-      final name = device.platformName.isNotEmpty ? device.platformName : device.remoteId.str;
-      db.saveDeviceBasic(device.remoteId.str, name);
-    }
-    return connected;
-  }
+    bleService.handshakeModule = PicoHandshakeModule(sharedSecret: sharedSecret);                                                         
+    final connected = await bleService.connect(device);                
+    if (connected) {                                                   
+      final name = device.platformName.isNotEmpty ? device.platformName : device.remoteId.str;                                                 
+      db.saveDeviceBasic(device.remoteId.str, name);                   
+    }                                                                  
+    
+    return connected;                                                  
+  }                                                                    
+              
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   /// Routine: Read station status and update local DB
   Future<Map<String, dynamic>?> readStationStatus() async {
