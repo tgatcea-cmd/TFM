@@ -82,6 +82,7 @@ class SaviaLstmInferenceEngine {
       };
     }
 
+    db.sanitizeCorruptedFutureData(deviceId);
     final refDate = targetRefDate ?? db.getReferenceTime(deviceId);
     print('[Savia LSTM Engine] Reference Timestamp: $refDate');
 
@@ -113,16 +114,24 @@ class SaviaLstmInferenceEngine {
     _persistPredictions(device, refDate, unscaledPredictions);
 
     final double minHs30 = unscaledPredictions.reduce(min);
+    final int minIndex = unscaledPredictions.indexOf(minHs30);
+    final int minDateMs = refDate.millisecondsSinceEpoch + ((minIndex + 1) * 3600000);
     final double maxHs30 = unscaledPredictions.reduce(max);
     final double meanHs30 = unscaledPredictions.reduce((a, b) => a + b) / unscaledPredictions.length;
+    final String verdict = minHs30 < 0.75
+        ? 'IRRIGATE: Soil moisture threshold drop predicted'
+        : 'HEALTHY: Soil moisture level sufficient';
 
     print('[Savia LSTM Engine] Forecast Persisted: 24h predictions created.');
-    print('[Savia LSTM Engine] Summary -> Min HS30: ${minHs30.toStringAsFixed(4)}, Max HS30: ${maxHs30.toStringAsFixed(4)}, Mean: ${meanHs30.toStringAsFixed(4)}');
+    print('[Savia LSTM Engine] Summary -> Min HS30: ${minHs30.toStringAsFixed(4)} (Expected at ${DateTime.fromMillisecondsSinceEpoch(minDateMs)}), Max HS30: ${maxHs30.toStringAsFixed(4)}, Mean: ${meanHs30.toStringAsFixed(4)}');
     print('[Savia LSTM Engine] === END OFF-DEVICE LSTM INFERENCE ===');
 
     return {
       'code': SaviaLstmErrorCode.success,
       'message': '24-hour LSTM Soil Moisture forecast executed & stored.',
+      'verdict': verdict,
+      'minHumidity': minHs30,
+      'minDateMs': minDateMs,
       'predictions': unscaledPredictions,
       'minHs30': minHs30,
       'maxHs30': maxHs30,

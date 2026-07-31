@@ -236,31 +236,52 @@ class DatabaseService {
     }).toList();
   }
 
-  /// Calculates the reference timestamp of local device information.
-  /// Prioritizes live real-time (DateTime.now()) if connected or recently synced,
-  /// otherwise falls back to historical telemetry timestamps.
+  /// Calculates the valid reference timestamp of local device information.
+  /// Ignores corrupted/future timestamps (> DateTime.now()).
+  /// Uses the latest valid past telemetry timestamp from historicValues <= now,
+  /// falling back to live time if connected or recently synced.
   DateTime getReferenceTime(String deviceId, {bool isConnected = false}) {
     final dev = isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
     if (dev == null) return DateTime.now();
 
-    final now = DateTime.now();
-    // ponytail: prioritize live time if connected or synced within last 2 hours
-    if (isConnected || (dev.latestSynchronizedTime != null && now.difference(dev.latestSynchronizedTime!).inHours < 2)) {
-      return now;
-    }
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
 
-    int? maxTs;
+    // Filter out corrupted future timestamps (> now)
+    int? maxValidPastTs;
     for (var h in dev.historicValues) {
-      if (h.tsMs != null && (maxTs == null || h.tsMs! > maxTs)) {
-        maxTs = h.tsMs;
+      if (h.tsMs != null && h.tsMs! <= nowMs) {
+        if (maxValidPastTs == null || h.tsMs! > maxValidPastTs) {
+          maxValidPastTs = h.tsMs!;
+        }
       }
     }
 
-    if (maxTs != null) {
-      final ref = DateTime.fromMillisecondsSinceEpoch(maxTs);
-      return ref.isAfter(now) ? now : ref;
+    if (maxValidPastTs != null) {
+      return DateTime.fromMillisecondsSinceEpoch(maxValidPastTs);
     }
+
+    // If connected or recently synced, fall back to live time
+    if (isConnected || (dev.latestSynchronizedTime != null && DateTime.now().difference(dev.latestSynchronizedTime!).inHours < 2)) {
+      return DateTime.now();
+    }
+
     return dev.latestSynchronizedTime ?? dev.updatedAt;
+  }
+
+  /// Automatically prunes any corrupted future telemetry entries (> DateTime.now())
+  void sanitizeCorruptedFutureData(String deviceId) {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    isar.writeTxnSync(() {
+      final dev = isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
+      if (dev != null) {
+        final cleanHistoric = dev.historicValues.where((h) => h.tsMs != null && h.tsMs! <= nowMs).toList();
+        if (cleanHistoric.length != dev.historicValues.length) {
+          print('[DB Sanitizer] Pruned ${dev.historicValues.length - cleanHistoric.length} corrupted future telemetry entries.');
+          dev.historicValues = cleanHistoric;
+          isar.devices.putSync(dev);
+        }
+      }
+    });
   }
 
   void markDeviceSynced(String deviceId) {

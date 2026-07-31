@@ -100,12 +100,11 @@ class InferenceBridge {
     progress.value = 0.8;
     status.value = "Running RF Classifier...";
 
-    DateTime refDate = latestPrediction.tsMs != null 
-        ? DateTime.fromMillisecondsSinceEpoch(latestPrediction.tsMs!)
-        : _db.getReferenceTime(device.deviceIdentifier, isConnected: BleService.instance?.isConnected ?? false);
-    if (refDate.isAfter(now)) {
-      refDate = now;
-    }
+    _db.sanitizeCorruptedFutureData(device.deviceIdentifier);
+    DateTime refDate = _db.getReferenceTime(
+      device.deviceIdentifier,
+      isConnected: BleService.instance?.isConnected ?? false,
+    );
         
     final cutoffMs = refDate.subtract(const Duration(hours: 48)).millisecondsSinceEpoch;
 

@@ -24,6 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int? _clockOffsetMs;
   Timer? _clockTickTimer;
   bool _isFetchingStatus = false;
+  Map<String, dynamic>? _predictionStats;
 
   @override
   void initState() {
@@ -31,7 +32,10 @@ class _HomeScreenState extends State<HomeScreen> {
     // Listening to async BLE chunks[cite: 1]
     _dataSub = widget.routines.bleService.dataStream.listen((data) {
       if (mounted) {
-        setState(() => _consoleOutput = 'Received Async BLE Data:\n${_prettyFormatData(data)}');
+        setState(
+          () => _consoleOutput =
+              'Received Async BLE Data:\n${_prettyFormatData(data)}',
+        );
       }
     });
 
@@ -156,7 +160,15 @@ class _HomeScreenState extends State<HomeScreen> {
     widget.onStatusChange('Executing $name...');
     try {
       final res = await action();
-      setState(() => _consoleOutput = 'Result for $name:\n${_prettyFormatData(res)}');
+      setState(() {
+        if (name == 'triggerStationInference' && res is Map) {
+          _predictionStats = res as Map<String, dynamic>;
+          _consoleOutput =
+              'Result for $name:\n${_prettyFormatData(res['raw'] ?? res)}';
+        } else {
+          _consoleOutput = 'Result for $name:\n${_prettyFormatData(res)}';
+        }
+      });
       widget.onStatusChange('$name Completed.');
     } catch (e) {
       setState(() => _consoleOutput = 'Error during $name:\n$e');
@@ -234,6 +246,84 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildPredictionCard() {
+    if (_predictionStats == null) return const SizedBox.shrink();
+
+    final verdict = _predictionStats!['verdict'] as String? ?? 'UNKNOWN';
+    final minHum = _predictionStats!['minHumidity'] as double?;
+    final minTs = _predictionStats!['minDateMs'] as int?;
+
+    // Determine visual styling based on the RF verdict
+    final bool isIrrigate =
+        verdict.toUpperCase().contains('IRRIGATE') &&
+        !verdict.toUpperCase().contains('DO NOT');
+    final color = isIrrigate ? Colors.blueAccent : Colors.greenAccent;
+    final icon = isIrrigate ? Icons.water_drop : Icons.eco;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        border: Border.all(color: color, width: 2),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 28),
+              const SizedBox(width: 12),
+              Text(
+                'AI RECOMMENDATION',
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  fontFamily: AppStyles
+                      .consoleFontFamily, // Using your centralized theme[cite: 9, 10]
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            verdict,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Divider(color: Colors.white24),
+          const SizedBox(height: 8),
+          if (minHum != null && minTs != null)
+            Row(
+              children: [
+                const Icon(Icons.show_chart, color: Colors.white70, size: 16),
+                const SizedBox(width: 8),
+                Text(
+                  'Minimum predicted humidity: ${(minHum * 100).toStringAsFixed(1)}%\nExpected at: ${_formatDate(minTs)}',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontFamily: AppStyles.consoleFontFamily,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            )
+          else
+            const Text(
+              'No valid prediction time-series found in database.',
+              style: TextStyle(color: Colors.white70),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isConnected = widget.routines.bleService.isConnected;
@@ -284,7 +374,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     onTap: _handleSyncTime,
                     borderRadius: BorderRadius.circular(12),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.cyanAccent.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
@@ -293,7 +386,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.sync, size: 13, color: Colors.cyanAccent),
+                          const Icon(
+                            Icons.sync,
+                            size: 13,
+                            color: Colors.cyanAccent,
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             '${_getPrettifiedGap(_clockOffsetMs!)} gap',
@@ -356,6 +453,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
 
+          _buildPredictionCard(),
           _buildDebugPanel(),
 
           const SizedBox(height: 16),

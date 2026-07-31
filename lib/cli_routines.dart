@@ -347,8 +347,9 @@ class CliRoutines {
     }
   }
 
-  /// Routine: Trigger LSTM inference based on station mode ('forward' vs 'local')
-  Future<String> triggerStationInference() async {
+  /// Routine: Trigger LSTM inference based on station mode ('forward' vs 'local'),
+  /// then execute the Random Forest recommendation and extract minimums.
+  Future<Map<String, dynamic>> triggerStationInference() async {
     if (!bleService.isConnected) {
       throw Exception('No BLE device connected.');
     }
@@ -357,107 +358,72 @@ class CliRoutines {
     if (devId == null) throw Exception('Device ID is null.');
 
     print('Step 1: Reading station status to determine inference mode...');
-    // We reuse your existing readStationStatus() to get the latest state[cite: 2]
     final status = await readStationStatus();
     final mode = status?['mode'] as String? ?? 'local';
     print('Station mode detected: $mode');
 
-    if (mode == 'forward') {
-      // =========================================================
-      // BRANCH A: "FORWARD" MODE (Inference on the App)
-      // =========================================================
-      print('=== FORWARD MODE INFERENCE ===');
+    String modeMessage = "";
+    Object? rawPayload;
 
-      print(
-        'Step 2 (Forward): Syncing latest telemetry from BLE device to local DB...',
-      );
-      // Ensure we have the latest raw data for the app-side LSTM[cite: 2]
+    if (mode == 'forward') {
+      // --- FORWARD MODE ---
+      print('=== FORWARD MODE INFERENCE ===');
       await requestStationData('raw', limit: 150);
 
-      print('Step 3 (Forward): Fetching weather forecast for the local DB...');
-      final loc = db.getLocationSettings(); //[cite: 2]
+      final loc = db.getLocationSettings();
       final client = OpenMeteoClient(
         latitude: loc.latitude,
         longitude: loc.longitude,
-      ); //[cite: 2]
-      final weatherData = await client.fetchForecast(
-        referenceDate: DateTime.now(),
-      ); //[cite: 2]
-
-      // Save weather so your new inference core can access it from the DB[cite: 2]
-      db.saveWeatherForecast(devId, weatherData);
-      print('Weather forecast updated in local DB.');
-
-      print('Step 4 (Forward): Triggering Local LSTM Inference Core...');
-      final lstmResult = await inferenceBridge.runLocalLstmInference(devId);
-
-      return 'Forward Inference Completed (Executed locally on App): ${lstmResult["message"]}';
-    } else {
-      // =========================================================
-      // BRANCH B: "LOCAL" MODE (Inference on the BLE Station)
-      // =========================================================
-      print('=== LOCAL MODE INFERENCE ===');
-
-      print(
-        'Step 2 (Local): Fetching and transmitting latest weather forecast to station...',
       );
+      final refDate = db.getReferenceTime(devId);
+      final weatherData = await client.fetchForecast(
+        referenceDate: refDate,
+      );
+
+      db.saveWeatherForecast(devId, weatherData);
+
+      final lstmResult = await inferenceBridge.runLocalLstmInference(devId);
+      modeMessage = 'Forward Inference Executed';
+      rawPayload = lstmResult;
+    } else {
+      // --- LOCAL MODE ---
+      print('=== LOCAL MODE INFERENCE ===');
       try {
-        await sendHourlyForecast(); // Your existing weather transmission logic[cite: 2]
-        print('Weather forecast transmitted successfully.');
+        await sendHourlyForecast();
       } catch (e) {
-        print('Failed to send weather forecast: $e');
         throw Exception(
           'Aborting inference: Could not send required weather data ($e)',
         );
       }
 
-      print(
-        'Step 3 (Local): Fetching latest prediction baseline from station...',
-      );
       Object? initialPred;
       try {
         final initialFuture = bleService.dataStream.first.timeout(
           const Duration(seconds: 4),
-        ); //[cite: 2]
-        await bleService.requestData('pred', limit: 24); //[cite: 2]
+        );
+        await bleService.requestData('pred', limit: 24);
         initialPred = await initialFuture;
-        print('Baseline prediction received: $initialPred');
-      } catch (_) {
-        print('Baseline prediction timeout/empty.');
-      }
+      } catch (_) {}
 
-      print(
-        'Step 4 (Local): Sending inference trigger command to BLE device...',
-      );
-      await bleService.triggerInference(); //[cite: 2]
+      await bleService.triggerInference();
 
-      print(
-        'Steps 5 & 6 (Local): Polling station for new prediction result (up to 6 attempts)...',
-      );
       Object? newPred = initialPred;
-      bool detectedNew = false;
-
       for (int attempt = 1; attempt <= 6; attempt++) {
-        print('Polling attempt $attempt/6... waiting 3 seconds...');
         await Future.delayed(const Duration(seconds: 3));
-
         try {
           final pollFuture = bleService.dataStream.first.timeout(
             const Duration(seconds: 4),
-          ); //[cite: 2]
-          await bleService.requestData('pred', limit: 24); //[cite: 2]
+          );
+          await bleService.requestData('pred', limit: 24);
           final polledData = await pollFuture;
 
           if (polledData.toString() != initialPred.toString()) {
             newPred = polledData;
-            detectedNew = true;
-            print('>>> New inference result detected on attempt $attempt! <<<');
             break;
           }
         } catch (_) {}
       }
 
-      print('Step 7 (Local): Finalizing inference result...');
       if (newPred != null) {
         final List<Prediction> parsedPreds = [];
         if (newPred is List) {
@@ -473,23 +439,50 @@ class CliRoutines {
                   ..kind = item['kind'] as String? ?? 'soil_humidity'
                   ..confidence = (item['confidence'] as num?)?.toDouble()
                   ..model = item['model'] as String? ?? 'LSTM',
-              ); //[cite: 2]
+              );
             }
           }
         }
         if (parsedPreds.isNotEmpty) {
-          db.updatePredictions(devId, parsedPreds); //[cite: 2]
-          print(
-            'Persisted ${parsedPreds.length} predictions to DB for $devId.',
-          ); //[cite: 2]
+          db.updatePredictions(devId, parsedPreds);
         }
       }
-
-      final resultStr =
-          'Local Inference Complete (${detectedNew ? "New Result Detected" : "Baseline Kept"}):\n$newPred'; //[cite: 2]
-      print(resultStr);
-      return resultStr;
+      modeMessage = 'Local Inference Executed';
+      rawPayload = newPred;
     }
+
+    // --- NEW STEP: Run Random Forest & Extract Minimums ---
+    print('Step: Running Random Forest Inference...');
+    await runLocalInference(
+      devId,
+    ); // Executes inferenceBridge.runIrrigationRecommendation[cite: 7]
+    final verdict = inferenceBridge.status.value;
+
+    print('Step: Extracting minimum predicted humidity from Local DB...');
+    // Fetch the device directly to iterate over its predictions[cite: 5]
+    final savedDevices = db.getSavedDevices();
+    final dev = savedDevices.firstWhere(
+      (d) => d.deviceIdentifier == devId,
+      orElse: () => Device()..newPredictions = [],
+    );
+
+    double? minHum;
+    int? minTs;
+
+    for (var p in dev.newPredictions) {
+      if (minHum == null || (p.value != null && p.value! < minHum)) {
+        minHum = p.value;
+        minTs = p.tsMs;
+      }
+    }
+
+    return {
+      'message': modeMessage,
+      'raw': rawPayload,
+      'verdict': verdict,
+      'minHumidity': minHum,
+      'minDateMs': minTs,
+    };
   }
 
   /// Routine: Perform Cloud Emulation purely in RAM (dynamic memory) without mutating local Isar DB
