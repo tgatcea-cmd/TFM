@@ -60,7 +60,8 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-assets:
+  assets:
+    - assets/models/lstm_hs30_int8.tflite
 
 dependency_overrides:
   flutter_blue_plus_linux:

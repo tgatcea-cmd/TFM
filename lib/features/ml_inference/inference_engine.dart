@@ -7,6 +7,7 @@ import 'random_forest.dart' as rf;
 import 'package:tfm_app/core/database/app_database.dart';
 import 'package:tfm_app/core/models/device.dart';
 import 'package:tfm_app/features/weather/open_meteo_api.dart';
+import 'lstm_inference.dart';
 
 class InferenceBridge {
   final DatabaseService _db;
@@ -18,6 +19,37 @@ class InferenceBridge {
   final isRunning = signal<bool>(false);
 
   InferenceBridge(this._db, {this.onDbUpdated});
+
+  /// Executes the Savia Off-Device/App-side 24-hour LSTM Soil Moisture Inference procedure
+  Future<Map<String, dynamic>> runLocalLstmInference([String? deviceId]) async {
+    isRunning.value = true;
+    progress.value = 0.1;
+    status.value = "Running Savia Off-Device LSTM Inference...";
+
+    Device? device;
+    if (deviceId != null) {
+      device = _db.isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
+    } else {
+      device = _db.isar.devices.where().findFirstSync();
+    }
+
+    if (device == null) {
+      status.value = "Error: No Device Found for LSTM inference";
+      isRunning.value = false;
+      return {'code': -3, 'message': 'No device found'};
+    }
+
+    final lstmEngine = SaviaLstmInferenceEngine(_db);
+    final res = await lstmEngine.runDailyInference(device.deviceIdentifier);
+
+    progress.value = 1.0;
+    status.value = "LSTM Inference: ${res['message']}";
+    lastInferenceTime.value = DateTime.now();
+    isRunning.value = false;
+
+    onDbUpdated?.call();
+    return res;
+  }
 
   Future<void> _loadModelFromSettings() async {}
 

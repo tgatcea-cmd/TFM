@@ -63,7 +63,7 @@ class _CliScreenState extends State<CliScreen> {
     _dataSub = widget.routines.bleService.dataStream.listen((data) {
       if (mounted) {
         setState(() {
-          _bleConsoleOutput = 'Received Async BLE Data:\n$data';
+          _bleConsoleOutput = 'Received Async BLE Data:\n${_prettyFormatData(data)}';
         });
       }
     });
@@ -89,6 +89,28 @@ class _CliScreenState extends State<CliScreen> {
     }
   }
 
+  String _prettyFormatData(dynamic data) {
+    if (data == null) return "Success (Void/No Output)";
+    if (data is Map || data is List) {
+      try {
+        const encoder = JsonEncoder.withIndent('  ');
+        return encoder.convert(data);
+      } catch (_) {
+        return data.toString();
+      }
+    }
+    if (data is String) {
+      try {
+        final decoded = jsonDecode(data);
+        const encoder = JsonEncoder.withIndent('  ');
+        return encoder.convert(decoded);
+      } catch (_) {
+        return data;
+      }
+    }
+    return data.toString();
+  }
+
   Future<void> _executeBleApiCall(
     String name,
     Future<dynamic> Function() call,
@@ -98,7 +120,7 @@ class _CliScreenState extends State<CliScreen> {
     try {
       final res = await call();
       _setConsoleOutput(
-        'API Call "$name" Result:\n${res ?? "Success (Void/No Output)"}',
+        'API Call "$name" Result:\n${_prettyFormatData(res)}',
       );
       _setStatus('BLE API $name Completed.');
     } catch (e) {

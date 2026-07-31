@@ -389,11 +389,9 @@ class CliRoutines {
       print('Weather forecast updated in local DB.');
 
       print('Step 4 (Forward): Triggering Local LSTM Inference Core...');
+      final lstmResult = await inferenceBridge.runLocalLstmInference(devId);
 
-      // TODO: Hook in your new inference API here!
-      // Example: await inferenceBridge.runLocalLstmInference(devId);
-
-      return 'Forward Inference Triggered (Executed locally on App)';
+      return 'Forward Inference Completed (Executed locally on App): ${lstmResult["message"]}';
     } else {
       // =========================================================
       // BRANCH B: "LOCAL" MODE (Inference on the BLE Station)
