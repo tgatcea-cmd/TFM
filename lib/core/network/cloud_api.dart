@@ -140,19 +140,40 @@ class ApiClient {
     throw Exception('Server-side emulation failed (${res.statusCode}): ${res.body}');
   }
 
+  /// POST /api/station/update -> Update station metadata (name, lat, lon)
+  Future<void> updateStationMetadata(String deviceId, {String? name, double? lat, double? lon}) async {
+    final Map<String, dynamic> body = {'deviceIdentifier': deviceId};
+    if (name != null) body['name'] = name;
+    if (lat != null) {
+      body['lat'] = lat;
+      body['latitude'] = lat;
+    }
+    if (lon != null) {
+      body['lon'] = lon;
+      body['longitude'] = lon;
+    }
+    try {
+      await http.post(
+        Uri.parse('$baseUrl/station/update'),
+        headers: _headers,
+        body: jsonEncode(body),
+      );
+    } catch (_) {}
+  }
+
   // ==========================================
   // 3. FILE SHARING SERVICE
   // ==========================================
 
   Future<List<String>> listFiles() async {
-    final res = await http.get(Uri.parse('$baseUrl/files'), headers: _headers);
+    final res = await http.get(Uri.parse('$baseUrl/files'), headers: _headers).timeout(const Duration(seconds: 4));
     if (res.statusCode == 200) return List<String>.from(jsonDecode(res.body)['files'] ?? []);
     throw Exception('List files failed (${res.statusCode}): ${res.body}');
   }
 
   Future<List<int>> downloadFile(String name) async {
     final uri = Uri.parse('$baseUrl/files/download').replace(queryParameters: {'name': name});
-    final res = await http.get(uri, headers: _headers);
+    final res = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 5));
     if (res.statusCode == 200) return res.bodyBytes;
     throw Exception('Download failed (${res.statusCode}): ${res.body}');
   }
@@ -163,24 +184,35 @@ class ApiClient {
       uri,
       headers: _headers..['Content-Type'] = 'application/octet-stream',
       body: bytes,
-    );
+    ).timeout(const Duration(seconds: 5));
     if (res.statusCode != 200) throw Exception('Upload failed (${res.statusCode}): ${res.body}');
   }
 
   Future<void> deleteSharedFile(String name) async {
     final uri = Uri.parse('$baseUrl/files/delete').replace(queryParameters: {'name': name});
-    final res = await http.post(uri, headers: _headers..['X-Confirm-Filename'] = name);
+    final res = await http.post(uri, headers: _headers..['X-Confirm-Filename'] = name).timeout(const Duration(seconds: 4));
     if (res.statusCode != 200) throw Exception('Delete failed (${res.statusCode}): ${res.body}');
   }
 
-  // ponytail: legacy stubs
+  // ponytail: fast multi-endpoint ping test with strict 3s timeout per probe
   Future<bool> testConnection() async {
-    try {
-      await listFiles();
-      return true;
-    } catch (_) {
-      return false;
+    final rootUrl = baseUrl.replaceAll(RegExp(r'/api$'), '');
+    final pingEndpoints = [
+      '$rootUrl/health',
+      '$baseUrl/ping',
+      '$baseUrl/picos',
+      '$baseUrl/sync',
+      '$baseUrl/devices',
+    ];
+    for (final ep in pingEndpoints) {
+      try {
+        final res = await http
+            .get(Uri.parse(ep), headers: _headers)
+            .timeout(const Duration(seconds: 3));
+        if (res.statusCode >= 200 && res.statusCode < 300) return true;
+      } catch (_) {}
     }
+    return false;
   }
 
   Future<List<String>> listTfliteModels() async {

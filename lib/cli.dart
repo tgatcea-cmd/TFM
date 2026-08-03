@@ -1,5 +1,6 @@
 // ponytail: Clean CLI Main Interface with permanent Keystrokes Sidebar & BLE Console Router
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:tfm_app/cli_routines.dart';

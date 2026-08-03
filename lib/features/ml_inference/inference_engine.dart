@@ -92,6 +92,9 @@ class InferenceBridge {
       return;
     }
 
+    // ponytail: using last predicted value (T_24) as predHum because current LSTM models soil moisture evaporation
+    // (strictly non-increasing moisture curve), so T_24 is guaranteed to be the minimum moisture level over the 24h horizon.
+    // Upgrade path: if rain/recovery forecasting is added to LSTM, compute min(value) over the 10:00-15:00 window.
     final latestPrediction = device.newPredictions.last;
     double predHum = latestPrediction.value ?? 0.0;
     final double rawPredHum = predHum;
@@ -101,7 +104,7 @@ class InferenceBridge {
     status.value = "Running RF Classifier...";
 
     _db.sanitizeCorruptedFutureData(device.deviceIdentifier);
-    DateTime refDate = _db.getReferenceTime(
+    final DateTime refDate = _db.getReferenceTime(
       device.deviceIdentifier,
       isConnected: BleService.instance?.isConnected ?? false,
     );
@@ -144,9 +147,9 @@ class InferenceBridge {
     // ignore: unused_local_variable
     final resultClass = result['resultClass'] as int;
 
-    // Save back to device with explicit timestamp & model metadata
+    // Save back to device with explicit timestamp (targeting following day T_24) & model metadata
     _db.isar.writeTxnSync(() {
-       latestPrediction.tsMs ??= refDate.millisecondsSinceEpoch;
+       latestPrediction.tsMs ??= refDate.add(const Duration(hours: 24)).millisecondsSinceEpoch;
        latestPrediction.kind = recommendation;
        latestPrediction.model = 'RandomForest';
        device!.updatedAt = DateTime.now();

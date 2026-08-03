@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:tfm_app/cli_routines.dart';
+import 'package:tfm_app/core/theme/app_styles.dart';
 
 class NearbyScreen extends StatefulWidget {
   final CliRoutines routines;
@@ -93,7 +94,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
 
     if (!mounted) return;
 
-    showDialog(
+    await showDialog(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext context) {
@@ -225,11 +226,11 @@ class _NearbyScreenState extends State<NearbyScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isConnected = widget.routines.bleService.isConnected; //[cite: 11]
-    final connectedDev = widget.routines.bleService.connectedDevice; //[cite: 7]
+    final isConnected = widget.routines.bleService.isConnected;
+    final connectedDev = widget.routines.bleService.connectedDevice;
 
     return Padding(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.all(AppStyles.spaceMD),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -237,23 +238,20 @@ class _NearbyScreenState extends State<NearbyScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
+              const Text(
                 'Nearby BLE Stations',
-                style: Theme.of(context).textTheme.headlineSmall,
+                style: AppStyles.displayHeader,
               ),
               Row(
                 children: [
                   if (isConnected)
-                    ElevatedButton.icon(
+                    OutlinedButton.icon(
                       icon: const Icon(Icons.bluetooth_disabled),
                       label: const Text('Disconnect'),
-                      style: ElevatedButton.styleFrom(
-                        foregroundColor: Colors.redAccent,
-                        side: const BorderSide(color: Colors.redAccent),
-                      ),
+                      style: AppStyles.destructiveButtonStyle,
                       onPressed: _disconnect,
                     ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: AppStyles.spaceSM),
                   ElevatedButton.icon(
                     icon: const Icon(Icons.refresh),
                     label: const Text('Scan'),
@@ -263,30 +261,30 @@ class _NearbyScreenState extends State<NearbyScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppStyles.spaceMD),
 
           // Active Connection Banner
           if (isConnected)
             Container(
               width: double.infinity,
-              margin: const EdgeInsets.only(bottom: 16),
-              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: AppStyles.spaceMD),
+              padding: const EdgeInsets.all(AppStyles.spaceSM),
               decoration: BoxDecoration(
-                color: Colors.greenAccent.withValues(alpha: 0.1),
-                border: Border.all(color: Colors.greenAccent),
-                borderRadius: BorderRadius.circular(8),
+                color: AppStyles.successAccent.withValues(alpha: 0.1),
+                border: Border.all(color: AppStyles.successAccent),
+                borderRadius: BorderRadius.circular(8.0),
               ),
               child: Row(
                 children: [
                   const Icon(
                     Icons.bluetooth_connected,
-                    color: Colors.greenAccent,
+                    color: AppStyles.successAccent,
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: AppStyles.spaceSM),
                   Text(
                     'Currently connected to: ${connectedDev?.platformName ?? connectedDev?.remoteId.str ?? "Unknown"}',
-                    style: const TextStyle(
-                      color: Colors.greenAccent,
+                    style: AppStyles.consoleBody.copyWith(
+                      color: AppStyles.successAccent,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -302,23 +300,20 @@ class _NearbyScreenState extends State<NearbyScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         CircularProgressIndicator(),
-                        SizedBox(height: 16),
+                        SizedBox(height: AppStyles.spaceMD),
                         Text(
                           'Negotiating handshake...',
-                          style: TextStyle(color: Colors.grey),
+                          style: AppStyles.captionStatus,
                         ),
                       ],
                     ),
                   )
                 : _devices.isEmpty
-                ? Center(
+                ? const Center(
                     child: Text(
                       'No devices found.\nEnsure your Pico station is powered and advertising.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 16,
-                      ),
+                      style: AppStyles.captionStatus,
                     ),
                   )
                 : ListView.builder(
@@ -329,47 +324,36 @@ class _NearbyScreenState extends State<NearbyScreen> {
                           ? d.advertisementData.advName
                           : (d.device.platformName.isNotEmpty
                                 ? d.device.platformName
-                                : "Unnamed Device"); //[cite: 11]
+                                : "Unnamed Device");
                       final isTarget =
                           connectedDev?.remoteId == d.device.remoteId;
 
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 8.0),
-                        shape: RoundedRectangleBorder(
-                          side: BorderSide(
-                            color: isTarget
-                                ? Colors.greenAccent
-                                : Colors.white12,
-                            width: isTarget ? 2 : 1,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: AppStyles.spaceSM),
+                        decoration: AppStyles.cardShell(isSelected: isTarget),
                         child: ListTile(
                           leading: Icon(
                             Icons.bluetooth,
                             color: isTarget
-                                ? Colors.greenAccent
-                                : Colors.white54,
+                                ? AppStyles.successAccent
+                                : AppStyles.textMuted,
                           ),
                           title: Text(
                             name,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
+                            style: AppStyles.bodyText.copyWith(fontWeight: FontWeight.bold),
                           ),
                           subtitle: Text(
                             '${d.device.remoteId.str}  •  RSSI: ${d.rssi} dBm',
-                            style: const TextStyle(
-                              fontFamily: 'monospace',
-                              fontSize: 12,
-                            ),
+                            style: AppStyles.consoleBody,
                           ),
                           trailing: isTarget
                               ? const Icon(
                                   Icons.check_circle,
-                                  color: Colors.greenAccent,
+                                  color: AppStyles.successAccent,
                                 )
                               : const Icon(
                                   Icons.chevron_right,
-                                  color: Colors.grey,
+                                  color: AppStyles.textMuted,
                                 ),
                           onTap: isTarget || isConnected
                               ? null

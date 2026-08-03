@@ -1,157 +1,125 @@
-// ponytail: Centralized stylesheet with dynamic system colors and theme accents
 import 'package:flutter/material.dart';
 
 class AppStyles {
-  // --- Color Palette ---
+  // --- SPACING TOKENS (8dp Grid) ---
+  static const double spaceXS = 4.0;
+  static const double spaceSM = 8.0;
+  static const double spaceMD = 16.0;
+  static const double spaceLG = 24.0;
+  static const double spaceXL = 32.0;
+
+  // --- SEMANTIC COLOR TOKENS ---
   static const Color consoleBackground = Colors.black;
-  static const Color primaryAccent = Colors.greenAccent;
-  static const Color secondaryAccent = Colors.cyanAccent;
-  static const Color warningAccent = Colors.yellowAccent;
+  static const Color surfaceColor = Color(0xFF1E1E1E);
+  static const Color successAccent = Colors.greenAccent;
+  static const Color waterActionAccent = Colors.blueAccent;
+  static const Color techSecondaryAccent = Colors.cyanAccent;
+  static const Color warningAccent = Colors.amberAccent;
   static const Color errorAccent = Colors.redAccent;
-  
-  static const Color surfaceColor = Color(0xFF1E1E1E); // Dark grey for cards/panels
   static const Color dividerColor = Colors.white12;
+  static const Color textSecondary       = Colors.white70;
+  static const Color textMuted           = Colors.white54;
+  static const Color errorDarkAccent     = Color(0xFFB71C1C);
 
-  // static Color primaryTeal(BuildContext context) => Theme.of(context).colorScheme.primary;
-  // static Color darkSlate(BuildContext context) => Theme.of(context).colorScheme.onSurface;
-  // static Color accentOrange(BuildContext context) => Theme.of(context).colorScheme.secondary;
-  // static Color dangerRed(BuildContext context) => Theme.of(context).colorScheme.error;
+  // Theme-derived helper methods (backward compatibility for charts)
+  static Color primaryTeal(BuildContext context) => Theme.of(context).colorScheme.primary;
+  static Color darkSlate(BuildContext context) => Theme.of(context).colorScheme.onSurface;
+  static Color accentOrange(BuildContext context) => Theme.of(context).colorScheme.secondary;
+  static Color dangerRed(BuildContext context) => Theme.of(context).colorScheme.error;
 
-  // --- Typography ---
-  static const String consoleFontFamily = 'monospace';
+  // --- TYPOGRAPHY CONTRACT ---
+  static const String consoleFontFamily = 'monospace'; 
 
-  // --- Main Theme Data ---
+  // Standard UI Prose (Sans-Serif for high scannability)
+  static const TextStyle displayHeader = TextStyle(
+    fontSize: 20, fontWeight: FontWeight.bold, color: successAccent,
+  );
+  
+  static const TextStyle sectionTitle = TextStyle(
+    fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white,
+  );
+
+  static const TextStyle bodyText = TextStyle(
+    fontSize: 13, fontWeight: FontWeight.normal, color: Colors.white,
+  );
+
+  // Technical Data Tokens (Monospace console font)
+  static const TextStyle consoleBody = TextStyle(
+    fontFamily: consoleFontFamily, fontSize: 13, color: textSecondary,
+  );
+
+  static const TextStyle captionStatus = TextStyle(
+    fontFamily: consoleFontFamily, fontSize: 11, color: textMuted,
+  );
+
+  // --- REUSABLE CONTAINER DECORATIONS ---
+  static BoxDecoration cardShell({bool isSelected = false, Color borderAccent = dividerColor}) {
+    return BoxDecoration(
+      color: surfaceColor,
+      borderRadius: BorderRadius.circular(8.0),
+      border: Border.all(
+        color: isSelected ? successAccent : borderAccent,
+        width: isSelected ? 2.0 : 1.0,
+      ),
+    );
+  }
+
+  static BoxDecoration aiRecommendationCard(Color stateAccent) {
+    return BoxDecoration(
+      color: stateAccent.withValues(alpha: 0.1),
+      borderRadius: BorderRadius.circular(8.0),
+      border: Border.all(color: stateAccent, width: 2.0),
+    );
+  }
+
+  static ButtonStyle destructiveButtonStyle = OutlinedButton.styleFrom(
+    foregroundColor: errorAccent,
+    side: const BorderSide(color: errorAccent, width: 1.0),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(8.0),
+    ),
+  );
+
+  // --- MAIN THEME DATA ---
   static ThemeData get darkTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
       scaffoldBackgroundColor: consoleBackground,
       colorScheme: const ColorScheme.dark(
-        primary: primaryAccent,
-        secondary: secondaryAccent,
+        primary: successAccent,
+        secondary: techSecondaryAccent,
         surface: surfaceColor,
         error: errorAccent,
       ),
       textTheme: const TextTheme(
-        // Use monospace for data-heavy text
-        bodyMedium: TextStyle(fontFamily: consoleFontFamily, color: Colors.white),
-        bodySmall: TextStyle(fontFamily: consoleFontFamily, color: Colors.white70),
-        titleMedium: TextStyle(fontFamily: consoleFontFamily, color: primaryAccent, fontWeight: FontWeight.bold),
+        headlineSmall: displayHeader,
+        titleMedium: sectionTitle,
+        bodyMedium: bodyText,
+        bodySmall: captionStatus,
       ),
       navigationRailTheme: const NavigationRailThemeData(
         backgroundColor: consoleBackground,
-        selectedIconTheme: IconThemeData(color: primaryAccent),
-        unselectedIconTheme: IconThemeData(color: Colors.white54),
-        selectedLabelTextStyle: TextStyle(color: primaryAccent, fontWeight: FontWeight.bold),
-        unselectedLabelTextStyle: TextStyle(color: Colors.white54),
+        selectedIconTheme: IconThemeData(color: successAccent),
+        unselectedIconTheme: IconThemeData(color: textMuted),
+        selectedLabelTextStyle: TextStyle(color: successAccent, fontWeight: FontWeight.bold),
+        unselectedLabelTextStyle: TextStyle(color: textMuted),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: surfaceColor,
-          foregroundColor: primaryAccent,
-          side: const BorderSide(color: primaryAccent),
-          textStyle: const TextStyle(fontFamily: consoleFontFamily, fontWeight: FontWeight.bold),
+          foregroundColor: successAccent,
+          side: const BorderSide(color: successAccent),
+          textStyle: const TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
       cardTheme: CardThemeData(
         color: surfaceColor,
         shape: RoundedRectangleBorder(
           side: const BorderSide(color: dividerColor),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(8.0),
         ),
       ),
     );
   }
 }
-//   // Brand & Semantic Colors - Dynamically resolved from Theme (System Settings)
-//   static Color primaryTeal(BuildContext context) => Theme.of(context).colorScheme.primary;
-//   static Color darkSlate(BuildContext context) => Theme.of(context).colorScheme.onSurface;
-//   static Color accentOrange(BuildContext context) => Theme.of(context).colorScheme.secondary;
-//   static Color dangerRed(BuildContext context) => Theme.of(context).colorScheme.error;
-  
-//   // Light tints for containers dynamically adapted
-//   static Color bgTealLight(BuildContext context) => Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.15);
-//   static Color borderTealLight(BuildContext context) => Theme.of(context).colorScheme.primary.withValues(alpha: 0.3);
-  
-//   static Color dangerRedBg(BuildContext context) => Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.15);
-//   static Color dangerRedBorder(BuildContext context) => Theme.of(context).colorScheme.error.withValues(alpha: 0.3);
-
-//   // Border Radii (Remain constant layout metrics)
-//   static const double radiusLarge = 36.0;
-//   static const double radiusMedium = 12.0;
-//   static const double radiusSmall = 8.0;
-
-//   // Shadow Defaults
-//   static List<BoxShadow> get premiumShadow => [
-//     BoxShadow(
-//       color: Colors.black.withValues(alpha: 0.15),
-//       blurRadius: 10,
-//       offset: const Offset(0, 4),
-//     ),
-//   ];
-
-//   static List<BoxShadow> get softShadow => [
-//     BoxShadow(
-//       color: Colors.black.withValues(alpha: 0.05),
-//       blurRadius: 6,
-//       offset: const Offset(0, 3),
-//     ),
-//   ];
-
-//   // Premium Typography TextStyles (Dynamic based on theme)
-//   static TextStyle appBarTitleStyle(BuildContext context) => TextStyle(
-//     fontSize: 20,
-//     fontWeight: FontWeight.bold,
-//     color: darkSlate(context),
-//   );
-
-//   static TextStyle headerLabelStyle(BuildContext context) => TextStyle(
-//     fontSize: 16,
-//     fontWeight: FontWeight.bold,
-//     color: primaryTeal(context),
-//   );
-
-//   static TextStyle titleStyle(BuildContext context) => TextStyle(
-//     fontSize: 18,
-//     fontWeight: FontWeight.bold,
-//     color: darkSlate(context),
-//   );
-
-//   static TextStyle subTitleStyle(BuildContext context) => TextStyle(
-//     fontSize: 14,
-//     fontWeight: FontWeight.w500,
-//     color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.87),
-//   );
-
-//   static TextStyle bodyStyle(BuildContext context) => TextStyle(
-//     fontSize: 13,
-//     color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-//   );
-
-//   // Recommendations use brand colors directly
-//   static TextStyle recSafeStyle(BuildContext context) => TextStyle(
-//     fontSize: 13,
-//     fontWeight: FontWeight.bold,
-//     color: primaryTeal(context),
-//   );
-
-//   static TextStyle recDangerStyle(BuildContext context) => TextStyle(
-//     fontSize: 13,
-//     fontWeight: FontWeight.bold,
-//     color: dangerRed(context),
-//   );
-
-//   // Cards & Containers Custom Decoration
-//   static BoxDecoration headerDecoration(BuildContext context) => BoxDecoration(
-//     color: bgTealLight(context),
-//     borderRadius: BorderRadius.circular(radiusMedium),
-//     border: Border.all(color: borderTealLight(context)),
-//   );
-
-//   static BoxDecoration dropdownDecoration(Color bgColor, Color borderColor) => BoxDecoration(
-//     color: bgColor,
-//     borderRadius: BorderRadius.circular(radiusMedium),
-//     border: Border.all(color: borderColor),
-//     boxShadow: softShadow,
-//   );
-// }

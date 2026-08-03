@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'app_database.dart';
 import 'package:isar_community/isar.dart';
 import 'package:tfm_app/core/network/cloud_api.dart';
@@ -13,16 +14,36 @@ class SyncService {
     final dirtyDevices = await db.isar.devices.filter().isSyncedEqualTo(false).findAll();
     if (dirtyDevices.isEmpty) return;
 
+    final locSettings = db.getLocationSettings();
+
     print("Syncing ${dirtyDevices.length} devices to server...");
     
     final List<Map<String, dynamic>> records = [];
     final List<Map<String, dynamic>> predRecords = [];
 
     for (var d in dirtyDevices) {
+      if (d.latitude == null || d.longitude == null) {
+        d.latitude ??= locSettings.latitude;
+        d.longitude ??= locSettings.longitude;
+      }
+
+      // Push station metadata to cloud server
+      unawaited(
+        api.updateStationMetadata(
+          d.deviceIdentifier,
+          name: d.name,
+          lat: d.latitude,
+          lon: d.longitude,
+        ),
+      );
+
       for (var val in d.historicValues) {
         if (val.tsMs != null && val.value != null && val.depthCm != null) {
           records.add({
             'deviceIdentifier': d.deviceIdentifier,
+            'name': d.name,
+            'lat': d.latitude,
+            'lon': d.longitude,
             'tsMs': val.tsMs,
             'value': val.value,
             'depthCm': val.depthCm,

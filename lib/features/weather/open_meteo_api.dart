@@ -18,6 +18,7 @@ class OpenMeteoClient {
   Future<WeatherData> fetchForecast({DateTime? referenceDate}) async {
     Uri url;
 
+    // ponytail: timezone=auto ensures hourly weather arrays match local solar time at (lat, lon)
     if (referenceDate != null) {
       final startDate = referenceDate.subtract(const Duration(days: 2)).toIso8601String().split('T')[0];
       final endDate = referenceDate.add(const Duration(days: 1)).toIso8601String().split('T')[0];
@@ -25,6 +26,7 @@ class OpenMeteoClient {
         '$_baseUrl?latitude=$latitude&longitude=$longitude'
         '&start_date=$startDate&end_date=$endDate'
         '&hourly=temperature_2m,relative_humidity_2m,shortwave_radiation,precipitation'
+        '&timezone=auto'
       );
     } else {
       url = Uri.parse(
@@ -32,6 +34,7 @@ class OpenMeteoClient {
         '&forecast_days=2'
         '&past_days=2'
         '&hourly=temperature_2m,relative_humidity_2m,shortwave_radiation,precipitation'
+        '&timezone=auto'
       );
     }
 

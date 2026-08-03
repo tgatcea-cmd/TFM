@@ -5,8 +5,8 @@ import 'package:tfm_app/core/theme/app_styles.dart';
 import 'package:tfm_app/screens/home_screen.dart';
 import 'package:tfm_app/screens/nearby_screen.dart';
 import 'package:tfm_app/screens/config_screen.dart';
-import 'package:tfm_app/screens/cloud_screen.dart';
 import 'package:tfm_app/screens/local_db_screen.dart';
+import 'package:tfm_app/screens/cloud_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,6 +35,7 @@ class DashboardShell extends StatefulWidget {
 class _DashboardShellState extends State<DashboardShell> {
   int _selectedIndex = 0;
   String _statusMsg = 'Ready';
+  bool _isStatusVisible = true;
 
   // Listeners for BLE state, just like your CLI
   StreamSubscription<bool>? _connSub;
@@ -106,16 +107,72 @@ class _DashboardShellState extends State<DashboardShell> {
             child: Column(
               children: [
                 Expanded(child: _buildCurrentScreen()),
-                // Global Status Bar replacing the cyan text block[cite: 1]
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  child: Text(
-                    'STATUS: $_statusMsg',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                // Togglable Global Status Bar
+                if (_isStatusVisible)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppStyles.spaceMD,
+                      vertical: AppStyles.spaceXS,
+                    ),
+                    color: AppStyles.surfaceColor,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'STATUS: $_statusMsg',
+                            style: AppStyles.captionStatus.copyWith(
+                              color: AppStyles.successAccent,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        InkWell(
+                          onTap: () => setState(() => _isStatusVisible = false),
+                          child: const Padding(
+                            padding: EdgeInsets.all(4.0),
+                            child: Row(
+                              children: [
+                                Icon(Icons.keyboard_arrow_down, size: 16, color: AppStyles.textMuted),
+                                SizedBox(width: 2),
+                                Text('Hide', style: AppStyles.captionStatus),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: AppStyles.spaceSM, bottom: 2.0),
+                      child: InkWell(
+                        onTap: () => setState(() => _isStatusVisible = true),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppStyles.surfaceColor,
+                            borderRadius: const BorderRadius.only(
+                              topLeft: Radius.circular(6),
+                              topRight: Radius.circular(6),
+                            ),
+                            border: Border.all(color: AppStyles.dividerColor),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.keyboard_arrow_up, size: 14, color: AppStyles.successAccent),
+                              SizedBox(width: 4),
+                              Text('Status', style: AppStyles.captionStatus),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
               ],
             ),
           ),

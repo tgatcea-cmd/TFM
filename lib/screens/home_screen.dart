@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:tfm_app/cli_routines.dart';
 import 'package:tfm_app/core/theme/app_styles.dart';
 
@@ -25,6 +28,48 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _clockTickTimer;
   bool _isFetchingStatus = false;
   Map<String, dynamic>? _predictionStats;
+
+  void _copyConsoleToClipboard() {
+    Clipboard.setData(ClipboardData(text: _consoleOutput));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Console output copied to clipboard!'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+    widget.onStatusChange('Console output copied to clipboard.');
+  }
+
+  Future<void> _downloadConsoleJson() async {
+    try {
+      final now = DateTime.now();
+      final devName = widget.routines.bleService.connectedDevice?.platformName ?? 'unknown_device';
+      final jsonPayload = {
+        'timestamp': now.toIso8601String(),
+        'device': devName,
+        'consoleOutput': _consoleOutput,
+      };
+
+      final jsonString = const JsonEncoder.withIndent('  ').convert(jsonPayload);
+
+      final dir = await getApplicationDocumentsDirectory();
+      final fileName = 'console_log_${now.millisecondsSinceEpoch}.json';
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsString(jsonString);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Exported JSON: $fileName'),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+      widget.onStatusChange('Console output saved to JSON: ${file.path}');
+    } catch (e) {
+      widget.onStatusChange('Failed to export JSON: $e');
+    }
+  }
 
   @override
   void initState() {
@@ -178,47 +223,41 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildDebugPanel() {
     return Container(
-      margin: const EdgeInsets.only(top: 24, bottom: 16),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(top: AppStyles.spaceLG, bottom: AppStyles.spaceMD),
+      padding: const EdgeInsets.all(AppStyles.spaceMD),
       decoration: BoxDecoration(
-        color: Colors.redAccent.withValues(
-          alpha: 0.05,
-        ), // Faint red warning background
-        border: Border.all(color: Colors.redAccent, width: 2),
-        borderRadius: BorderRadius.circular(8),
+        color: AppStyles.errorAccent.withValues(alpha: 0.05),
+        border: Border.all(color: AppStyles.errorAccent, width: 2),
+        borderRadius: BorderRadius.circular(8.0),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
-              SizedBox(width: 8),
+              const Icon(Icons.warning_amber_rounded, color: AppStyles.errorAccent),
+              const SizedBox(width: AppStyles.spaceSM),
               Text(
                 'DANGER ZONE: DEBUG ONLY (REMOVE BEFORE PROD)',
-                style: TextStyle(
-                  color: Colors.redAccent,
+                style: AppStyles.consoleBody.copyWith(
+                  color: AppStyles.errorAccent,
                   fontWeight: FontWeight.bold,
-                  fontFamily:
-                      AppStyles.consoleFontFamily, // Using your style token
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppStyles.spaceMD),
           Wrap(
-            spacing: 12,
-            runSpacing: 12,
+            spacing: AppStyles.spaceSM,
+            runSpacing: AppStyles.spaceSM,
             children: [
-              // Mock Data Button - High Contrast Yellow
+              // Mock Data Button - High Contrast Amber
               ElevatedButton.icon(
                 icon: const Icon(Icons.science),
                 label: const Text('Force Mock 72h'),
                 style: ElevatedButton.styleFrom(
-                  foregroundColor:
-                      Colors.black, // Dark text on bright background
-                  backgroundColor: Colors.yellowAccent,
-                  side: const BorderSide(color: Colors.orange, width: 2),
+                  foregroundColor: AppStyles.surfaceColor,
+                  backgroundColor: AppStyles.warningAccent,
                 ),
                 onPressed: () => _executeAction(
                   'forceMock',
@@ -226,14 +265,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               // Clear Storage Button - Destructive Red
-              ElevatedButton.icon(
+              OutlinedButton.icon(
                 icon: const Icon(Icons.delete_forever),
                 label: const Text('Clear Station Storage'),
-                style: ElevatedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  backgroundColor: Colors.red.shade900,
-                  side: const BorderSide(color: Colors.redAccent, width: 2),
-                ),
+                style: AppStyles.destructiveButtonStyle,
                 onPressed: () => _executeAction(
                   'clearStorage',
                   () => widget.routines.bleService.clearStorage(),
@@ -253,71 +288,82 @@ class _HomeScreenState extends State<HomeScreen> {
     final minHum = _predictionStats!['minHumidity'] as double?;
     final minTs = _predictionStats!['minDateMs'] as int?;
 
-    // Determine visual styling based on the RF verdict
+    final settings = widget.routines.db.getAppSettings();
+    final now = DateTime.now();
+    final h = now.hour;
+    final startH = settings.agronomicDayStart;
+    final endH = settings.agronomicDayEnd;
+    final bool isYellowZone = (endH < startH) 
+        ? (h >= endH && h < startH)
+        : (h >= endH || h < startH);
+
     final bool isIrrigate =
         verdict.toUpperCase().contains('IRRIGATE') &&
         !verdict.toUpperCase().contains('DO NOT');
-    final color = isIrrigate ? Colors.blueAccent : Colors.greenAccent;
-    final icon = isIrrigate ? Icons.water_drop : Icons.eco;
+
+    final color = isYellowZone
+        ? AppStyles.warningAccent
+        : (isIrrigate ? AppStyles.waterActionAccent : AppStyles.successAccent);
+
+    final icon = isYellowZone
+        ? Icons.warning_amber_rounded
+        : (isIrrigate ? Icons.water_drop : Icons.eco);
+
+    int? effectiveMinTs = minTs;
+    if (effectiveMinTs != null) {
+      final dt = DateTime.fromMillisecondsSinceEpoch(effectiveMinTs);
+      if (dt.day == now.day && dt.month == now.month && dt.year == now.year) {
+        effectiveMinTs += 86400000; // Target following day
+      }
+    }
 
     return Container(
-      margin: const EdgeInsets.only(top: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        border: Border.all(color: color, width: 2),
-        borderRadius: BorderRadius.circular(12),
-      ),
+      margin: const EdgeInsets.only(top: AppStyles.spaceMD),
+      padding: const EdgeInsets.all(AppStyles.spaceMD),
+      decoration: AppStyles.aiRecommendationCard(color),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Icon(icon, color: color, size: 28),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppStyles.spaceSM),
               Text(
-                'AI RECOMMENDATION',
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  fontFamily: AppStyles
-                      .consoleFontFamily, // Using your centralized theme[cite: 9, 10]
-                ),
+                isYellowZone ? 'AI RECOMMENDATION (YELLOW ZONE)' : 'AI RECOMMENDATION',
+                style: AppStyles.sectionTitle.copyWith(color: color),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          if (isYellowZone) ...[
+            const SizedBox(height: AppStyles.spaceXS),
+            Text(
+              '[DATA GATHERING PHASE] System gathering telemetry ($endH:00 - $startH:00). Prediction is not in optimal 19:00+ window.',
+              style: AppStyles.captionStatus.copyWith(color: AppStyles.warningAccent),
+            ),
+          ],
+          const SizedBox(height: AppStyles.spaceSM),
           Text(
             verdict,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+            style: AppStyles.sectionTitle.copyWith(fontSize: 18),
           ),
-          const SizedBox(height: 8),
-          const Divider(color: Colors.white24),
-          const SizedBox(height: 8),
-          if (minHum != null && minTs != null)
+          const SizedBox(height: AppStyles.spaceSM),
+          const Divider(color: AppStyles.dividerColor),
+          const SizedBox(height: AppStyles.spaceSM),
+          if (minHum != null && effectiveMinTs != null)
             Row(
               children: [
-                const Icon(Icons.show_chart, color: Colors.white70, size: 16),
-                const SizedBox(width: 8),
+                const Icon(Icons.show_chart, color: AppStyles.textSecondary, size: 16),
+                const SizedBox(width: AppStyles.spaceSM),
                 Text(
-                  'Minimum predicted humidity: ${(minHum * 100).toStringAsFixed(1)}%\nExpected at: ${_formatDate(minTs)}',
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontFamily: AppStyles.consoleFontFamily,
-                    fontSize: 13,
-                  ),
+                  'Minimum predicted humidity: ${(minHum * 100).toStringAsFixed(1)}%\nExpected at: ${_formatDate(effectiveMinTs)}',
+                  style: AppStyles.consoleBody,
                 ),
               ],
             )
           else
             const Text(
               'No valid prediction time-series found in database.',
-              style: TextStyle(color: Colors.white70),
+              style: AppStyles.bodyText,
             ),
         ],
       ),
@@ -334,40 +380,36 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Text(
           "No BLE station connected.\nUse the 'Nearby' tab to pair a Pico device.",
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 18, color: Colors.grey),
+          style: AppStyles.bodyText,
         ),
       );
     }
 
     return Padding(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.all(AppStyles.spaceMD),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 1. Device Title
           Text(
             'Connected: ${dev?.platformName ?? "Pico Device"}',
-            style: Theme.of(context).textTheme.headlineSmall,
+            style: AppStyles.displayHeader,
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: AppStyles.spaceXS),
 
-          // 2. Grayed-out Date and Interactive Sync Time Gap Badge
+          // 2. Date and Interactive Sync Time Gap Badge
           Row(
             children: [
-              Icon(Icons.access_time, size: 16, color: Colors.grey.shade500),
-              const SizedBox(width: 8),
+              const Icon(Icons.access_time, size: 16, color: AppStyles.textMuted),
+              const SizedBox(width: AppStyles.spaceSM),
               Text(
                 _estimatedDeviceMs != null
                     ? _formatDate(_estimatedDeviceMs!)
                     : 'Clock status unknown',
-                style: TextStyle(
-                  color: Colors.grey.shade500,
-                  fontFamily: AppStyles.consoleFontFamily,
-                  fontSize: 14,
-                ),
+                style: AppStyles.captionStatus,
               ),
               if (_clockOffsetMs != null) ...[
-                const SizedBox(width: 12),
+                const SizedBox(width: AppStyles.spaceSM),
                 Tooltip(
                   message: 'Sync Time',
                   child: InkWell(
@@ -375,13 +417,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     borderRadius: BorderRadius.circular(12),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
+                        horizontal: AppStyles.spaceSM,
                         vertical: 3,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.cyanAccent.withValues(alpha: 0.1),
+                        color: AppStyles.techSecondaryAccent.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.cyanAccent, width: 1),
+                        border: Border.all(color: AppStyles.techSecondaryAccent, width: 1),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -389,15 +431,13 @@ class _HomeScreenState extends State<HomeScreen> {
                           const Icon(
                             Icons.sync,
                             size: 13,
-                            color: Colors.cyanAccent,
+                            color: AppStyles.techSecondaryAccent,
                           ),
-                          const SizedBox(width: 4),
+                          const SizedBox(width: AppStyles.spaceXS),
                           Text(
                             '${_getPrettifiedGap(_clockOffsetMs!)} gap',
-                            style: const TextStyle(
-                              color: Colors.cyanAccent,
-                              fontFamily: AppStyles.consoleFontFamily,
-                              fontSize: 12,
+                            style: AppStyles.captionStatus.copyWith(
+                              color: AppStyles.techSecondaryAccent,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -408,7 +448,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
               if (_isFetchingStatus) ...[
-                const SizedBox(width: 12),
+                const SizedBox(width: AppStyles.spaceSM),
                 const SizedBox(
                   width: 12,
                   height: 12,
@@ -417,11 +457,11 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppStyles.spaceLG),
           // Action Buttons
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: AppStyles.spaceSM,
+            runSpacing: AppStyles.spaceSM,
             children: [
               ElevatedButton.icon(
                 icon: const Icon(Icons.info_outline),
@@ -456,29 +496,62 @@ class _HomeScreenState extends State<HomeScreen> {
           _buildPredictionCard(),
           _buildDebugPanel(),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: AppStyles.spaceMD),
           const Text(
             'Console Output:',
-            style: TextStyle(fontWeight: FontWeight.bold),
+            style: AppStyles.sectionTitle,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppStyles.spaceSM),
           Expanded(
             child: Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.black87,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade800),
-              ),
-              child: SingleChildScrollView(
-                child: Text(
-                  _consoleOutput,
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    color: Colors.greenAccent,
+              decoration: AppStyles.cardShell(),
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppStyles.spaceMD),
+                      child: SingleChildScrollView(
+                        child: Text(
+                          _consoleOutput,
+                          style: AppStyles.consoleBody.copyWith(color: AppStyles.successAccent),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                  Positioned(
+                    bottom: 6,
+                    right: 6,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: AppStyles.surfaceColor.withValues(alpha: 0.85),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.copy, size: 16, color: AppStyles.textMuted),
+                            onPressed: _copyConsoleToClipboard,
+                            tooltip: 'Copy to Clipboard',
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.all(6),
+                            constraints: const BoxConstraints(),
+                          ),
+                          const SizedBox(width: 4),
+                          IconButton(
+                            icon: const Icon(Icons.download, size: 16, color: AppStyles.textMuted),
+                            onPressed: _downloadConsoleJson,
+                            tooltip: 'Download JSON',
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.all(6),
+                            constraints: const BoxConstraints(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

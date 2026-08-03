@@ -1,14 +1,19 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:http/http.dart' as http;
+import 'package:latlong2/latlong.dart';
 import 'package:tfm_app/cli_routines.dart';
-import 'package:tfm_app/core/database/db_sync.dart';
 import 'package:tfm_app/core/theme/app_styles.dart';
+import 'package:tfm_app/features/location/location_controller.dart';
 
-class CloudScreen extends StatefulWidget {
+class ConfigScreen extends StatefulWidget {
   final CliRoutines routines;
   final VoidCallback onBack;
-  final Function(String) onStatusChange;
+  final void Function(String msg) onStatusChange;
 
-  const CloudScreen({
+  const ConfigScreen({
     super.key,
     required this.routines,
     required this.onBack,
@@ -16,174 +21,370 @@ class CloudScreen extends StatefulWidget {
   });
 
   @override
-  State<CloudScreen> createState() => _CloudScreenState();
+  State<ConfigScreen> createState() => _ConfigScreenState();
 }
 
-class _CloudScreenState extends State<CloudScreen> {
-  List<dynamic> _cloudDevices = [];
-  int? _selectedIndex;
+class _ConfigScreenState extends State<ConfigScreen> {
+  late String _cloudScheme;
+  late String _cloudUrl;
+  late int _cloudPort;
   
-  bool _isLoadingDevices = false;
-  bool _isTesting = false;
-  bool _isSyncing = false;
-  bool _isEmulating = false;
-  
-  String _connStatus = 'UNKNOWN';
-  int _unsyncedDevicesCount = 0;
-  
-  // Replaced the string with a Map to feed our visual card
-  Map<String, dynamic>? _emulationResultMap;
+  late int _agronomicDayStart; // Prediction start
+  late int _agronomicDayEnd;   // Prediction end / Irrigation start - 1
+  late int _baseDayStart;
+  late int _baseDayEnd;
+
+  String _openMeteoStatus = 'Checking...';
+  String _cloudPingStatus = 'Checking...';
+  String _scheduleWarning = '';
+
+  Timer? _clockTimer;
+  DateTime _now = DateTime.now();
 
   @override
   void initState() {
     super.initState();
-    _checkStatus();
-    _loadCloudDevices();
-  }
+    final settings = widget.routines.db.getAppSettings(); //[cite: 8]
+    _cloudScheme = settings.tfmServerScheme; //[cite: 8]
+    _cloudUrl = settings.tfmServerUrl; //[cite: 8]
+    _cloudPort = settings.tfmServerPort; //[cite: 8]
+    _agronomicDayStart = settings.agronomicDayStart; //[cite: 8]
+    _agronomicDayEnd = settings.agronomicDayEnd; //[cite: 8]
+    _baseDayStart = settings.agronomicDayStart; //[cite: 8]
+    _baseDayEnd = settings.agronomicDayEnd; //[cite: 8]
 
-  void _checkStatus() {
-    final devices = widget.routines.db.getSavedDevices();
-    setState(() {
-      _unsyncedDevicesCount = devices.where((d) => !d.isSynced).length;
+    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _now = DateTime.now());
     });
+
+    _checkOpenMeteo(); //[cite: 8]
+    _checkCloudPing(); //[cite: 8]
   }
 
-  String _formatDateString(String isoString) {
+  @override
+  void dispose() {
+    _clockTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _handleAutoGpsLocation() async {
+    widget.onStatusChange('Acquiring GPS location...');
     try {
-      final date = DateTime.parse(isoString);
-      return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year} '
-          '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-    } catch (_) {
-      return isoString;
+      final locService = LocationService();
+      final pos = await locService.getCurrentPosition();
+      if (pos != null) {
+        widget.routines.db.saveLocationSettings(pos.latitude, pos.longitude, true);
+        setState(() {});
+        widget.onStatusChange(
+          'Location updated automatically via GPS: Lat ${pos.latitude.toStringAsFixed(4)}, Lon ${pos.longitude.toStringAsFixed(4)}',
+        );
+      } else {
+        widget.onStatusChange('Failed to get GPS location. Check location permissions/services.');
+      }
+    } catch (e) {
+      widget.onStatusChange('GPS Location Error: $e');
     }
   }
 
-  Future<void> _loadCloudDevices() async {
-    if (_isLoadingDevices) return;
-    setState(() => _isLoadingDevices = true);
+  Future<void> _openMapPickerDialog() async {
+    final locSettings = widget.routines.db.getLocationSettings();
+    LatLng selectedPoint = LatLng(
+      (locSettings.latitude != 0.0) ? locSettings.latitude : 40.4168,
+      (locSettings.longitude != 0.0) ? locSettings.longitude : -3.7038,
+    );
+
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setMapState) {
+            return AlertDialog(
+              backgroundColor: AppStyles.surfaceColor,
+              title: const Text('Select Location on Map', style: AppStyles.sectionTitle),
+              content: SizedBox(
+                width: double.maxFinite,
+                height: 400,
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(AppStyles.spaceSM),
+                      color: Colors.black38,
+                      child: Text(
+                        'Tap anywhere on the map to place point:\nLat: ${selectedPoint.latitude.toStringAsFixed(4)}, Lon: ${selectedPoint.longitude.toStringAsFixed(4)}',
+                        style: AppStyles.consoleBody.copyWith(color: AppStyles.successAccent),
+                      ),
+                    ),
+                    const SizedBox(height: AppStyles.spaceSM),
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8.0),
+                        child: FlutterMap(
+                          options: MapOptions(
+                            initialCenter: selectedPoint,
+                            initialZoom: 13.0,
+                            onTap: (tapPosition, point) {
+                              setMapState(() {
+                                selectedPoint = point;
+                              });
+                            },
+                          ),
+                          children: [
+                            TileLayer(
+                              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                              userAgentPackageName: 'org.tfm.tfm_app',
+                            ),
+                            MarkerLayer(
+                              markers: [
+                                Marker(
+                                  point: selectedPoint,
+                                  child: const Icon(
+                                    Icons.location_on,
+                                    color: AppStyles.errorAccent,
+                                    size: 36,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel', style: AppStyles.captionStatus),
+                ),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.check),
+                  label: const Text('Confirm Location'),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    widget.routines.db.saveLocationSettings(
+                      selectedPoint.latitude,
+                      selectedPoint.longitude,
+                      false,
+                    );
+                    setState(() {});
+                    widget.onStatusChange(
+                      'Location manually set: Lat ${selectedPoint.latitude.toStringAsFixed(4)}, Lon ${selectedPoint.longitude.toStringAsFixed(4)}',
+                    );
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showLocationSettingsChoice() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppStyles.surfaceColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.all(AppStyles.spaceMD),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Configure Location Mode', style: AppStyles.sectionTitle),
+              const SizedBox(height: AppStyles.spaceMD),
+              ListTile(
+                leading: const Icon(Icons.my_location, color: AppStyles.successAccent),
+                title: const Text('Automatic (GPS)', style: AppStyles.bodyText),
+                subtitle: const Text('Acquire current position using device GPS hardware', style: AppStyles.captionStatus),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _handleAutoGpsLocation();
+                },
+              ),
+              const Divider(color: AppStyles.dividerColor),
+              ListTile(
+                leading: const Icon(Icons.map, color: AppStyles.waterActionAccent),
+                title: const Text('Manual (Interactive Map)', style: AppStyles.bodyText),
+                subtitle: const Text('Tap on an interactive map to pick exact field coordinates', style: AppStyles.captionStatus),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _openMapPickerDialog();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // --- Business Logic for Agronomic Schedule ---
+  // Adjusts prediction start boundary, limiting to ±3h from base and preventing overlap[cite: 8]
+  void _adjustDayStart(int delta) {
+    final newVal = (_agronomicDayStart + delta) % 24;
+    final diff = ((newVal - _baseDayStart + 36) % 24) - 12; //[cite: 8]
     
-    try {
-      final devices = await widget.routines.cloudApi.getRegisteredDevices(); //[cite: 3]
-      if (mounted) {
-        setState(() {
-          _cloudDevices = devices;
-          if (_selectedIndex != null && _selectedIndex! >= _cloudDevices.length) {
-            _selectedIndex = _cloudDevices.isNotEmpty ? 0 : null;
-          }
-        });
-      }
-    } catch (_) {
-    } finally {
-      if (mounted) setState(() => _isLoadingDevices = false);
+    if (diff.abs() <= 3) { //[cite: 8]
+      setState(() {
+        _agronomicDayStart = newVal;
+        // Ensure prediction & irrigation both maintain at least 1h window[cite: 8]
+        if ((_agronomicDayStart - _agronomicDayEnd + 24) % 24 <= 1) {
+          _agronomicDayEnd = (_agronomicDayStart - 2 + 24) % 24; //[cite: 8]
+        }
+        _scheduleWarning = '';
+      });
+      widget.onStatusChange('Prediction start updated to $_agronomicDayStart:00.');
+    } else {
+      setState(() {
+        _scheduleWarning = 'Limit reached: Prediction start can only be adjusted ±3h from base ($_baseDayStart:00).'; //[cite: 8]
+      });
     }
   }
 
-  Future<void> _testConnection() async {
-    if (_isTesting) return;
-    setState(() => _isTesting = true);
-    widget.onStatusChange('Testing connection to Cloud Server...');
-
-    try {
-      final success = await widget.routines.cloudApi.testConnection(); //[cite: 3]
-      if (mounted) {
-        setState(() {
-          _connStatus = success ? 'CONNECTED' : 'UNREACHABLE';
-        });
-      }
-      widget.onStatusChange(success
-          ? 'Cloud API server is online and responding.'
-          : 'Cloud API server returned no response or error.'); //[cite: 3]
-      await _loadCloudDevices();
-    } catch (e) {
-      if (mounted) setState(() => _connStatus = 'ERROR');
-      widget.onStatusChange('Cloud API test failed: $e');
-    } finally {
-      if (mounted) setState(() => _isTesting = false);
+  // Adjusts irrigation boundary, limiting to ±3h from base and preventing overlap[cite: 8]
+  void _adjustDayEnd(int delta) {
+    final newVal = (_agronomicDayEnd + delta) % 24;
+    final diff = ((newVal - _baseDayEnd + 36) % 24) - 12; //[cite: 8]
+    
+    if (diff.abs() <= 3) { //[cite: 8]
+      setState(() {
+        _agronomicDayEnd = newVal;
+        // Ensure prediction & irrigation both maintain at least 1h window[cite: 8]
+        if ((_agronomicDayStart - _agronomicDayEnd + 24) % 24 <= 1) {
+          _agronomicDayStart = (_agronomicDayEnd + 2) % 24; //[cite: 8]
+        }
+        _scheduleWarning = '';
+      });
+      widget.onStatusChange('Irrigation end updated to $_agronomicDayEnd:00.');
+    } else {
+      setState(() {
+        _scheduleWarning = 'Limit reached: Irrigation end can only be adjusted ±3h from base ($_baseDayEnd:00).'; //[cite: 8]
+      });
     }
   }
 
-  Future<void> _handleSync() async {
-    if (_isSyncing) return;
-    setState(() => _isSyncing = true);
-    widget.onStatusChange('Initiating Cloud Synchronization...');
-
+  // --- Network Checks ---
+  Future<void> _checkOpenMeteo() async {
     try {
-      final syncService = SyncService(
-        db: widget.routines.db,
-        api: widget.routines.cloudApi,
-      );
-      await syncService.syncDirtyDevices(); //[cite: 3]
-      await syncService.discoverAndSyncCloudDevices(); //[cite: 3]
-      _checkStatus();
-      await _loadCloudDevices(); //[cite: 3]
-      widget.onStatusChange('Cloud sync finished.');
-    } catch (e) {
-      widget.onStatusChange('Cloud sync error: $e');
-    } finally {
-      if (mounted) setState(() => _isSyncing = false);
-    }
-  }
-
-  Future<void> _handleCloudEmulation() async {
-    if (_isEmulating) return;
-    if (_cloudDevices.isEmpty) {
-      await _loadCloudDevices(); //[cite: 3]
-    }
-
-    if (_cloudDevices.isEmpty) {
-      widget.onStatusChange('Emulation Aborted: No registered station found on Cloud server.'); //[cite: 3]
-      return;
-    }
-
-    if (_selectedIndex == null || _selectedIndex! >= _cloudDevices.length) {
-      widget.onStatusChange('No station selected! Please select a cloud station first.');
-      return;
-    }
-
-    final devMap = _cloudDevices[_selectedIndex!];
-    final devId = (devMap['deviceIdentifier'] ?? devMap['id'] ?? devMap['device_id'] ?? devMap['deviceId'] ?? 'pico_01').toString(); //[cite: 3]
-    final name = (devMap['name'] ?? devMap['deviceName'] ?? devId).toString(); //[cite: 3]
-
-    setState(() {
-      _isEmulating = true;
-      _emulationResultMap = null;
-    });
-    widget.onStatusChange('Executing Local RF Recommendation in RAM for [$name] ($devId)...');
-
-    try {
-      final result = await widget.routines.emulateCloudRecommendationInMemory(devId); //[cite: 3]
+      final res = await http.get(
+        Uri.parse('https://api.open-meteo.com/v1/forecast?latitude=40.4168&longitude=-3.7038&current_weather=true'), //[cite: 8]
+      ).timeout(const Duration(seconds: 4));
       
       if (mounted) {
         setState(() {
-          _emulationResultMap = result;
+          _openMeteoStatus = (res.statusCode == 200) ? 'OK (200)' : 'Error (${res.statusCode})'; //[cite: 8]
         });
       }
-      widget.onStatusChange('In-Memory Cloud Emulation Finished: ${result['verdict']}'); //[cite: 3]
-    } catch (e) {
-      widget.onStatusChange('In-Memory Cloud Emulation Error: $e'); //[cite: 3]
-    } finally {
-      if (mounted) setState(() => _isEmulating = false);
+    } catch (_) {
+      if (mounted) setState(() => _openMeteoStatus = 'Offline / Failed'); //[cite: 8]
     }
   }
 
-  Widget _buildApiStatusCard() {
-    final settings = widget.routines.db.getAppSettings(); //[cite: 3]
-    final serverUrl = widget.routines.cloudApi.baseUrl; //[cite: 3]
-    final hasApiKey = settings.tfmServerApiKey.isNotEmpty; //[cite: 3]
+  Future<void> _checkCloudPing() async {
+    setState(() => _cloudPingStatus = 'Testing...');
+    final sw = Stopwatch()..start();
 
-    final statusColor = _connStatus == 'CONNECTED'
-        ? Colors.greenAccent
-        : (_connStatus == 'UNREACHABLE' || _connStatus == 'ERROR'
-            ? Colors.redAccent
-            : Colors.yellowAccent); //[cite: 3]
+    for (final path in ['/health', '/api/ping']) { //[cite: 8]
+      try {
+        final res = await http.get(Uri.parse('$_cloudScheme://$_cloudUrl:$_cloudPort$path')).timeout(const Duration(seconds: 3)); //[cite: 8]
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body);
+          if (mounted) setState(() => _cloudPingStatus = '${data['status']?.toString().toUpperCase() ?? 'OK'} (${sw.elapsedMilliseconds} ms)'); //[cite: 8]
+          return;
+        }
+      } catch (_) {}
+    }
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.black45,
-        border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.3)),
-        borderRadius: BorderRadius.circular(12),
+    if (mounted) setState(() => _cloudPingStatus = 'Unreachable / Failed'); //[cite: 8]
+  }
+
+  // --- Core Persistence ---
+  void _saveConfiguration() {
+    widget.routines.db.saveAppSettings(
+      tfmServerScheme: _cloudScheme,
+      tfmServerUrl: _cloudUrl,
+      tfmServerPort: _cloudPort,
+      agronomicDayStart: _agronomicDayStart,
+      agronomicDayEnd: _agronomicDayEnd,
+    ); //[cite: 8]
+    widget.routines.cloudApi.updateEndpoint(_cloudScheme, _cloudUrl, _cloudPort); //[cite: 8]
+    widget.onStatusChange('Configuration applied and saved to database & live ApiClient!'); //[cite: 8]
+  }
+
+  void _parseAndSetCloudEndpoint(String rawInput) {
+    if (rawInput.trim().isEmpty) return;
+    String input = rawInput.trim();
+    if (!input.contains('://')) {
+      input = '$_cloudScheme://$input'; //[cite: 8]
+    }
+    try {
+      final uri = Uri.parse(input);
+      if (uri.scheme.isNotEmpty) _cloudScheme = uri.scheme; //[cite: 8]
+      if (uri.host.isNotEmpty) _cloudUrl = uri.host; //[cite: 8]
+      if (uri.hasPort) _cloudPort = uri.port; //[cite: 8]
+    } catch (_) {}
+  }
+
+  // --- GUI Dialog for Endpoint ---
+  Future<void> _editCloudEndpointDialog() async {
+    final String currentEndpoint = '$_cloudScheme://$_cloudUrl:$_cloudPort';
+    String enteredValue = currentEndpoint;
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Cloud Endpoint'),
+        content: TextField(
+          decoration: const InputDecoration(
+            labelText: 'Server URL',
+            hintText: 'e.g. http://192.168.1.50:3000',
+            border: OutlineInputBorder(),
+          ),
+          controller: TextEditingController(text: currentEndpoint),
+          onChanged: (val) => enteredValue = val,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, enteredValue),
+            child: const Text('Update'),
+          ),
+        ],
       ),
+    );
+
+    if (result != null && result != currentEndpoint) {
+      setState(() {
+        _parseAndSetCloudEndpoint(result);
+      });
+      widget.onStatusChange('Cloud endpoint updated. Remember to press Apply & Save.');
+      unawaited(_checkCloudPing());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dateStr = '${_now.day.toString().padLeft(2, '0')}/${_now.month.toString().padLeft(2, '0')}/${_now.year.toString().substring(2)} '
+        '${_now.hour.toString().padLeft(2, '0')}:${_now.minute.toString().padLeft(2, '0')}';
+
+    final locSettings = widget.routines.db.getLocationSettings();
+    final locStr = 'Lat: ${locSettings.latitude.toStringAsFixed(4)}, Lon: ${locSettings.longitude.toStringAsFixed(4)} (${locSettings.isGps ? 'GPS' : 'Manual'})';
+
+    final irrStart = (_agronomicDayEnd + 1) % 24;
+    final irrEnd = (_agronomicDayStart - 1 + 24) % 24;
+    final predStart = _agronomicDayStart;
+    final predEnd = _agronomicDayEnd;
+
+    return Padding(
+      padding: const EdgeInsets.all(AppStyles.spaceMD),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -191,279 +392,180 @@ class _CloudScreenState extends State<CloudScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'API CONNECTION STATUS',
-                style: TextStyle(
-                  color: Colors.greenAccent,
-                  fontWeight: FontWeight.bold,
-                  fontFamily: AppStyles.consoleFontFamily,
-                ),
+                'System Configuration',
+                style: AppStyles.displayHeader,
               ),
-              Row(
-                children: [
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.network_ping),
-                    label: const Text('Test API'),
-                    onPressed: _isTesting ? null : _testConnection,
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.sync),
-                    label: Text('Sync ($_unsyncedDevicesCount dirty)'),
-                    onPressed: _isSyncing ? null : _handleSync,
-                  ),
-                ],
-              )
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Target Endpoint : $serverUrl',
-            style: const TextStyle(color: Colors.white, fontFamily: AppStyles.consoleFontFamily, fontSize: 13), //[cite: 3]
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'API Authorization: ${hasApiKey ? "Configured [OK]" : "Missing/Empty"}',
-            style: TextStyle(
-              color: hasApiKey ? Colors.greenAccent : Colors.orangeAccent,
-              fontFamily: AppStyles.consoleFontFamily, //[cite: 3]
-              fontSize: 13,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              const Text('Connection State : ', style: TextStyle(color: Colors.white, fontFamily: AppStyles.consoleFontFamily, fontSize: 13)), //[cite: 3]
-              Text(
-                _connStatus, //[cite: 3]
-                style: TextStyle(
-                  color: statusColor,
-                  fontFamily: AppStyles.consoleFontFamily,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
+              ElevatedButton.icon(
+                icon: const Icon(Icons.save),
+                label: const Text('Apply & Save'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppStyles.successAccent.withValues(alpha: 0.2),
+                  foregroundColor: AppStyles.successAccent,
+                  side: const BorderSide(color: AppStyles.successAccent),
                 ),
+                onPressed: _saveConfiguration,
               ),
             ],
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmulationCard() {
-    if (_emulationResultMap == null) return const SizedBox.shrink();
-
-    final verdict = _emulationResultMap!['verdict'] as String? ?? 'UNKNOWN';
-    final predHum = _emulationResultMap!['predictedHumidity'] as double?;
-    final radSum = _emulationResultMap!['shortwaveRadiationSum48h'] as double?;
-    final refDate = _emulationResultMap!['referenceDate'] as String?;
-
-    final bool isIrrigate = verdict.toUpperCase().contains('IRRIGATE') && !verdict.toUpperCase().contains('DO NOT');
-    final color = isIrrigate ? Colors.blueAccent : Colors.cyanAccent;
-    final icon = isIrrigate ? Icons.water_drop : Icons.cloud_done;
-
-    return Container(
-      margin: const EdgeInsets.only(top: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        border: Border.all(color: color, width: 2),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: color, size: 26),
-              const SizedBox(width: 12),
-              Text(
-                'IN-MEMORY CLOUD EMULATION',
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15,
-                  fontFamily: AppStyles.consoleFontFamily,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            verdict,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Divider(color: Colors.white24),
-          const SizedBox(height: 8),
-          if (predHum != null && radSum != null && refDate != null)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.water, color: Colors.white70, size: 16),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Predicted Base Humidity: ${(predHum * 100).toStringAsFixed(1)}%',
-                      style: const TextStyle(color: Colors.white70, fontFamily: AppStyles.consoleFontFamily, fontSize: 13),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(Icons.wb_sunny, color: Colors.white70, size: 16),
-                    const SizedBox(width: 8),
-                    Text(
-                      '48h Radiation Sum: ${radSum.toStringAsFixed(1)} J/m²',
-                      style: const TextStyle(color: Colors.white70, fontFamily: AppStyles.consoleFontFamily, fontSize: 13),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(Icons.access_time, color: Colors.white70, size: 16),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Reference Timestamp: ${_formatDateString(refDate)}',
-                      style: const TextStyle(color: Colors.white70, fontFamily: AppStyles.consoleFontFamily, fontSize: 13),
-                    ),
-                  ],
-                )
-              ],
-            )
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Cloud Services & Emulation',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 16),
-
-          _buildApiStatusCard(),
-
-          const SizedBox(height: 16),
-          
-          if (_isTesting || _isSyncing || _isEmulating || _isLoadingDevices) //[cite: 3]
-            const Padding(
-              padding: EdgeInsets.only(bottom: 16.0),
-              child: LinearProgressIndicator(),
-            ),
-
-          const Text(
-            'Registered Cloud Stations:',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          const SizedBox(height: 8),
-
+          const SizedBox(height: AppStyles.spaceMD),
           Expanded(
-            child: _cloudDevices.isEmpty
-                ? Center(
-                    child: Text(
-                      'No registered stations found on Cloud Server.\nTest the connection or run a Sync.', //[cite: 3]
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey.shade600, fontSize: 16),
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: _cloudDevices.length, //[cite: 3]
-                    itemBuilder: (context, index) {
-                      final devMap = _cloudDevices[index]; //[cite: 3]
-                      final isSelected = _selectedIndex == index; //[cite: 3]
-                      final devId = (devMap['deviceIdentifier'] ?? devMap['id'] ?? devMap['device_id'] ?? 'pico_$index').toString(); //[cite: 3]
-                      final name = (devMap['name'] ?? devMap['deviceName'] ?? devId).toString(); //[cite: 3]
-                      final lat = devMap['lat'] ?? devMap['latitude'] ?? 'N/A'; //[cite: 3]
-                      final lon = devMap['lon'] ?? devMap['longitude'] ?? 'N/A'; //[cite: 3]
-
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        shape: RoundedRectangleBorder(
-                          side: BorderSide(
-                            color: isSelected ? Colors.greenAccent : Colors.white12,
-                            width: isSelected ? 2 : 1,
-                          ),
-                          borderRadius: BorderRadius.circular(10),
+            child: ListView(
+              children: [
+                // 1. System & Environment Card
+                Container(
+                  padding: const EdgeInsets.all(AppStyles.spaceMD),
+                  decoration: AppStyles.cardShell(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('ENVIRONMENT', style: AppStyles.captionStatus.copyWith(fontWeight: FontWeight.bold)),
+                      const Divider(color: AppStyles.dividerColor),
+                      ListTile(
+                        leading: const Icon(Icons.access_time, color: AppStyles.textSecondary),
+                        title: const Text('System Date & Time', style: AppStyles.bodyText),
+                        subtitle: Text('$dateStr  (${_now.millisecondsSinceEpoch})', style: AppStyles.consoleBody),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.location_on, color: AppStyles.textSecondary),
+                        title: const Text('Location Settings', style: AppStyles.bodyText),
+                        subtitle: Text(locStr, style: AppStyles.consoleBody),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.edit_location_alt, color: AppStyles.techSecondaryAccent),
+                          onPressed: _showLocationSettingsChoice,
+                          tooltip: 'Configure Location Mode',
                         ),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(10),
-                          onTap: () {
-                            setState(() {
-                              _selectedIndex = index; //[cite: 3]
-                              _emulationResultMap = null;
-                            });
-                            widget.onStatusChange('Selected Cloud Station: $name'); //[cite: 3]
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.all(12.0),
-                            child: Column(
+                        onTap: _showLocationSettingsChoice,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppStyles.spaceSM),
+
+                // 2. API & Cloud Services Card
+                Container(
+                  padding: const EdgeInsets.all(AppStyles.spaceMD),
+                  decoration: AppStyles.cardShell(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('NETWORK SERVICES', style: AppStyles.captionStatus.copyWith(fontWeight: FontWeight.bold)),
+                      const Divider(color: AppStyles.dividerColor),
+                      ListTile(
+                        leading: const Icon(Icons.wb_sunny, color: AppStyles.textSecondary),
+                        title: const Text('Open-Meteo API Status', style: AppStyles.bodyText),
+                        trailing: Text(
+                          _openMeteoStatus, 
+                          style: AppStyles.consoleBody.copyWith(
+                            color: _openMeteoStatus.contains('OK') ? AppStyles.successAccent : AppStyles.errorAccent, 
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.cloud, color: AppStyles.textSecondary),
+                        title: const Text('Cloud Server Endpoint', style: AppStyles.bodyText),
+                        subtitle: Text('$_cloudScheme://$_cloudUrl:$_cloudPort\nPing: $_cloudPingStatus', style: AppStyles.consoleBody),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.edit, color: AppStyles.waterActionAccent),
+                          onPressed: _editCloudEndpointDialog,
+                          tooltip: 'Edit Endpoint',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppStyles.spaceSM),
+
+                // 3. Agronomic Schedule Card
+                Container(
+                  padding: const EdgeInsets.all(AppStyles.spaceMD),
+                  decoration: AppStyles.cardShell(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('AGRONOMIC SCHEDULE (24H)', style: AppStyles.captionStatus.copyWith(fontWeight: FontWeight.bold)),
+                      const Divider(color: AppStyles.dividerColor),
+                      
+                      // Irrigation Period Row
+                      Container(
+                        padding: const EdgeInsets.symmetric(vertical: AppStyles.spaceSM, horizontal: AppStyles.spaceMD),
+                        decoration: BoxDecoration(
+                          color: AppStyles.techSecondaryAccent.withValues(alpha: 0.1),
+                          border: Border.all(color: AppStyles.techSecondaryAccent.withValues(alpha: 0.3)),
+                          borderRadius: BorderRadius.circular(8.0),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Icons.cloud,
-                                      color: isSelected ? Colors.greenAccent : Colors.white54,
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Text(
-                                      name, //[cite: 3]
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: isSelected ? Colors.greenAccent : Colors.white,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      '($devId)', //[cite: 3]
-                                      style: const TextStyle(
-                                        color: Colors.grey,
-                                        fontFamily: AppStyles.consoleFontFamily,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  'Coordinates: Lat $lat, Lon $lon', //[cite: 3]
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontFamily: AppStyles.consoleFontFamily,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                if (isSelected) ...[
-                                  const SizedBox(height: 12),
-                                  ElevatedButton.icon(
-                                    icon: const Icon(Icons.memory),
-                                    label: const Text('Emulate Cloud Station'),
-                                    onPressed: _isEmulating ? null : _handleCloudEmulation,
-                                  ),
-                                  _buildEmulationCard(),
-                                ]
+                                Text('Irrigation Period', style: AppStyles.bodyText.copyWith(color: AppStyles.techSecondaryAccent, fontWeight: FontWeight.bold)),
+                                Text('${irrStart.toString().padLeft(2, '0')}hrs to ${irrEnd.toString().padLeft(2, '0')}hrs', style: AppStyles.consoleBody),
                               ],
                             ),
+                            Row(
+                              children: [
+                                IconButton(icon: const Icon(Icons.remove_circle_outline), onPressed: () => _adjustDayEnd(-1), color: AppStyles.techSecondaryAccent),
+                                Text('Shift', style: AppStyles.captionStatus.copyWith(color: AppStyles.techSecondaryAccent)),
+                                IconButton(icon: const Icon(Icons.add_circle_outline), onPressed: () => _adjustDayEnd(1), color: AppStyles.techSecondaryAccent),
+                              ],
+                            )
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: AppStyles.spaceSM),
+
+                      // Prediction Period Row
+                      Container(
+                        padding: const EdgeInsets.symmetric(vertical: AppStyles.spaceSM, horizontal: AppStyles.spaceMD),
+                        decoration: BoxDecoration(
+                          color: AppStyles.warningAccent.withValues(alpha: 0.1),
+                          border: Border.all(color: AppStyles.warningAccent.withValues(alpha: 0.3)),
+                          borderRadius: BorderRadius.circular(8.0),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Prediction Period', style: AppStyles.bodyText.copyWith(color: AppStyles.warningAccent, fontWeight: FontWeight.bold)),
+                                Text('${predStart.toString().padLeft(2, '0')}hrs to ${predEnd.toString().padLeft(2, '0')}hrs', style: AppStyles.consoleBody),
+                              ],
+                            ),
+                            Row(
+                              children: [
+                                IconButton(icon: const Icon(Icons.remove_circle_outline), onPressed: () => _adjustDayStart(-1), color: AppStyles.warningAccent),
+                                Text('Shift', style: AppStyles.captionStatus.copyWith(color: AppStyles.warningAccent)),
+                                IconButton(icon: const Icon(Icons.add_circle_outline), onPressed: () => _adjustDayStart(1), color: AppStyles.warningAccent),
+                              ],
+                            )
+                          ],
+                        ),
+                      ),
+                      
+                      if (_scheduleWarning.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: AppStyles.spaceSM),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.warning_amber_rounded, color: AppStyles.warningAccent, size: 16),
+                              const SizedBox(width: AppStyles.spaceSM),
+                              Expanded(
+                                child: Text(
+                                  _scheduleWarning,
+                                  style: AppStyles.captionStatus.copyWith(color: AppStyles.warningAccent),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      );
-                    },
+                    ],
                   ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

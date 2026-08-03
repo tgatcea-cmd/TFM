@@ -5,6 +5,7 @@ import 'package:tfm_app/core/network/cloud_api.dart';
 import 'package:tfm_app/features/ble/ble_service.dart';
 import 'package:tfm_app/features/ble/ble_controller.dart';
 import 'package:tfm_app/features/ml_inference/inference_engine.dart';
+import 'package:tfm_app/features/ml_inference/lstm_inference.dart';
 import 'package:tfm_app/features/weather/open_meteo_api.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:geolocator/geolocator.dart';
@@ -486,6 +487,8 @@ class CliRoutines {
   }
 
   /// Routine: Perform Cloud Emulation purely in RAM (dynamic memory) without mutating local Isar DB
+  /// Stage 1 (LSTM): Executes LSTM if no newer prediction vector exists on cloud relative to telemetry T_ref.
+  /// Stage 2 (RF): Evaluates Random Forest using the newest 24h prediction vector (T_24) + 48h solar radiation.
   Future<Map<String, dynamic>> emulateCloudRecommendationInMemory(
     String deviceId,
   ) async {
@@ -513,10 +516,12 @@ class CliRoutines {
       '[Cloud Emulation RAM Verbose] Target Coordinates: Lat=$lat, Lon=$lon',
     );
 
-    // 2. Fetch latest predictions from Cloud
+    // 2. Determine telemetry reference timestamp T_ref (end of 48h telemetry window)
+    DateTime refDate = db.getReferenceTime(deviceId);
     double predHum = 0.30;
-    DateTime refDate = DateTime.now();
+    bool usedCloudPredictions = false;
 
+    // Check Cloud API for existing predictions
     try {
       final cloudPreds = await cloudApi.syncPredictionsPull(deviceId, 0);
       print(
@@ -524,39 +529,71 @@ class CliRoutines {
       );
       if (cloudPreds.isNotEmpty) {
         final lastPred = cloudPreds.last;
-        print(
-          '[Cloud Emulation RAM Verbose] Latest cloud prediction raw record: $lastPred',
-        );
         if (lastPred is Map) {
-          predHum = (lastPred['value'] as num?)?.toDouble() ?? predHum;
-          final tsMs = lastPred['tsMs'] as int?;
-          if (tsMs != null) {
-            refDate = DateTime.fromMillisecondsSinceEpoch(tsMs);
+          final val = (lastPred['value'] as num?)?.toDouble();
+          final predTsMs = lastPred['tsMs'] as int?;
+
+          if (val != null && predTsMs != null) {
+            final predTargetDate = DateTime.fromMillisecondsSinceEpoch(predTsMs);
+            final predRefDate = predTargetDate.subtract(const Duration(hours: 24));
+
+            // Use existing cloud prediction if its refDate is newer than or equal to telemetry refDate
+            if (predRefDate.isAfter(refDate) || predRefDate.isAtSameMomentAs(refDate)) {
+              predHum = val;
+              refDate = predRefDate;
+              usedCloudPredictions = true;
+              print(
+                '[Cloud Emulation RAM Verbose] Using existing newer cloud prediction vector. RefDate=$refDate, TargetDate=$predTargetDate, predHum=$predHum',
+              );
+            }
           }
         }
-      } else {
-        print(
-          '[Cloud Emulation RAM Verbose] No predictions returned from Cloud API. Defaulting to now ($refDate) and predHum=$predHum',
-        );
       }
     } catch (e) {
-      print('[Cloud Emulation RAM Verbose] Prediction pull failed: $e');
+      print('[Cloud Emulation RAM Verbose] Prediction pull notice: $e');
     }
 
+    // 3. Stage 1 (LSTM): If no newer cloud prediction vector was available, execute LSTM inference in RAM
+    if (!usedCloudPredictions) {
+      print(
+        '[Cloud Emulation RAM Verbose] No newer cloud prediction found. Running local 24h LSTM forecast in RAM for T_ref=$refDate...',
+      );
+      try {
+        final lstmEngine = SaviaLstmInferenceEngine(db);
+        final lstmRes = await lstmEngine.runDailyInference(
+          deviceId,
+          targetRefDate: refDate,
+        );
+        if (lstmRes['code'] == SaviaLstmErrorCode.success &&
+            lstmRes['predictions'] is List) {
+          final preds = lstmRes['predictions'] as List<double>;
+          if (preds.isNotEmpty) {
+            predHum = preds.last;
+            print(
+              '[Cloud Emulation RAM Verbose] LSTM forecast succeeded in RAM. T_24 predHum=$predHum',
+            );
+          }
+        }
+      } catch (e) {
+        print(
+          '[Cloud Emulation RAM Verbose] LSTM local forecast execution notice: $e',
+        );
+      }
+    }
+
+    // 4. Calculate target expected minimum date T_target = T_ref + 24h
+    final targetMinDate = refDate.add(const Duration(hours: 24));
+
     print(
-      '[Cloud Emulation RAM Verbose] Reference Timestamp: $refDate (ms: ${refDate.millisecondsSinceEpoch}) | Raw predHum: $predHum',
+      '[Cloud Emulation RAM Verbose] Final T_ref: $refDate | Expected At (T_target): $targetMinDate | T_24 predHum: $predHum',
     );
 
-    // 3. Fetch weather for reference date using OpenMeteoClient
+    // 5. Stage 2 (RF): Fetch weather relative to T_ref and evaluate Random Forest
     print(
       '[Cloud Emulation RAM Verbose] Fetching 48h weather forecast from Open-Meteo for ($lat, $lon) relative to $refDate...',
     );
     final weatherClient = OpenMeteoClient(latitude: lat, longitude: lon);
     final weather = await weatherClient.fetchForecast(referenceDate: refDate);
-    print(
-      '[Cloud Emulation RAM Verbose] Open-Meteo returned ${weather.shortwaveRadiation.length} shortwave radiation hourly records.',
-    );
-
     final double radSum = weather.shortwaveRadiation.isNotEmpty
         ? weather.shortwaveRadiation.reduce((a, b) => a + b)
         : 0.0;
@@ -565,7 +602,6 @@ class CliRoutines {
       '[Cloud Emulation RAM Verbose] Calculated 48h Shortwave Radiation Sum: $radSum J/m²',
     );
 
-    // 4. Run local Random Forest model in RAM
     final settings = db.getAppSettings();
     final result = inferenceBridge.evaluateRecommendation(
       radSum: radSum,
@@ -579,9 +615,12 @@ class CliRoutines {
       '[Cloud Emulation RAM Verbose] Local RF Model Execution Finished in RAM! Verdict: ${result['verdict']}',
     );
     print('[Cloud Emulation RAM Verbose] === END RAM EMULATION ROUTINE ===');
+
     return {
       'deviceIdentifier': deviceId,
       'referenceDate': refDate.toIso8601String(),
+      'targetMinDateMs': targetMinDate.millisecondsSinceEpoch,
+      'targetMinDateIso': targetMinDate.toIso8601String(),
       'predictedHumidity': predHum,
       'shortwaveRadiationSum48h': radSum,
       'verdict': result['verdict'],
