@@ -26,6 +26,7 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription<Object>? _dataSub;
   int? _clockOffsetMs;
   Timer? _clockTickTimer;
+  final ValueNotifier<int> _clockNotifier = ValueNotifier<int>(0);
   bool _isFetchingStatus = false;
   Map<String, dynamic>? _predictionStats;
 
@@ -74,7 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Listening to async BLE chunks[cite: 1]
+    // Listening to async BLE chunks
     _dataSub = widget.routines.bleService.dataStream.listen((data) {
       if (mounted) {
         setState(
@@ -84,10 +85,10 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     });
 
-    // 1-second ticker to advance the estimated live device clock smoothly
+    // 1-second ticker to advance the estimated live device clock smoothly without full screen rebuilds
     _clockTickTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted && _clockOffsetMs != null) {
-        setState(() {});
+        _clockNotifier.value++;
       }
     });
 
@@ -100,6 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _dataSub?.cancel();
     _clockTickTimer?.cancel();
+    _clockNotifier.dispose();
     super.dispose();
   }
 
@@ -385,11 +387,9 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    return Padding(
+    return ListView(
       padding: const EdgeInsets.all(AppStyles.spaceMD),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+      children: [
           // 1. Device Title
           Text(
             'Connected: ${dev?.platformName ?? "Pico Device"}',
@@ -398,18 +398,22 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: AppStyles.spaceXS),
 
           // 2. Date and Interactive Sync Time Gap Badge
-          Row(
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: AppStyles.spaceSM,
+            runSpacing: AppStyles.spaceSM,
             children: [
               const Icon(Icons.access_time, size: 16, color: AppStyles.textMuted),
-              const SizedBox(width: AppStyles.spaceSM),
-              Text(
-                _estimatedDeviceMs != null
-                    ? _formatDate(_estimatedDeviceMs!)
-                    : 'Clock status unknown',
-                style: AppStyles.captionStatus,
+              ValueListenableBuilder<int>(
+                valueListenable: _clockNotifier,
+                builder: (context, val, child) => Text(
+                  _estimatedDeviceMs != null
+                      ? _formatDate(_estimatedDeviceMs!)
+                      : 'Clock status unknown',
+                  style: AppStyles.captionStatus,
+                ),
               ),
-              if (_clockOffsetMs != null) ...[
-                const SizedBox(width: AppStyles.spaceSM),
+              if (_clockOffsetMs != null)
                 Tooltip(
                   message: 'Sync Time',
                   child: InkWell(
@@ -446,15 +450,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ),
-              ],
-              if (_isFetchingStatus) ...[
-                const SizedBox(width: AppStyles.spaceSM),
+              if (_isFetchingStatus)
                 const SizedBox(
                   width: 12,
                   height: 12,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-              ],
             ],
           ),
           const SizedBox(height: AppStyles.spaceLG),
@@ -502,7 +503,8 @@ class _HomeScreenState extends State<HomeScreen> {
             style: AppStyles.sectionTitle,
           ),
           const SizedBox(height: AppStyles.spaceSM),
-          Expanded(
+          SizedBox(
+            height: 350,
             child: Container(
               width: double.infinity,
               decoration: AppStyles.cardShell(),
@@ -556,7 +558,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ],
-      ),
     );
   }
 }

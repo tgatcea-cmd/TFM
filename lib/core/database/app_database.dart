@@ -169,14 +169,13 @@ class DatabaseService {
 
   // --- Telemetry & Prediction Helpers for New Architecture ---
 
-  /// Upserts telemetry records by (tsMs, depthCm).
+  /// Upserts telemetry records by (tsMs, depthCm, kind).
   /// Prevents duplicates and updates existing values if modified.
   bool upsertTelemetry(String deviceId, List<HistoricValue> newValues, {bool isFromCloud = false}) {
     bool hasChanges = false;
     isar.writeTxnSync(() {
       var dev = isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
       if (dev == null) {
-        // ponytail: auto-create device entry if missing so it is persisted & displayed in local DB
         dev = Device()
           ..deviceIdentifier = deviceId
           ..name = deviceId
@@ -186,13 +185,19 @@ class DatabaseService {
       }
       final existingList = List<HistoricValue>.from(dev.historicValues);
       
+      // Build fast index map for O(1) duplicate checks: key = 'ts_depth_kind'
+      final Map<String, int> indexMap = {
+        for (int i = 0; i < existingList.length; i++)
+          '${existingList[i].tsMs}_${existingList[i].depthCm}_${existingList[i].kind}': i
+      };
+      
       for (var incoming in newValues) {
         if (incoming.tsMs == null) continue;
         
-        final index = existingList.indexWhere((e) =>
-            e.tsMs == incoming.tsMs && e.depthCm == incoming.depthCm && e.kind == incoming.kind);
+        final key = '${incoming.tsMs}_${incoming.depthCm}_${incoming.kind}';
+        final index = indexMap[key];
         
-        if (index != -1) {
+        if (index != null) {
           if (existingList[index].value != incoming.value) {
             existingList[index].value = incoming.value;
             existingList[index].kind = incoming.kind ?? existingList[index].kind;
@@ -201,6 +206,7 @@ class DatabaseService {
           }
         } else {
           existingList.add(incoming);
+          indexMap[key] = existingList.length - 1;
           hasChanges = true;
         }
       }
@@ -208,11 +214,7 @@ class DatabaseService {
       if (hasChanges || isFromCloud) {
         dev.historicValues = existingList;
         dev.updatedAt = DateTime.now();
-        if (!isFromCloud) {
-          dev.isSynced = false;
-        } else {
-          dev.isSynced = true;
-        }
+        dev.isSynced = isFromCloud;
         isar.devices.putSync(dev);
       }
     });
@@ -287,7 +289,6 @@ class DatabaseService {
   void markDeviceSynced(String deviceId) {
     isar.writeTxnSync(() {
       var dev = isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
-      // ponytail: auto-create device entry if missing
       dev ??= Device()
         ..deviceIdentifier = deviceId
         ..name = deviceId
@@ -302,7 +303,6 @@ class DatabaseService {
   void updateDeviceStatus(String deviceId, Map<String, dynamic> status, {bool isFromCloud = false}) {
     isar.writeTxnSync(() {
       var dev = isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
-      // ponytail: auto-create device entry if missing
       dev ??= Device()
         ..deviceIdentifier = deviceId
         ..name = deviceId
@@ -324,7 +324,6 @@ class DatabaseService {
   void updateDeviceConfig(String deviceId, Map<String, dynamic> config) {
     isar.writeTxnSync(() {
       var dev = isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
-      // ponytail: auto-create device entry if missing
       dev ??= Device()
         ..deviceIdentifier = deviceId
         ..name = deviceId
@@ -342,7 +341,6 @@ class DatabaseService {
   void updatePredictions(String deviceId, List<Prediction> predictions, {bool isFromCloud = false}) {
     isar.writeTxnSync(() {
       var dev = isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
-      // ponytail: auto-create device entry if missing
       dev ??= Device()
         ..deviceIdentifier = deviceId
         ..name = deviceId
@@ -353,11 +351,7 @@ class DatabaseService {
       dev.newPredictions = predictions;
       dev.latestInferenceTriggerDate = DateTime.now();
       dev.updatedAt = DateTime.now();
-      if (isFromCloud) {
-        dev.isSynced = true;
-      } else {
-        dev.isSynced = false;
-      }
+      dev.isSynced = isFromCloud;
       isar.devices.putSync(dev);
     });
   }
@@ -395,14 +389,5 @@ class DatabaseService {
   void close() {
     isar.close();
   }
-
-  // --- STUBS for deprecated global methods to keep UI compiling ---
-  void saveWeather(int timestamp, double temp, double hum, double rad, double prec) {}
-  List<WeatherRecord> getWeatherHistory() => [];
-  List<SoilHumidityRecord> getSoilHumidityHistory() => [];
-  int getSoilHumidityCount(int sinceMs) => 0;
-  int getWeatherCount(int sinceMs) => 0;
-  List<PredictionRecord> getPredictionHistory() => [];
-  void savePrediction(int ts, double predHum, String rec) {}
 }
 

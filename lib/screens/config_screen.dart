@@ -388,8 +388,11 @@ class _ConfigScreenState extends State<ConfigScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: AppStyles.spaceSM,
+            runSpacing: AppStyles.spaceSM,
             children: [
               const Text(
                 'System Configuration',

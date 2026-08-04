@@ -235,14 +235,19 @@ class _NearbyScreenState extends State<NearbyScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Header & Controls
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: AppStyles.spaceSM,
+            runSpacing: AppStyles.spaceSM,
             children: [
               const Text(
                 'Nearby BLE Stations',
                 style: AppStyles.displayHeader,
               ),
-              Row(
+              Wrap(
+                spacing: AppStyles.spaceSM,
+                runSpacing: AppStyles.spaceSM,
                 children: [
                   if (isConnected)
                     OutlinedButton.icon(
@@ -251,7 +256,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
                       style: AppStyles.destructiveButtonStyle,
                       onPressed: _disconnect,
                     ),
-                  const SizedBox(width: AppStyles.spaceSM),
                   ElevatedButton.icon(
                     icon: const Icon(Icons.refresh),
                     label: const Text('Scan'),

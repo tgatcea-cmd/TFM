@@ -208,28 +208,22 @@ class SaviaLstmInferenceEngine {
       }
     }
 
+    // Pre-bucket readings by hour index for O(1) LOCF lookup
+    final hs10LastByHour = List<double?>.filled(48, null);
+    final hs30LastByHour = List<double?>.filled(48, null);
+
+    for (var h in recentHistory) {
+      if (h.tsMs == null || h.value == null) continue;
+      final hourIdx = (h.tsMs! - startMs) ~/ 3600000;
+      if (hourIdx >= 0 && hourIdx < 48) {
+        if (h.kind == 'hs10' || h.depthCm == 10) hs10LastByHour[hourIdx] = h.value!;
+        if (h.kind == 'hs30' || h.depthCm == 30) hs30LastByHour[hourIdx] = h.value!;
+      }
+    }
+
     for (int hourIdx = 0; hourIdx < 48; hourIdx++) {
-      final binStartMs = startMs + (hourIdx * 3600000);
-      final binEndMs = binStartMs + 3600000;
-
-      // Find matching samples in hour bin
-      final binHs10 = recentHistory.where((h) =>
-        (h.kind == 'hs10' || h.depthCm == 10) &&
-        h.tsMs != null && h.tsMs! >= binStartMs && h.tsMs! < binEndMs
-      );
-
-      final binHs30 = recentHistory.where((h) =>
-        (h.kind == 'hs30' || h.depthCm == 30) &&
-        h.tsMs != null && h.tsMs! >= binStartMs && h.tsMs! < binEndMs
-      );
-
-      // LOCF: Update if bin contains readings, otherwise carry forward previous observation
-      if (binHs10.isNotEmpty && binHs10.last.value != null) {
-        lastHs10 = binHs10.last.value!;
-      }
-      if (binHs30.isNotEmpty && binHs30.last.value != null) {
-        lastHs30 = binHs30.last.value!;
-      }
+      if (hs10LastByHour[hourIdx] != null) lastHs10 = hs10LastByHour[hourIdx]!;
+      if (hs30LastByHour[hourIdx] != null) lastHs30 = hs30LastByHour[hourIdx]!;
 
       pastSamples.add(LstmInputSample(
         ta: pastTa[hourIdx],

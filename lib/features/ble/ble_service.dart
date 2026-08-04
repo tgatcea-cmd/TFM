@@ -223,7 +223,10 @@ class BleService {
       }
     });
 
-    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
+    await FlutterBluePlus.startScan(
+      timeout: const Duration(seconds: 15),
+      withServices: [Guid(BleConstants.serviceUuid)],
+    );
   }
 
   Future<void> stopScan() async {
@@ -244,32 +247,11 @@ class BleService {
       if (_connectedDevice?.remoteId == device.remoteId) return true;      
       if (_connectedDevice != null) await disconnect();   
 
-      // WORKAROUND: Force unbond before connecting to ensure Android initiates 
-      // an encrypted pairing flow every time. This prevents the Pico from 
-      // instantly dropping unencrypted reconnects before Android can encrypt them.
-      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-        try {
-          print('Clearing previous bond to force fresh encryption...');
-          await device.removeBond();
-          await Future.delayed(const Duration(milliseconds: 500));
-        } catch (e) {
-          print('No previous bond to remove or error: $e');
-        }
-      }
-
       onConnectingProgress?.call(0.1, 'Connecting to device...');
       await device.connect(autoConnect: false, license: License.nonprofit);
 
-      // Protocol Robustness: Negotiate MTU and request BLE bond (Android only)
+      // Protocol Robustness: Negotiate MTU (Android only)
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-        try {
-          print('Requesting BLE Bond (Pairing) to unlock secure characteristics...');
-          onPairingProgress?.call(0.1, 'Awaiting OS pairing approval...');
-          await device.createBond();
-        } catch (e) {
-          print('Bonding process skipped or already bonded: $e');
-        }
-
         try {
           print('Negotiating MTU of 512 bytes...');
           onConnectingProgress?.call(0.4, 'Negotiating MTU...');
@@ -279,7 +261,6 @@ class BleService {
           print('MTU negotiation failed or not supported: $e');
         }
       } else {
-        print('Skipping MTU/Bonding (not supported/required on this platform)');
         onConnectingProgress?.call(0.4, 'Skipping MTU negotiation...');
       }
 

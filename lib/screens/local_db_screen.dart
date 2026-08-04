@@ -226,9 +226,11 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
             children: [
               Icon(icon, color: color, size: 26),
               const SizedBox(width: AppStyles.spaceSM),
-              Text(
-                isYellowZone ? 'RANDOM FOREST RECOMMENDATION (YELLOW ZONE)' : 'RANDOM FOREST RECOMMENDATION',
-                style: AppStyles.sectionTitle.copyWith(color: color, fontSize: 15),
+              Expanded(
+                child: Text(
+                  isYellowZone ? 'RANDOM FOREST RECOMMENDATION (YELLOW ZONE)' : 'RANDOM FOREST RECOMMENDATION',
+                  style: AppStyles.sectionTitle.copyWith(color: color, fontSize: 15),
+                ),
               ),
             ],
           ),
@@ -252,9 +254,11 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
               children: [
                 const Icon(Icons.show_chart, color: AppStyles.textSecondary, size: 16),
                 const SizedBox(width: AppStyles.spaceSM),
-                Text(
-                  'Minimum predicted humidity: ${(minHum * 100).toStringAsFixed(1)}%\nExpected at: ${_formatDate(effectiveMinTs)}',
-                  style: AppStyles.consoleBody,
+                Expanded(
+                  child: Text(
+                    'Minimum predicted humidity: ${(minHum * 100).toStringAsFixed(1)}%\nExpected at: ${_formatDate(effectiveMinTs)}',
+                    style: AppStyles.consoleBody,
+                  ),
                 ),
               ],
             )
@@ -276,21 +280,25 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Header & Top Actions
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: AppStyles.spaceSM,
+            runSpacing: AppStyles.spaceSM,
             children: [
               const Text(
                 'Local DB Devices',
                 style: AppStyles.displayHeader,
               ),
-              Row(
+              Wrap(
+                spacing: AppStyles.spaceSM,
+                runSpacing: AppStyles.spaceSM,
                 children: [
                   ElevatedButton.icon(
                     icon: const Icon(Icons.cloud_download),
                     label: const Text('Sync Cloud'),
                     onPressed: _isSyncing || _isInferring ? null : _handleSync,
                   ),
-                  const SizedBox(width: AppStyles.spaceSM),
                   OutlinedButton.icon(
                     icon: const Icon(Icons.delete_sweep),
                     label: const Text('Clear DB'),
@@ -346,29 +354,36 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
+                                Wrap(
+                                  alignment: WrapAlignment.spaceBetween,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  runSpacing: AppStyles.spaceSM,
                                   children: [
-                                    Icon(
-                                      Icons.memory,
-                                      color: isSelected
-                                          ? AppStyles.successAccent
-                                          : AppStyles.textMuted,
+                                    Wrap(
+                                      crossAxisAlignment: WrapCrossAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.memory,
+                                          color: isSelected
+                                              ? AppStyles.successAccent
+                                              : AppStyles.textMuted,
+                                        ),
+                                        const SizedBox(width: AppStyles.spaceSM),
+                                        Text(
+                                          dev.name,
+                                          style: AppStyles.sectionTitle.copyWith(
+                                            color: isSelected
+                                                ? AppStyles.successAccent
+                                                : Colors.white,
+                                          ),
+                                        ),
+                                        const SizedBox(width: AppStyles.spaceSM),
+                                        Text(
+                                          '(${dev.deviceIdentifier})',
+                                          style: AppStyles.captionStatus,
+                                        ),
+                                      ],
                                     ),
-                                    const SizedBox(width: AppStyles.spaceSM),
-                                    Text(
-                                      dev.name,
-                                      style: AppStyles.sectionTitle.copyWith(
-                                        color: isSelected
-                                            ? AppStyles.successAccent
-                                            : Colors.white,
-                                      ),
-                                    ),
-                                    const SizedBox(width: AppStyles.spaceSM),
-                                    Text(
-                                      '(${dev.deviceIdentifier})',
-                                      style: AppStyles.captionStatus,
-                                    ),
-                                    const Spacer(),
                                     Container(
                                       padding: const EdgeInsets.symmetric(
                                         horizontal: AppStyles.spaceSM,

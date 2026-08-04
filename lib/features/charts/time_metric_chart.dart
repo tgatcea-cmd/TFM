@@ -48,10 +48,23 @@ class _TimeMetricChartState extends State<TimeMetricChart> {
   late double minX;
   late double maxX;
   
+  List<FlSpot>? _cachedHistorySpots;
+  List<FlSpot>? _cachedForecastSpots;
+  List<FlSpot>? _cachedBridgeSpots;
+  List<ChartDataPoint>? _lastHistoryRef;
+  List<ChartDataPoint>? _lastForecastRef;
+  
   @override
   void initState() {
     super.initState();
     _resetView();
+  }
+
+  @override
+  void didUpdateWidget(TimeMetricChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.history != widget.history) _cachedHistorySpots = null;
+    if (oldWidget.forecast != widget.forecast) _cachedForecastSpots = null;
   }
 
   void _resetView() {
@@ -109,17 +122,32 @@ class _TimeMetricChartState extends State<TimeMetricChart> {
 
   @override
   Widget build(BuildContext context) {
-    final historyFlSpots = _buildSpots(widget.history);
-    final forecastFlSpots = _buildSpots(widget.forecast);
+    if (_cachedHistorySpots == null || _lastHistoryRef != widget.history) {
+      _lastHistoryRef = widget.history;
+      _cachedHistorySpots = _buildSpots(widget.history);
+      _cachedBridgeSpots = null;
+    }
+    if (_cachedForecastSpots == null || _lastForecastRef != widget.forecast) {
+      _lastForecastRef = widget.forecast;
+      _cachedForecastSpots = _buildSpots(widget.forecast);
+      _cachedBridgeSpots = null;
+    }
+
+    final historyFlSpots = _cachedHistorySpots!;
+    final forecastFlSpots = _cachedForecastSpots!;
     final nowMs = DateTime.now().add(Duration(hours: widget.timeOffsetHours)).millisecondsSinceEpoch.toDouble();
 
     // Connect forecast to the last history spot so curved lines meet seamlessly
-    final List<FlSpot> forecastSpotsWithBridge = List.from(forecastFlSpots);
-    if (historyFlSpots.isNotEmpty && forecastSpotsWithBridge.isNotEmpty) {
-      if (forecastSpotsWithBridge.first.x > historyFlSpots.last.x) {
-        forecastSpotsWithBridge.insert(0, historyFlSpots.last);
+    if (_cachedBridgeSpots == null) {
+      final List<FlSpot> forecastSpotsWithBridge = List.from(forecastFlSpots);
+      if (historyFlSpots.isNotEmpty && forecastSpotsWithBridge.isNotEmpty) {
+        if (forecastSpotsWithBridge.first.x > historyFlSpots.last.x) {
+          forecastSpotsWithBridge.insert(0, historyFlSpots.last);
+        }
       }
+      _cachedBridgeSpots = forecastSpotsWithBridge;
     }
+    final forecastSpotsWithBridge = _cachedBridgeSpots!;
 
     // Y Axis scaling rules:
     // Min is always 0.

@@ -1,4 +1,4 @@
-﻿import 'dart:math';
+import 'dart:math';
 import 'package:tfm_app/features/weather/weather_data.dart';
 import 'package:tfm_app/features/weather/daily_weather.dart';
 
@@ -29,13 +29,24 @@ class WeatherProcessor {
   static DailyStats _calculateStats(List<double> values) {
     if (values.isEmpty) return DailyStats(min: 0, max: 0, mean: 0, stdDev: 0, sum: 0);
 
-    final minVal = values.reduce(min);
-    final maxVal = values.reduce(max);
-    final sumVal = values.reduce((a, b) => a + b);
+    double minVal = values[0];
+    double maxVal = values[0];
+    double sumVal = 0.0;
+
+    for (int i = 0; i < values.length; i++) {
+      final v = values[i];
+      if (v < minVal) minVal = v;
+      if (v > maxVal) maxVal = v;
+      sumVal += v;
+    }
     final meanVal = sumVal / values.length;
 
-    final variance = values.map((v) => pow(v - meanVal, 2)).reduce((a, b) => a + b) / values.length;
-    final stdDevVal = sqrt(variance);
+    double sumSqDiff = 0.0;
+    for (int i = 0; i < values.length; i++) {
+      final diff = values[i] - meanVal;
+      sumSqDiff += diff * diff;
+    }
+    final stdDevVal = sqrt(sumSqDiff / values.length);
 
     return DailyStats(
       min: minVal,

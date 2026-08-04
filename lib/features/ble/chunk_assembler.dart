@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:cbor/cbor.dart';
 
 class BleChunkAssembler {
@@ -72,11 +73,11 @@ class BleChunkAssembler {
         if (complete) {
           _isAssembled = true;
           
-          // Assemble
-          final List<int> fullPayload = [];
+          final builder = BytesBuilder(copy: false);
           for (int i = 0; i < _totalChunks; i++) {
-            fullPayload.addAll(_chunks[i]!);
+            builder.add(_chunks[i]!);
           }
+          final fullPayload = builder.takeBytes();
           
           print('BleChunkAssembler: Successfully assembled $t chunks, total size ${fullPayload.length} bytes');
           _completedController.add(fullPayload);

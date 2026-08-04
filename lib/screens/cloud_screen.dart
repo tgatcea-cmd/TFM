@@ -40,7 +40,9 @@ class _CloudScreenState extends State<CloudScreen> {
   void initState() {
     super.initState();
     _checkStatus();
-    _loadCloudDevices();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _testConnection();
+    });
   }
 
   @override
@@ -94,7 +96,10 @@ class _CloudScreenState extends State<CloudScreen> {
 
   Future<void> _testConnection() async {
     if (_isTesting || _isDisposed || !mounted) return;
-    setState(() => _isTesting = true);
+    setState(() {
+      _isTesting = true;
+      _connStatus = 'TESTING...';
+    });
     widget.onStatusChange('Testing connection to Cloud Server...');
 
     try {
@@ -199,8 +204,11 @@ class _CloudScreenState extends State<CloudScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: AppStyles.spaceSM,
+            runSpacing: AppStyles.spaceSM,
             children: [
               Text(
                 'API CONNECTION STATUS',
@@ -208,14 +216,15 @@ class _CloudScreenState extends State<CloudScreen> {
                   color: AppStyles.successAccent,
                 ),
               ),
-              Row(
+              Wrap(
+                spacing: AppStyles.spaceSM,
+                runSpacing: AppStyles.spaceSM,
                 children: [
                   ElevatedButton.icon(
                     icon: const Icon(Icons.network_ping),
                     label: const Text('Test API'),
                     onPressed: _isTesting ? null : _testConnection,
                   ),
-                  const SizedBox(width: AppStyles.spaceSM),
                   ElevatedButton.icon(
                     icon: const Icon(Icons.sync),
                     label: Text('Sync ($_unsyncedDevicesCount dirty)'),
@@ -306,9 +315,11 @@ class _CloudScreenState extends State<CloudScreen> {
             children: [
               Icon(icon, color: color, size: 26),
               const SizedBox(width: AppStyles.spaceSM),
-              Text(
-                isYellowZone ? 'IN-MEMORY CLOUD EMULATION (YELLOW ZONE)' : 'IN-MEMORY CLOUD EMULATION',
-                style: AppStyles.sectionTitle.copyWith(color: color, fontSize: 15),
+              Expanded(
+                child: Text(
+                  isYellowZone ? 'IN-MEMORY CLOUD EMULATION (YELLOW ZONE)' : 'IN-MEMORY CLOUD EMULATION',
+                  style: AppStyles.sectionTitle.copyWith(color: color, fontSize: 15),
+                ),
               ),
             ],
           ),
@@ -335,9 +346,11 @@ class _CloudScreenState extends State<CloudScreen> {
                   children: [
                     const Icon(Icons.show_chart, color: AppStyles.textSecondary, size: 16),
                     const SizedBox(width: AppStyles.spaceSM),
-                    Text(
-                      'Minimum predicted humidity: ${(predHum * 100).toStringAsFixed(1)}%\nExpected at: $targetDateFormatted',
-                      style: AppStyles.consoleBody,
+                    Expanded(
+                      child: Text(
+                        'Minimum predicted humidity: ${(predHum * 100).toStringAsFixed(1)}%\nExpected at: $targetDateFormatted',
+                        style: AppStyles.consoleBody,
+                      ),
                     ),
                   ],
                 ),
@@ -346,9 +359,11 @@ class _CloudScreenState extends State<CloudScreen> {
                   children: [
                     const Icon(Icons.wb_sunny, color: AppStyles.textSecondary, size: 16),
                     const SizedBox(width: AppStyles.spaceSM),
-                    Text(
-                      '48h Radiation Sum: ${radSum.toStringAsFixed(1)} J/m²',
-                      style: AppStyles.consoleBody,
+                    Expanded(
+                      child: Text(
+                        '48h Radiation Sum: ${radSum.toStringAsFixed(1)} J/m²',
+                        style: AppStyles.consoleBody,
+                      ),
                     ),
                   ],
                 ),
@@ -358,9 +373,11 @@ class _CloudScreenState extends State<CloudScreen> {
                     children: [
                       const Icon(Icons.access_time, color: AppStyles.textSecondary, size: 16),
                       const SizedBox(width: AppStyles.spaceSM),
-                      Text(
-                        'Reference Timestamp: ${_formatDateString(refDate)}',
-                        style: AppStyles.consoleBody,
+                      Expanded(
+                        child: Text(
+                          'Reference Timestamp: ${_formatDateString(refDate)}',
+                          style: AppStyles.consoleBody,
+                        ),
                       ),
                     ],
                   ),
@@ -482,7 +499,9 @@ class _CloudScreenState extends State<CloudScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
+                                Wrap(
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  runSpacing: AppStyles.spaceXS,
                                   children: [
                                     Icon(
                                       Icons.cloud,

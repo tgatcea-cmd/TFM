@@ -79,105 +79,130 @@ class _DashboardShellState extends State<DashboardShell> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Row(
-        children: [
-          // The visual replacement for your Global Keystrokes
-          NavigationRail(
-            selectedIndex: _selectedIndex,
-            onDestinationSelected: (int index) {
-              setState(() {
-                _selectedIndex = index;
-              });
-            },
-            labelType: NavigationRailLabelType.all,
-            destinations: const [
-              NavigationRailDestination(icon: Icon(Icons.dashboard), label: Text('Home')),
-              NavigationRailDestination(icon: Icon(Icons.bluetooth_searching), label: Text('Nearby')),
-              NavigationRailDestination(icon: Icon(Icons.storage), label: Text('Local DB')),
-              NavigationRailDestination(icon: Icon(Icons.cloud_sync), label: Text('Cloud')),
-              NavigationRailDestination(icon: Icon(Icons.settings), label: Text('Config')),
-            ],
-          ),
-          const VerticalDivider(thickness: 1, width: 1),
-          // Main Content Area
-          Expanded(
-            child: Column(
+  Widget _buildMainContent() {
+    return Column(
+      children: [
+        Expanded(child: _buildCurrentScreen()),
+        // Togglable Global Status Bar
+        if (_isStatusVisible)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppStyles.spaceMD,
+              vertical: AppStyles.spaceXS,
+            ),
+            color: AppStyles.surfaceColor,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Expanded(child: _buildCurrentScreen()),
-                // Togglable Global Status Bar
-                if (_isStatusVisible)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppStyles.spaceMD,
-                      vertical: AppStyles.spaceXS,
-                    ),
-                    color: AppStyles.surfaceColor,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'STATUS: $_statusMsg',
-                            style: AppStyles.captionStatus.copyWith(
-                              color: AppStyles.successAccent,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        InkWell(
-                          onTap: () => setState(() => _isStatusVisible = false),
-                          child: const Padding(
-                            padding: EdgeInsets.all(4.0),
-                            child: Row(
-                              children: [
-                                Icon(Icons.keyboard_arrow_down, size: 16, color: AppStyles.textMuted),
-                                SizedBox(width: 2),
-                                Text('Hide', style: AppStyles.captionStatus),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                else
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: AppStyles.spaceSM, bottom: 2.0),
-                      child: InkWell(
-                        onTap: () => setState(() => _isStatusVisible = true),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: AppStyles.surfaceColor,
-                            borderRadius: const BorderRadius.only(
-                              topLeft: Radius.circular(6),
-                              topRight: Radius.circular(6),
-                            ),
-                            border: Border.all(color: AppStyles.dividerColor),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.keyboard_arrow_up, size: 14, color: AppStyles.successAccent),
-                              SizedBox(width: 4),
-                              Text('Status', style: AppStyles.captionStatus),
-                            ],
-                          ),
-                        ),
-                      ),
+                Expanded(
+                  child: Text(
+                    'STATUS: $_statusMsg',
+                    style: AppStyles.captionStatus.copyWith(
+                      color: AppStyles.successAccent,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
+                ),
+                InkWell(
+                  onTap: () => setState(() => _isStatusVisible = false),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4.0),
+                    child: Row(
+                      children: [
+                        Icon(Icons.keyboard_arrow_down, size: 16, color: AppStyles.textMuted),
+                        SizedBox(width: 2),
+                        Text('Hide', style: AppStyles.captionStatus),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
+          )
+        else
+          Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.only(right: AppStyles.spaceSM, bottom: 2.0),
+              child: InkWell(
+                onTap: () => setState(() => _isStatusVisible = true),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppStyles.surfaceColor,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(6),
+                      topRight: Radius.circular(6),
+                    ),
+                    border: Border.all(color: AppStyles.dividerColor),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.keyboard_arrow_up, size: 14, color: AppStyles.successAccent),
+                      SizedBox(width: 4),
+                      Text('Status', style: AppStyles.captionStatus),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
-        ],
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDesktop = MediaQuery.of(context).size.width >= 600;
+
+    return Scaffold(
+      body: SafeArea(
+        child: isDesktop
+            ? Row(
+                children: [
+                  // The visual replacement for your Global Keystrokes
+                  NavigationRail(
+                    selectedIndex: _selectedIndex,
+                    onDestinationSelected: (int index) {
+                      setState(() {
+                        _selectedIndex = index;
+                      });
+                    },
+                    labelType: NavigationRailLabelType.all,
+                    destinations: const [
+                      NavigationRailDestination(icon: Icon(Icons.dashboard), label: Text('Home')),
+                      NavigationRailDestination(icon: Icon(Icons.bluetooth_searching), label: Text('Nearby')),
+                      NavigationRailDestination(icon: Icon(Icons.storage), label: Text('Local DB')),
+                      NavigationRailDestination(icon: Icon(Icons.cloud_sync), label: Text('Cloud')),
+                      NavigationRailDestination(icon: Icon(Icons.settings), label: Text('Config')),
+                    ],
+                  ),
+                  const VerticalDivider(thickness: 1, width: 1),
+                  // Main Content Area
+                  Expanded(child: _buildMainContent()),
+                ],
+              )
+            : _buildMainContent(),
       ),
+      bottomNavigationBar: !isDesktop
+          ? BottomNavigationBar(
+              currentIndex: _selectedIndex,
+              onTap: (index) => setState(() => _selectedIndex = index),
+              type: BottomNavigationBarType.fixed,
+              backgroundColor: AppStyles.surfaceColor,
+              selectedItemColor: AppStyles.successAccent,
+              unselectedItemColor: AppStyles.textMuted,
+              items: const [
+                BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Home'),
+                BottomNavigationBarItem(icon: Icon(Icons.bluetooth_searching), label: 'Nearby'),
+                BottomNavigationBarItem(icon: Icon(Icons.storage), label: 'Local DB'),
+                BottomNavigationBarItem(icon: Icon(Icons.cloud_sync), label: 'Cloud'),
+                BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Config'),
+              ],
+            )
+          : null,
     );
   }
 }
