@@ -217,5 +217,15 @@
   "cloudSelectedStationMsg": "Selected Cloud Station: {name}",
   "cloudBtnEmulateStation": "Emulate Cloud Station",
   "cloudValNA": "N/A",
-  "cloudValUnknown": "UNKNOWN"
+  "cloudValUnknown": "UNKNOWN",
+
+  "nbWarningBtOff": "Bluetooth Desactivado",
+  "nbWarningBtOffDesc": "El Bluetooth debe estar activado para escanear y conectar con el hardware Savia.",
+  "nbBtnTurnOnBt": "Activar Bluetooth",
+  "nbWarningLocOff": "Ubicación Desactivada",
+  "nbWarningLocOffDesc": "Los servicios de ubicación deben estar activados para escanear dispositivos BLE en este sistema operativo.",
+  "nbBtnTurnOnLoc": "Activar Ubicación",
+  "nbWarningPerms": "Permisos Requeridos",
+  "nbWarningPermsDesc": "Por favor, concede los permisos de Bluetooth y Ubicación necesarios para comunicarse con el hardware.",
+  "nbBtnGrantPerms": "Conceder Permisos"
 }

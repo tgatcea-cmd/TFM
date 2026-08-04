@@ -23,15 +23,15 @@ class CloudScreen extends StatefulWidget {
 class _CloudScreenState extends State<CloudScreen> {
   List<dynamic> _cloudDevices = [];
   int? _selectedIndex;
-  
+
   bool _isLoadingDevices = false;
   bool _isTesting = false;
   bool _isSyncing = false;
   bool _isEmulating = false;
-  
+
   String _connStatus = 'UNKNOWN';
   int _unsyncedDevicesCount = 0;
-  
+
   Map<String, dynamic>? _emulationResultMap;
   bool _isDisposed = false;
 
@@ -53,11 +53,16 @@ class _CloudScreenState extends State<CloudScreen> {
   String get _localizedConnStatus {
     final l10n = AppLocalizations.of(context)!;
     switch (_connStatus) {
-      case 'CONNECTED': return l10n.cloudStatusConnected;
-      case 'UNREACHABLE': return l10n.cloudStatusUnreachable;
-      case 'ERROR': return l10n.cloudStatusError;
-      case 'TESTING...': return l10n.cloudStatusTesting;
-      default: return l10n.cloudStatusConnectionUnknown;
+      case 'CONNECTED':
+        return l10n.cloudStatusConnected;
+      case 'UNREACHABLE':
+        return l10n.cloudStatusUnreachable;
+      case 'ERROR':
+        return l10n.cloudStatusError;
+      case 'TESTING...':
+        return l10n.cloudStatusTesting;
+      default:
+        return l10n.cloudStatusConnectionUnknown;
     }
   }
 
@@ -81,14 +86,15 @@ class _CloudScreenState extends State<CloudScreen> {
   Future<void> _loadCloudDevices() async {
     if (_isLoadingDevices || _isDisposed || !mounted) return;
     setState(() => _isLoadingDevices = true);
-    
+
     try {
       final devices = await widget.routines.cloudApi.getRegisteredDevices();
       if (!_isDisposed && mounted) {
         setState(() {
           _cloudDevices = devices;
           _connStatus = 'CONNECTED';
-          if (_selectedIndex != null && _selectedIndex! >= _cloudDevices.length) {
+          if (_selectedIndex != null &&
+              _selectedIndex! >= _cloudDevices.length) {
             _selectedIndex = _cloudDevices.isNotEmpty ? 0 : null;
           }
         });
@@ -110,7 +116,7 @@ class _CloudScreenState extends State<CloudScreen> {
       _isTesting = true;
       _connStatus = 'TESTING...';
     });
-    
+
     final l10n = AppLocalizations.of(context)!;
     widget.onStatusChange(l10n.cloudTestingConnection);
 
@@ -120,7 +126,9 @@ class _CloudScreenState extends State<CloudScreen> {
       setState(() {
         _connStatus = success ? 'CONNECTED' : 'UNREACHABLE';
       });
-      widget.onStatusChange(success ? l10n.cloudApiOnline : l10n.cloudApiNoResponse);
+      widget.onStatusChange(
+        success ? l10n.cloudApiOnline : l10n.cloudApiNoResponse,
+      );
       if (success) {
         await _loadCloudDevices();
       }
@@ -162,6 +170,7 @@ class _CloudScreenState extends State<CloudScreen> {
       await _loadCloudDevices();
     }
 
+    if (!mounted) return;
     final l10n = AppLocalizations.of(context)!;
 
     if (_cloudDevices.isEmpty) {
@@ -175,7 +184,13 @@ class _CloudScreenState extends State<CloudScreen> {
     }
 
     final devMap = _cloudDevices[_selectedIndex!];
-    final devId = (devMap['deviceIdentifier'] ?? devMap['id'] ?? devMap['device_id'] ?? devMap['deviceId'] ?? 'pico_01').toString();
+    final devId =
+        (devMap['deviceIdentifier'] ??
+                devMap['id'] ??
+                devMap['device_id'] ??
+                devMap['deviceId'] ??
+                'pico_01')
+            .toString();
     final name = (devMap['name'] ?? devMap['deviceName'] ?? devId).toString();
 
     setState(() {
@@ -185,14 +200,18 @@ class _CloudScreenState extends State<CloudScreen> {
     widget.onStatusChange(l10n.cloudEmulationExecuting(name, devId));
 
     try {
-      final result = await widget.routines.emulateCloudRecommendationInMemory(devId);
-      
+      final result = await widget.routines.emulateCloudRecommendationInMemory(
+        devId,
+      );
+
       if (mounted) {
         setState(() {
           _emulationResultMap = result;
         });
       }
-      widget.onStatusChange(l10n.cloudEmulationFinished(result['verdict'].toString()));
+      widget.onStatusChange(
+        l10n.cloudEmulationFinished(result['verdict'].toString()),
+      );
     } catch (e) {
       widget.onStatusChange(l10n.cloudEmulationError(e.toString()));
     } finally {
@@ -209,8 +228,8 @@ class _CloudScreenState extends State<CloudScreen> {
     final statusColor = _connStatus == 'CONNECTED'
         ? AppStyles.successAccent
         : (_connStatus == 'UNREACHABLE' || _connStatus == 'ERROR'
-            ? AppStyles.errorAccent
-            : AppStyles.warningAccent);
+              ? AppStyles.errorAccent
+              : AppStyles.warningAccent);
 
     return Container(
       padding: const EdgeInsets.all(AppStyles.spaceMD),
@@ -245,7 +264,7 @@ class _CloudScreenState extends State<CloudScreen> {
                     onPressed: _isSyncing ? null : _handleSync,
                   ),
                 ],
-              )
+              ),
             ],
           ),
           const SizedBox(height: AppStyles.spaceSM),
@@ -255,15 +274,24 @@ class _CloudScreenState extends State<CloudScreen> {
           ),
           const SizedBox(height: AppStyles.spaceXS),
           Text(
-            l10n.cloudApiAuthLabel(hasApiKey ? l10n.cloudApiAuthConfigured : l10n.cloudApiAuthMissing),
+            l10n.cloudApiAuthLabel(
+              hasApiKey
+                  ? l10n.cloudApiAuthConfigured
+                  : l10n.cloudApiAuthMissing,
+            ),
             style: AppStyles.consoleBody.copyWith(
-              color: hasApiKey ? AppStyles.successAccent : AppStyles.warningAccent,
+              color: hasApiKey
+                  ? AppStyles.successAccent
+                  : AppStyles.warningAccent,
             ),
           ),
           const SizedBox(height: AppStyles.spaceXS),
           Row(
             children: [
-              Text(l10n.cloudConnectionStateLabel, style: AppStyles.consoleBody),
+              Text(
+                l10n.cloudConnectionStateLabel,
+                style: AppStyles.consoleBody,
+              ),
               Text(
                 _localizedConnStatus,
                 style: AppStyles.consoleBody.copyWith(
@@ -279,18 +307,22 @@ class _CloudScreenState extends State<CloudScreen> {
   }
 
   String _translateVerdict(String v, AppLocalizations l10n) {
-    if (v.contains('IRRIGATE: Soil moisture threshold drop predicted')) return l10n.verdictLstmIrrigate;
-    if (v.contains('HEALTHY: Soil moisture level sufficient')) return l10n.verdictLstmHealthy;
+    if (v.contains('IRRIGATE: Soil moisture threshold drop predicted'))
+      return l10n.verdictLstmIrrigate;
+    if (v.contains('HEALTHY: Soil moisture level sufficient'))
+      return l10n.verdictLstmHealthy;
     if (v.contains('SATURATION RISK:')) return l10n.verdictRfSaturation;
     if (v.contains('HEALTHY: Irrigation safe')) return l10n.verdictRfHealthy;
-    
+
     if (v.startsWith('Verdict: ')) {
       final sub = v.substring(9);
       return 'Verdict: ${_translateVerdict(sub, l10n)}';
     }
 
-    if (v.startsWith('Perjudicial')) return v.replaceFirst('Perjudicial', l10n.verdictEmuPerjudicial);
-    if (v.startsWith('Healthy')) return v.replaceFirst('Healthy', l10n.verdictEmuHealthy);
+    if (v.startsWith('Perjudicial'))
+      return v.replaceFirst('Perjudicial', l10n.verdictEmuPerjudicial);
+    if (v.startsWith('Healthy'))
+      return v.replaceFirst('Healthy', l10n.verdictEmuHealthy);
     return v;
   }
 
@@ -298,7 +330,8 @@ class _CloudScreenState extends State<CloudScreen> {
     if (_emulationResultMap == null) return const SizedBox.shrink();
 
     final l10n = AppLocalizations.of(context)!;
-    final verdict = _emulationResultMap!['verdict'] as String? ?? l10n.cloudValUnknown;
+    final verdict =
+        _emulationResultMap!['verdict'] as String? ?? l10n.cloudValUnknown;
     final predHum = _emulationResultMap!['predictedHumidity'] as double?;
     final radSum = _emulationResultMap!['shortwaveRadiationSum48h'] as double?;
     final refDate = _emulationResultMap!['referenceDate'] as String?;
@@ -309,11 +342,13 @@ class _CloudScreenState extends State<CloudScreen> {
     final h = now.hour;
     final startH = settings.agronomicDayStart;
     final endH = settings.agronomicDayEnd;
-    final bool isYellowZone = (endH < startH) 
+    final bool isYellowZone = (endH < startH)
         ? (h >= endH && h < startH)
         : (h >= endH || h < startH);
 
-    final bool isIrrigate = verdict.toUpperCase().contains('IRRIGATE') && !verdict.toUpperCase().contains('DO NOT');
+    final bool isIrrigate =
+        verdict.toUpperCase().contains('IRRIGATE') &&
+        !verdict.toUpperCase().contains('DO NOT');
 
     final color = isYellowZone
         ? AppStyles.warningAccent
@@ -326,12 +361,14 @@ class _CloudScreenState extends State<CloudScreen> {
     String targetDateFormatted = l10n.cloudValNA;
     if (targetMinDateMs != null) {
       final dt = DateTime.fromMillisecondsSinceEpoch(targetMinDateMs);
-      targetDateFormatted = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      targetDateFormatted =
+          '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
     } else if (refDate != null) {
       final parsed = DateTime.tryParse(refDate);
       if (parsed != null) {
         final target = parsed.add(const Duration(hours: 24));
-        targetDateFormatted = '${target.day.toString().padLeft(2, '0')}/${target.month.toString().padLeft(2, '0')}/${target.year} ${target.hour.toString().padLeft(2, '0')}:${target.minute.toString().padLeft(2, '0')}';
+        targetDateFormatted =
+            '${target.day.toString().padLeft(2, '0')}/${target.month.toString().padLeft(2, '0')}/${target.year} ${target.hour.toString().padLeft(2, '0')}:${target.minute.toString().padLeft(2, '0')}';
       }
     }
 
@@ -348,8 +385,13 @@ class _CloudScreenState extends State<CloudScreen> {
               const SizedBox(width: AppStyles.spaceSM),
               Expanded(
                 child: Text(
-                  isYellowZone ? l10n.cloudEmuYellowZoneTitle : l10n.cloudEmuNormalTitle,
-                  style: AppStyles.sectionTitle.copyWith(color: color, fontSize: 15),
+                  isYellowZone
+                      ? l10n.cloudEmuYellowZoneTitle
+                      : l10n.cloudEmuNormalTitle,
+                  style: AppStyles.sectionTitle.copyWith(
+                    color: color,
+                    fontSize: 15,
+                  ),
                 ),
               ),
             ],
@@ -358,7 +400,9 @@ class _CloudScreenState extends State<CloudScreen> {
             const SizedBox(height: AppStyles.spaceXS),
             Text(
               l10n.cloudEmuYellowZoneWarning(endH, startH),
-              style: AppStyles.captionStatus.copyWith(color: AppStyles.warningAccent),
+              style: AppStyles.captionStatus.copyWith(
+                color: AppStyles.warningAccent,
+              ),
             ),
           ],
           const SizedBox(height: AppStyles.spaceSM),
@@ -375,11 +419,18 @@ class _CloudScreenState extends State<CloudScreen> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.show_chart, color: AppStyles.textSecondary, size: 16),
+                    const Icon(
+                      Icons.show_chart,
+                      color: AppStyles.textSecondary,
+                      size: 16,
+                    ),
                     const SizedBox(width: AppStyles.spaceSM),
                     Expanded(
                       child: Text(
-                        l10n.cloudEmuMinHumidity((predHum * 100).toStringAsFixed(1), targetDateFormatted),
+                        l10n.cloudEmuMinHumidity(
+                          (predHum * 100).toStringAsFixed(1),
+                          targetDateFormatted,
+                        ),
                         style: AppStyles.consoleBody,
                       ),
                     ),
@@ -388,7 +439,11 @@ class _CloudScreenState extends State<CloudScreen> {
                 const SizedBox(height: AppStyles.spaceXS),
                 Row(
                   children: [
-                    const Icon(Icons.wb_sunny, color: AppStyles.textSecondary, size: 16),
+                    const Icon(
+                      Icons.wb_sunny,
+                      color: AppStyles.textSecondary,
+                      size: 16,
+                    ),
                     const SizedBox(width: AppStyles.spaceSM),
                     Expanded(
                       child: Text(
@@ -402,7 +457,11 @@ class _CloudScreenState extends State<CloudScreen> {
                   const SizedBox(height: AppStyles.spaceXS),
                   Row(
                     children: [
-                      const Icon(Icons.access_time, color: AppStyles.textSecondary, size: 16),
+                      const Icon(
+                        Icons.access_time,
+                        color: AppStyles.textSecondary,
+                        size: 16,
+                      ),
                       const SizedBox(width: AppStyles.spaceSM),
                       Expanded(
                         child: Text(
@@ -414,7 +473,7 @@ class _CloudScreenState extends State<CloudScreen> {
                   ),
                 ],
               ],
-            )
+            ),
         ],
       ),
     );
@@ -431,7 +490,12 @@ class _CloudScreenState extends State<CloudScreen> {
     return val.toString();
   }
 
-  String _resolveCoords(String devId, dynamic rawLat, dynamic rawLon, AppLocalizations l10n) {
+  String _resolveCoords(
+    String devId,
+    dynamic rawLat,
+    dynamic rawLon,
+    AppLocalizations l10n,
+  ) {
     final serverLat = _formatCoord(rawLat, l10n);
     final serverLon = _formatCoord(rawLon, l10n);
     if (serverLat != l10n.cloudValNA && serverLon != l10n.cloudValNA) {
@@ -440,14 +504,22 @@ class _CloudScreenState extends State<CloudScreen> {
 
     final devices = widget.routines.db.getSavedDevices();
     for (var dev in devices) {
-      if (dev.deviceIdentifier == devId && dev.latitude != null && dev.longitude != null) {
-        return l10n.cloudCoordsLatLon(dev.latitude!.toStringAsFixed(4), dev.longitude!.toStringAsFixed(4));
+      if (dev.deviceIdentifier == devId &&
+          dev.latitude != null &&
+          dev.longitude != null) {
+        return l10n.cloudCoordsLatLon(
+          dev.latitude!.toStringAsFixed(4),
+          dev.longitude!.toStringAsFixed(4),
+        );
       }
     }
 
     final appLoc = widget.routines.db.getLocationSettings();
     if (appLoc.latitude != 0.0 || appLoc.longitude != 0.0) {
-      return l10n.cloudCoordsLatLon(appLoc.latitude.toStringAsFixed(4), appLoc.longitude.toStringAsFixed(4));
+      return l10n.cloudCoordsLatLon(
+        appLoc.latitude.toStringAsFixed(4),
+        appLoc.longitude.toStringAsFixed(4),
+      );
     }
 
     return l10n.cloudCoordsNA;
@@ -456,128 +528,163 @@ class _CloudScreenState extends State<CloudScreen> {
   String _resolveDeviceDisplayName(String devId, String serverName) {
     final devices = widget.routines.db.getSavedDevices();
     for (var dev in devices) {
-      if (dev.deviceIdentifier == devId && dev.name.isNotEmpty && dev.name != "Unknown Station") {
+      if (dev.deviceIdentifier == devId &&
+          dev.name.isNotEmpty &&
+          dev.name != "Unknown Station") {
         return dev.name;
       }
     }
     return serverName;
   }
 
+
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    
+
     return Padding(
       padding: const EdgeInsets.all(AppStyles.spaceMD),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            l10n.cloudHeaderTitle,
-            style: AppStyles.displayHeader,
-          ),
-          const SizedBox(height: AppStyles.spaceMD),
+      // =======================================================================
+      // LAYOUT FIX: Replaced Column+Expanded with CustomScrollView
+      // =======================================================================
+      child: CustomScrollView(
+        slivers: [
+          // 1. Static Header & Status Card (Scrolls seamlessly out of the way)
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(l10n.cloudHeaderTitle, style: AppStyles.displayHeader),
+                  ],
+                ),
+                const SizedBox(height: AppStyles.spaceMD),
+                _buildApiStatusCard(),
+                const SizedBox(height: AppStyles.spaceMD),
 
-          _buildApiStatusCard(),
-
-          const SizedBox(height: AppStyles.spaceMD),
-          
-          if (_isTesting || _isSyncing || _isEmulating || _isLoadingDevices)
-            const Padding(
-              padding: EdgeInsets.only(bottom: AppStyles.spaceMD),
-              child: LinearProgressIndicator(),
-            ),
-
-          Text(
-            l10n.cloudRegisteredStationsTitle,
-            style: AppStyles.sectionTitle,
-          ),
-          const SizedBox(height: AppStyles.spaceSM),
-
-          Expanded(
-            child: _cloudDevices.isEmpty
-                ? Center(
-                    child: Text(
-                      l10n.cloudNoStationsFound,
-                      textAlign: TextAlign.center,
-                      style: AppStyles.captionStatus,
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: _cloudDevices.length,
-                    itemBuilder: (context, index) {
-                      final devMap = _cloudDevices[index];
-                      final isSelected = _selectedIndex == index;
-                      final devId = (devMap['deviceIdentifier'] ?? devMap['id'] ?? devMap['device_id'] ?? devMap['deviceId'] ?? 'pico_$index').toString();
-                      final serverName = (devMap['name'] ?? devMap['deviceName'] ?? devId).toString();
-                      final name = _resolveDeviceDisplayName(devId, serverName);
-                      final rawLat = devMap['lat'] ?? devMap['latitude'];
-                      final rawLon = devMap['lon'] ?? devMap['longitude'] ?? devMap['lng'];
-                      final coordsStr = _resolveCoords(devId, rawLat, rawLon, l10n);
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: AppStyles.spaceSM),
-                        decoration: AppStyles.cardShell(isSelected: isSelected),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(8.0),
-                          onTap: () {
-                            setState(() {
-                              _selectedIndex = index;
-                              _emulationResultMap = null;
-                            });
-                            widget.onStatusChange(l10n.cloudSelectedStationMsg(name));
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.all(AppStyles.spaceMD),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Wrap(
-                                  crossAxisAlignment: WrapCrossAlignment.center,
-                                  runSpacing: AppStyles.spaceXS,
-                                  children: [
-                                    Icon(
-                                      Icons.cloud,
-                                      color: isSelected ? AppStyles.successAccent : AppStyles.textMuted,
-                                    ),
-                                    const SizedBox(width: AppStyles.spaceSM),
-                                    Text(
-                                      name,
-                                      style: AppStyles.sectionTitle.copyWith(
-                                        color: isSelected ? AppStyles.successAccent : Colors.white,
-                                      ),
-                                    ),
-                                    const SizedBox(width: AppStyles.spaceSM),
-                                    Text(
-                                      '($devId)',
-                                      style: AppStyles.captionStatus,
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: AppStyles.spaceXS),
-                                Text(
-                                  l10n.cloudCoordinatesLabel(coordsStr),
-                                  style: AppStyles.consoleBody,
-                                ),
-                                if (isSelected) ...[
-                                  const SizedBox(height: AppStyles.spaceMD),
-                                  ElevatedButton.icon(
-                                    icon: const Icon(Icons.memory),
-                                    label: Text(l10n.cloudBtnEmulateStation),
-                                    onPressed: _isEmulating ? null : _handleCloudEmulation,
-                                  ),
-                                  _buildEmulationCard(),
-                                ]
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    },
+                if (_isTesting ||
+                    _isSyncing ||
+                    _isEmulating ||
+                    _isLoadingDevices)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: AppStyles.spaceMD),
+                    child: LinearProgressIndicator(),
                   ),
+
+                Text(
+                  l10n.cloudRegisteredStationsTitle,
+                  style: AppStyles.sectionTitle,
+                ),
+                const SizedBox(height: AppStyles.spaceSM),
+              ],
+            ),
           ),
+
+          // 2. Dynamic Device List (Takes up the rest of the scrolling space)
+          if (_cloudDevices.isEmpty)
+            SliverToBoxAdapter(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppStyles.spaceXL),
+                  child: Text(
+                    l10n.cloudNoStationsFound,
+                    textAlign: TextAlign.center,
+                    style: AppStyles.captionStatus,
+                  ),
+                ),
+              ),
+            )
+          else
+            SliverList(
+              delegate: SliverChildBuilderDelegate((context, index) {
+                final devMap = _cloudDevices[index];
+                final isSelected = _selectedIndex == index;
+                final devId =
+                    (devMap['deviceIdentifier'] ??
+                            devMap['id'] ??
+                            devMap['device_id'] ??
+                            devMap['deviceId'] ??
+                            'pico_$index')
+                        .toString();
+                final serverName =
+                    (devMap['name'] ?? devMap['deviceName'] ?? devId)
+                        .toString();
+                final name = _resolveDeviceDisplayName(devId, serverName);
+                final rawLat = devMap['lat'] ?? devMap['latitude'];
+                final rawLon =
+                    devMap['lon'] ?? devMap['longitude'] ?? devMap['lng'];
+                final coordsStr = _resolveCoords(devId, rawLat, rawLon, l10n);
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: AppStyles.spaceSM),
+                  decoration: AppStyles.cardShell(isSelected: isSelected),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8.0),
+                    onTap: () {
+                      setState(() {
+                        _selectedIndex = index;
+                        _emulationResultMap = null;
+                      });
+                      widget.onStatusChange(l10n.cloudSelectedStationMsg(name));
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppStyles.spaceMD),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            runSpacing: AppStyles.spaceXS,
+                            children: [
+                              Icon(
+                                Icons.cloud,
+                                color: isSelected
+                                    ? AppStyles.successAccent
+                                    : AppStyles.textMuted,
+                              ),
+                              const SizedBox(width: AppStyles.spaceSM),
+                              Text(
+                                name,
+                                style: AppStyles.sectionTitle.copyWith(
+                                  color: isSelected
+                                      ? AppStyles.successAccent
+                                      : Colors.white,
+                                ),
+                              ),
+                              const SizedBox(width: AppStyles.spaceSM),
+                              Text('($devId)', style: AppStyles.captionStatus),
+                            ],
+                          ),
+                          const SizedBox(height: AppStyles.spaceXS),
+                          Text(
+                            l10n.cloudCoordinatesLabel(coordsStr),
+                            style: AppStyles.consoleBody,
+                          ),
+                          if (isSelected) ...[
+                            const SizedBox(height: AppStyles.spaceMD),
+                            ElevatedButton.icon(
+                              icon: const Icon(Icons.memory),
+                              label: Text(l10n.cloudBtnEmulateStation),
+                              onPressed: _isEmulating
+                                  ? null
+                                  : _handleCloudEmulation,
+                            ),
+                            _buildEmulationCard(),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }, childCount: _cloudDevices.length),
+            ),
         ],
       ),
     );
   }
 }
+
+

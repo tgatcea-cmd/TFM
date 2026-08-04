@@ -2,8 +2,6 @@
 // Off-Device / App-side implementation matching Savia C firmware specs (scaler.c, lstm_input.c, inference.c)
 
 import 'dart:math';
-import 'dart:typed_data';
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:isar_community/isar.dart';
 import 'package:tfm_app/core/database/app_database.dart';
 import 'package:tfm_app/core/models/device.dart';
@@ -103,7 +101,7 @@ class SaviaLstmInferenceEngine {
     print('[Savia LSTM Engine] Scaled Tensors Built successfully: Past [48, 3], Future [24, 1]');
 
     // Step 3: Neural Network Execution (24h Unrolled TFLite Prediction Model)
-    final scaledPredictions = await _executeLstmTfliteModel(pastTensor, futureTensor);
+    final scaledPredictions = _executeLstmModel(pastTensor, futureTensor);
 
     // Step 4: Unscale Output Predictions back to VWC
     final List<double> unscaledPredictions = scaledPredictions
@@ -239,18 +237,6 @@ class SaviaLstmInferenceEngine {
     };
   }
 
-  /// Loads and executes the official assets/models/lstm_hs30_int8.tflite binary model asset
-  Future<List<double>> _executeLstmTfliteModel(List<List<double>> pastTensor, List<double> futureTensor) async {
-    try {
-      final ByteData modelData = await rootBundle.load('assets/models/lstm_hs30_int8.tflite');
-      print('[Savia LSTM Engine] Successfully loaded official TFLite model asset (${modelData.lengthInBytes} bytes).');
-      // Pass scaled tensors to prediction pipeline
-      return _executeLstmModel(pastTensor, futureTensor);
-    } catch (e) {
-      print('[Savia LSTM Engine] Asset load notice: $e');
-      return _executeLstmModel(pastTensor, futureTensor);
-    }
-  }
 
   /// 24-step Unrolled LSTM Forecast Procedure
   /// Calculates the 24-hour ahead $HS_{30}$ soil moisture curve

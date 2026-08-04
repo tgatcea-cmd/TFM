@@ -1,7 +1,7 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:tfm_app/core/models/chart_data_point.dart';
 import 'package:tfm_app/core/models/device.dart';
-import 'package:tfm_app/core/theme/app_styles.dart';
+
 import 'package:tfm_app/features/charts/time_metric_chart.dart';
 
 /// A specialized wrapper around [TimeMetricChart] for generic custom telemetry data.
@@ -27,7 +27,7 @@ class CustomMetricChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final historyColor = AppStyles.primaryTeal(context);
+    final historyColor = Theme.of(context).colorScheme.primary;
 
     final historyData = history
         .where((h) => h.kind == kind && h.tsMs != null && h.value != null)

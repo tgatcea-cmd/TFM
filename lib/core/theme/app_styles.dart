@@ -21,11 +21,7 @@ class AppStyles {
   static const Color textMuted           = Colors.white54;
   static const Color errorDarkAccent     = Color(0xFFB71C1C);
 
-  // Theme-derived helper methods (backward compatibility for charts)
-  static Color primaryTeal(BuildContext context) => Theme.of(context).colorScheme.primary;
-  static Color darkSlate(BuildContext context) => Theme.of(context).colorScheme.onSurface;
-  static Color accentOrange(BuildContext context) => Theme.of(context).colorScheme.secondary;
-  static Color dangerRed(BuildContext context) => Theme.of(context).colorScheme.error;
+
 
   // --- TYPOGRAPHY CONTRACT ---
   static const String consoleFontFamily = 'monospace'; 

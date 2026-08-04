@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:tfm_app/core/models/chart_data_point.dart';
 import 'package:tfm_app/core/models/device.dart';
-import 'package:tfm_app/core/theme/app_styles.dart';
+
 import 'time_metric_chart.dart';
 
 /// A specialized wrapper around [TimeMetricChart] configured to display Solar Radiation.
@@ -26,8 +26,8 @@ class RadiationChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final redColor = AppStyles.dangerRed(context);
-    final orangeColor = AppStyles.accentOrange(context);
+    final redColor = Theme.of(context).colorScheme.error;
+    final orangeColor = Theme.of(context).colorScheme.secondary;
 
     final historyData = weatherHistory.map((w) {
       return ChartDataPoint(

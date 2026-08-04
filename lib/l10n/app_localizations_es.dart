@@ -759,4 +759,34 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get cloudValUnknown => 'UNKNOWN';
+
+  @override
+  String get nbWarningBtOff => 'Bluetooth Desactivado';
+
+  @override
+  String get nbWarningBtOffDesc =>
+      'El Bluetooth debe estar activado para escanear y conectar con el hardware Savia.';
+
+  @override
+  String get nbBtnTurnOnBt => 'Activar Bluetooth';
+
+  @override
+  String get nbWarningLocOff => 'Ubicación Desactivada';
+
+  @override
+  String get nbWarningLocOffDesc =>
+      'Los servicios de ubicación deben estar activados para escanear dispositivos BLE en este sistema operativo.';
+
+  @override
+  String get nbBtnTurnOnLoc => 'Activar Ubicación';
+
+  @override
+  String get nbWarningPerms => 'Permisos Requeridos';
+
+  @override
+  String get nbWarningPermsDesc =>
+      'Por favor, concede los permisos de Bluetooth y Ubicación necesarios para comunicarse con el hardware.';
+
+  @override
+  String get nbBtnGrantPerms => 'Conceder Permisos';
 }

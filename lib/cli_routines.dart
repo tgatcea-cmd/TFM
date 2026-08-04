@@ -1,5 +1,4 @@
 import 'package:tfm_app/core/database/app_database.dart';
-import 'package:tfm_app/core/database/secure_storage_service.dart';
 import 'package:tfm_app/core/models/device.dart';
 import 'package:tfm_app/core/network/cloud_api.dart';
 import 'package:tfm_app/features/ble/ble_service.dart';
@@ -14,7 +13,6 @@ import 'package:geolocator/geolocator.dart';
 /// Ready to be consumed by a CLI interface or a UI.
 class CliRoutines {
   late final DatabaseService db;
-  late final SecureStorageService secureStorage;
   late final ApiClient cloudApi;
   late final BleService bleService;
   late final BleDataProcessor bleProcessor;
@@ -49,7 +47,6 @@ class CliRoutines {
     // 1. Initialize Database & Secure Storage
     db = DatabaseService();
     await db.init();
-    secureStorage = SecureStorageService();
 
     // 2. Initialize Network API
     final settings = db.getAppSettings();
@@ -105,28 +102,6 @@ class CliRoutines {
     await inferenceBridge.runIrrigationRecommendation(deviceId);
     print('Inference finished. Verdict: ${inferenceBridge.status.value}');
   }
-
-  /// Routine: Search for Nearby BLE Stations
-  // Future<List<ScanResult>> searchNearbyDevices() async {
-  //   print('Searching for nearby BLE devices...');
-  //   await bleService.startScan();
-  //   await Future.delayed(const Duration(seconds: 1));
-  //   await bleService.stopScan();
-  //   return bleService.cachedDevices;
-  // }
-
-  // // Routine: Connect to BLE Device
-  // Future<bool> connectToDevice(BluetoothDevice device, String sharedSecret) async {
-  //   print('Setting up handshake module with secret and connecting...');
-  //   bleService.handshakeModule = PicoHandshakeModule(sharedSecret: sharedSecret);
-  //   final connected = await bleService.connect(device);
-  //   if (connected) {
-  //     // ponytail: ensure device entry exists in local DB upon connection
-  //     final name = device.platformName.isNotEmpty ? device.platformName : device.remoteId.str;
-  //     db.saveDeviceBasic(device.remoteId.str, name);
-  //   }
-  //   return connected;
-  // }
 
   void searchNearbyDevices() {
     bleService.startScan();

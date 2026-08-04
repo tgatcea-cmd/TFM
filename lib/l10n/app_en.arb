@@ -374,5 +374,15 @@
   "cloudBtnEmulateStation": "Emulate Cloud Station",
   
   "cloudValNA": "N/A",
-  "cloudValUnknown": "UNKNOWN"
+  "cloudValUnknown": "UNKNOWN",
+
+  "nbWarningBtOff": "Bluetooth is Disabled",
+  "nbWarningBtOffDesc": "Bluetooth must be enabled to scan for and connect to nearby Savia hardware.",
+  "nbBtnTurnOnBt": "Turn On Bluetooth",
+  "nbWarningLocOff": "Location Services Disabled",
+  "nbWarningLocOffDesc": "Location services must be enabled to scan for BLE devices on this operating system.",
+  "nbBtnTurnOnLoc": "Enable Location",
+  "nbWarningPerms": "Permissions Required",
+  "nbWarningPermsDesc": "Please grant the necessary Bluetooth and Location permissions to communicate with the hardware.",
+  "nbBtnGrantPerms": "Grant Permissions"
 }

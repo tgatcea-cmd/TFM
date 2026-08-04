@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:tfm_app/core/models/chart_data_point.dart';
 import 'package:tfm_app/core/models/device.dart';
-import 'package:tfm_app/core/theme/app_styles.dart';
+
 import 'time_metric_chart.dart';
 
 /// A specialized wrapper around [TimeMetricChart] configured to display Soil Humidity.
@@ -26,8 +26,8 @@ class HumidityChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tealColor = AppStyles.primaryTeal(context);
-    final orangeColor = AppStyles.accentOrange(context);
+    final tealColor = Theme.of(context).colorScheme.primary;
+    final orangeColor = Theme.of(context).colorScheme.secondary;
 
     final historyData = history.map((h) {
       return ChartDataPoint(

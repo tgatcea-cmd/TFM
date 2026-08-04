@@ -6,7 +6,8 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:tfm_app/cli_routines.dart';
 import 'package:tfm_app/core/theme/app_styles.dart';
-import 'package:tfm_app/features/location/location_controller.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:tfm_app/core/models/app_rf_model.dart';
 import 'package:tfm_app/l10n/app_localizations.dart';
 
 class ConfigScreen extends StatefulWidget {
@@ -71,21 +72,35 @@ class _ConfigScreenState extends State<ConfigScreen> {
     super.dispose();
   }
 
+  void _showMlModelManager() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppStyles.surfaceColor,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => MlModelManagerSheet(routines: widget.routines),
+    ).then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
   Future<void> _handleAutoGpsLocation() async {
     final l10n = AppLocalizations.of(context)!;
     widget.onStatusChange(l10n.cfgAcquiringGps);
     try {
-      final locService = LocationService();
-      final pos = await locService.getCurrentPosition();
-      if (pos != null) {
-        widget.routines.db.saveLocationSettings(pos.latitude, pos.longitude, true);
-        setState(() {});
-        widget.onStatusChange(
-          l10n.cfgGpsUpdated(pos.latitude.toStringAsFixed(4), pos.longitude.toStringAsFixed(4))
-        );
-      } else {
-        widget.onStatusChange(l10n.cfgGpsFailed);
-      }
+      if (!await Geolocator.isLocationServiceEnabled()) throw Exception('Location services disabled');
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) throw Exception('Location permission denied');
+      
+      final pos = await Geolocator.getCurrentPosition();
+      widget.routines.db.saveLocationSettings(pos.latitude, pos.longitude, true);
+      setState(() {});
+      widget.onStatusChange(
+        l10n.cfgGpsUpdated(pos.latitude.toStringAsFixed(4), pos.longitude.toStringAsFixed(4))
+      );
     } catch (e) {
       widget.onStatusChange(l10n.cfgGpsError(e.toString()));
     }
@@ -114,7 +129,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
                   children: [
                     Container(
                       padding: const EdgeInsets.all(AppStyles.spaceSM),
-                      color: Colors.black38,
+                      color: AppStyles.consoleBackground.withValues(alpha: 0.5),
                       child: Text(
                         l10n.cfgMapHint(selectedPoint.latitude.toStringAsFixed(4), selectedPoint.longitude.toStringAsFixed(4)),
                         style: AppStyles.consoleBody.copyWith(color: AppStyles.successAccent),
@@ -361,7 +376,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey)),
+            child: Text(l10n.cancel, style: AppStyles.bodyText.copyWith(color: AppStyles.textMuted)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, enteredValue),
@@ -388,6 +403,8 @@ class _ConfigScreenState extends State<ConfigScreen> {
 
     final locSettings = widget.routines.db.getLocationSettings();
     final locStr = l10n.cfgLocString(locSettings.latitude.toStringAsFixed(4), locSettings.longitude.toStringAsFixed(4), locSettings.isGps ? 'GPS' : 'Manual');
+    final activeModel = widget.routines.db.getActiveRfModel();
+    final savedModels = widget.routines.db.getSavedRfModels();
 
     final irrStart = (_agronomicDayEnd + 1) % 24;
     final irrEnd = (_agronomicDayStart - 1 + 24) % 24;
@@ -396,6 +413,14 @@ class _ConfigScreenState extends State<ConfigScreen> {
     
     final resolvedMeteoStatus = _openMeteoStatus ?? l10n.cfgChecking;
     final resolvedPingStatus = _cloudPingStatus ?? l10n.cfgPingTesting;
+
+    // Resolve Ping Visual Color Feedback
+    Color pingColor = AppStyles.textSecondary;
+    if (resolvedPingStatus.contains('Failed') || resolvedPingStatus.contains('Error') || resolvedPingStatus.contains('Fall')) {
+      pingColor = AppStyles.errorAccent;
+    } else if (resolvedPingStatus.contains('OK')) {
+      pingColor = AppStyles.successAccent;
+    }
 
     return Padding(
       padding: const EdgeInsets.all(AppStyles.spaceMD),
@@ -437,21 +462,65 @@ class _ConfigScreenState extends State<ConfigScreen> {
                     children: [
                       Text(l10n.cfgEnvSection, style: AppStyles.captionStatus.copyWith(fontWeight: FontWeight.bold)),
                       const Divider(color: AppStyles.dividerColor),
-                      ListTile(
-                        leading: const Icon(Icons.access_time, color: AppStyles.textSecondary),
-                        title: Text(l10n.cfgSysTimeLabel, style: AppStyles.bodyText),
-                        subtitle: Text('$dateStr  (${_now.millisecondsSinceEpoch})', style: AppStyles.consoleBody),
+                      
+                      // Time Row
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.only(top: 4.0),
+                            child: Icon(Icons.access_time, color: AppStyles.textSecondary, size: 24),
+                          ),
+                          const SizedBox(width: AppStyles.spaceSM),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(l10n.cfgSysTimeLabel, style: AppStyles.bodyText.copyWith(fontWeight: FontWeight.bold)),
+                                const SizedBox(height: AppStyles.spaceXS),
+                                Text('$dateStr  (${_now.millisecondsSinceEpoch})', style: AppStyles.consoleBody),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                      ListTile(
-                        leading: const Icon(Icons.location_on, color: AppStyles.textSecondary),
-                        title: Text(l10n.cfgLocSettingsLabel, style: AppStyles.bodyText),
-                        subtitle: Text(locStr, style: AppStyles.consoleBody),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.edit_location_alt, color: AppStyles.techSecondaryAccent),
-                          onPressed: _showLocationSettingsChoice,
-                          tooltip: l10n.cfgTooltipLoc,
-                        ),
-                        onTap: _showLocationSettingsChoice,
+                      
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: AppStyles.spaceSM),
+                        child: Divider(color: AppStyles.dividerColor, height: 1),
+                      ),
+                      
+                      // Location Row
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.only(top: 4.0),
+                            child: Icon(Icons.location_on, color: AppStyles.textSecondary, size: 24),
+                          ),
+                          const SizedBox(width: AppStyles.spaceSM),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(l10n.cfgLocSettingsLabel, style: AppStyles.bodyText.copyWith(fontWeight: FontWeight.bold)),
+                                const SizedBox(height: AppStyles.spaceXS),
+                                Text(locStr, style: AppStyles.consoleBody),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: AppStyles.spaceSM),
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.edit_location_alt, size: 16),
+                            label: Text(l10n.cfgBtnUpdate),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppStyles.techSecondaryAccent,
+                              side: const BorderSide(color: AppStyles.techSecondaryAccent),
+                              minimumSize: const Size(130, 36),
+                            ),
+                            onPressed: _showLocationSettingsChoice,
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -467,26 +536,100 @@ class _ConfigScreenState extends State<ConfigScreen> {
                     children: [
                       Text(l10n.cfgNetSection, style: AppStyles.captionStatus.copyWith(fontWeight: FontWeight.bold)),
                       const Divider(color: AppStyles.dividerColor),
-                      ListTile(
-                        leading: const Icon(Icons.wb_sunny, color: AppStyles.textSecondary),
-                        title: Text(l10n.cfgMeteoLabel, style: AppStyles.bodyText),
-                        trailing: Text(
-                          resolvedMeteoStatus, 
-                          style: AppStyles.consoleBody.copyWith(
-                            color: resolvedMeteoStatus.contains('OK') ? AppStyles.successAccent : AppStyles.errorAccent, 
-                            fontWeight: FontWeight.bold,
+                      
+                      // Open Meteo Row
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.only(top: 4.0),
+                            child: Icon(Icons.wb_sunny, color: AppStyles.textSecondary, size: 24),
                           ),
-                        ),
+                          const SizedBox(width: AppStyles.spaceSM),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(l10n.cfgMeteoLabel, style: AppStyles.bodyText.copyWith(fontWeight: FontWeight.bold)),
+                                const SizedBox(height: AppStyles.spaceXS),
+                                Text(
+                                  resolvedMeteoStatus, 
+                                  style: AppStyles.consoleBody.copyWith(
+                                    color: resolvedMeteoStatus.contains('OK') ? AppStyles.successAccent : AppStyles.errorAccent, 
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: AppStyles.spaceSM),
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.network_ping, size: 16),
+                            label: Text(l10n.cloudBtnTestApi),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppStyles.textSecondary,
+                              side: const BorderSide(color: AppStyles.dividerColor),
+                              minimumSize: const Size(130, 36),
+                            ),
+                            onPressed: _checkOpenMeteo,
+                          ),
+                        ],
                       ),
-                      ListTile(
-                        leading: const Icon(Icons.cloud, color: AppStyles.textSecondary),
-                        title: Text(l10n.cfgCloudLabel, style: AppStyles.bodyText),
-                        subtitle: Text('$_cloudScheme://$_cloudUrl:$_cloudPort\nPing: $resolvedPingStatus', style: AppStyles.consoleBody),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.edit, color: AppStyles.waterActionAccent),
-                          onPressed: _editCloudEndpointDialog,
-                          tooltip: l10n.cfgTooltipEditEnd,
-                        ),
+                      
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: AppStyles.spaceSM),
+                        child: Divider(color: AppStyles.dividerColor, height: 1),
+                      ),
+                      
+                      // Cloud Server Endpoint Row
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.only(top: 4.0),
+                            child: Icon(Icons.cloud, color: AppStyles.textSecondary, size: 24),
+                          ),
+                          const SizedBox(width: AppStyles.spaceSM),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(l10n.cfgCloudLabel, style: AppStyles.bodyText.copyWith(fontWeight: FontWeight.bold)),
+                                const SizedBox(height: AppStyles.spaceXS),
+                                Text('$_cloudScheme://$_cloudUrl:$_cloudPort', style: AppStyles.consoleBody),
+                                const SizedBox(height: AppStyles.spaceXS),
+                                Text('Ping: $resolvedPingStatus', style: AppStyles.consoleBody.copyWith(color: pingColor)),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: AppStyles.spaceSM),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              OutlinedButton.icon(
+                                icon: const Icon(Icons.edit, size: 16),
+                                label: Text(l10n.cfgBtnUpdate),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: AppStyles.waterActionAccent,
+                                  side: const BorderSide(color: AppStyles.waterActionAccent),
+                                  minimumSize: const Size(130, 36),
+                                ),
+                                onPressed: _editCloudEndpointDialog,
+                              ),
+                              const SizedBox(height: AppStyles.spaceSM),
+                              OutlinedButton.icon(
+                                icon: const Icon(Icons.network_ping, size: 16),
+                                label: Text(l10n.cloudBtnTestApi),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: AppStyles.textSecondary,
+                                  side: const BorderSide(color: AppStyles.dividerColor),
+                                  minimumSize: const Size(130, 36),
+                                ),
+                                onPressed: _checkCloudPing,
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -581,11 +724,307 @@ class _ConfigScreenState extends State<ConfigScreen> {
                     ],
                   ),
                 ),
+                const SizedBox(height: AppStyles.spaceSM),
+
+                // 4. ML Models Management Card
+                Container(
+                  padding: const EdgeInsets.all(AppStyles.spaceMD),
+                  decoration: AppStyles.cardShell(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'MACHINE LEARNING MODELS (RANDOM FOREST)',
+                        style: AppStyles.captionStatus.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                      const Divider(color: AppStyles.dividerColor),
+                      
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.only(top: 4.0),
+                            child: Icon(Icons.psychology, color: AppStyles.techSecondaryAccent, size: 28),
+                          ),
+                          const SizedBox(width: AppStyles.spaceSM),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  activeModel != null
+                                      ? 'Active: ${activeModel.cropName} (v${activeModel.version})'
+                                      : 'Active: Default Embedded Model',
+                                  style: AppStyles.bodyText.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: activeModel != null ? AppStyles.successAccent : Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: AppStyles.spaceXS),
+                                Text(
+                                  activeModel != null
+                                      ? (activeModel.description.isNotEmpty ? activeModel.description : 'Custom downloaded Random Forest Classifier')
+                                      : 'Built-in 2-feature Random Forest classifier (Solar Radiation + Soil Moisture)',
+                                  style: AppStyles.captionStatus,
+                                ),
+                                const SizedBox(height: AppStyles.spaceXS),
+                                Text(
+                                  '${savedModels.length} custom model(s) stored on device',
+                                  style: AppStyles.consoleBody.copyWith(color: AppStyles.textSecondary),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: AppStyles.spaceSM),
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.model_training, size: 16),
+                            label: const Text('Manage Catalog'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppStyles.techSecondaryAccent,
+                              side: const BorderSide(color: AppStyles.techSecondaryAccent),
+                              minimumSize: const Size(130, 36),
+                            ),
+                            onPressed: _showMlModelManager,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class MlModelManagerSheet extends StatefulWidget {
+  final CliRoutines routines;
+  const MlModelManagerSheet({super.key, required this.routines});
+
+  @override
+  State<MlModelManagerSheet> createState() => _MlModelManagerSheetState();
+}
+
+class _MlModelManagerSheetState extends State<MlModelManagerSheet> {
+  bool _isLoading = true;
+  String? _errorMsg;
+  List<Map<String, dynamic>> _cloudModels = [];
+  List<RfModel> _localModels = [];
+  final Set<String> _processingIds = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchData();
+  }
+
+  Future<void> _fetchData() async {
+    setState(() {
+      _isLoading = true;
+      _errorMsg = null;
+    });
+    try {
+      final cloudRes = await widget.routines.cloudApi.getAvailableRfModels();
+      final localRes = widget.routines.db.getSavedRfModels();
+      if (mounted) {
+        setState(() {
+          _cloudModels = cloudRes;
+          _localModels = localRes;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMsg = e.toString();
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleDownload(Map<String, dynamic> metadata) async {
+    final mId = metadata['model_id'];
+    setState(() => _processingIds.add(mId));
+    try {
+      final jsonPayload = await widget.routines.cloudApi.downloadRfModel(mId);
+      widget.routines.db.saveRfModel(metadata, jsonPayload);
+      _localModels = widget.routines.db.getSavedRfModels();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Downloaded ${metadata['crop_name']}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Download failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _processingIds.remove(mId));
+    }
+  }
+
+  void _handleSetActive(String modelId) {
+    widget.routines.db.setActiveRfModel(modelId);
+    setState(() {
+      _localModels = widget.routines.db.getSavedRfModels();
+    });
+  }
+
+  void _handleDelete(String modelId, String name) {
+    widget.routines.db.deleteRfModel(modelId);
+    setState(() {
+      _localModels = widget.routines.db.getSavedRfModels();
+    });
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Deleted $name from device.')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.9,
+      builder: (context, scrollController) {
+        return Padding(
+          padding: const EdgeInsets.all(AppStyles.spaceMD),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'ML Models Catalog',
+                    style: AppStyles.displayHeader.copyWith(
+                      color: AppStyles.techSecondaryAccent,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: AppStyles.textMuted),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppStyles.spaceSM),
+              Text(
+                'Download crop-specific Random Forest classifiers from the server to use for local & cloud inference. Long-press a downloaded model to delete it.',
+                style: AppStyles.bodyText.copyWith(
+                  color: AppStyles.textSecondary,
+                ),
+              ),
+              const Divider(
+                color: AppStyles.dividerColor,
+                height: AppStyles.spaceXL,
+              ),
+
+              if (_isLoading)
+                const Center(child: CircularProgressIndicator())
+              else if (_errorMsg != null)
+                Center(
+                  child: Text(
+                    'Error: $_errorMsg',
+                    style: AppStyles.bodyText.copyWith(
+                      color: AppStyles.errorAccent,
+                    ),
+                  ),
+                )
+              else
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    itemCount: _cloudModels.length,
+                    itemBuilder: (context, index) {
+                      final meta = _cloudModels[index];
+                      final mId = meta['model_id'];
+                      final isProcessing = _processingIds.contains(mId);
+
+                      final localMatch = _localModels
+                          .where((m) => m.modelId == mId)
+                          .firstOrNull;
+                      final isDownloaded = localMatch != null;
+                      final isActive = isDownloaded && localMatch.isActive;
+
+                      return Container(
+                        margin: const EdgeInsets.only(
+                          bottom: AppStyles.spaceSM,
+                        ),
+                        decoration: AppStyles.cardShell(
+                          isSelected: isActive,
+                          borderAccent: AppStyles.dividerColor,
+                        ),
+                        child: ListTile(
+                          leading: Icon(
+                            Icons.psychology,
+                            color: isActive
+                                ? AppStyles.successAccent
+                                : (isDownloaded
+                                      ? AppStyles.textSecondary
+                                      : AppStyles.textMuted),
+                          ),
+                          title: Text(
+                            meta['crop_name'] ?? mId,
+                            style: AppStyles.sectionTitle.copyWith(
+                              color: isActive
+                                  ? AppStyles.successAccent
+                                  : Colors.white,
+                            ),
+                          ),
+                          subtitle: Text(
+                            'Version: ${meta['version'] ?? 'N/A'} | ${meta['size_kb'] ?? '?'} KB\n${meta['description'] ?? ''}',
+                            style: AppStyles.captionStatus,
+                          ),
+                          isThreeLine: true,
+                          trailing: isProcessing
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : isDownloaded
+                              ? (isActive
+                                    ? const Chip(
+                                        label: Text('ACTIVE'),
+                                        backgroundColor:
+                                            AppStyles.successAccent,
+                                        labelStyle: TextStyle(
+                                          color: Colors.black,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 10,
+                                        ),
+                                      )
+                                    : OutlinedButton(
+                                        onPressed: () => _handleSetActive(mId),
+                                        child: const Text('Set Active'),
+                                      ))
+                              : ElevatedButton.icon(
+                                  icon: const Icon(Icons.download, size: 16),
+                                  label: const Text('Download'),
+                                  onPressed: () => _handleDownload(meta),
+                                ),
+                          onLongPress: isDownloaded && !isActive
+                              ? () =>
+                                    _handleDelete(mId, meta['crop_name'] ?? mId)
+                              : null,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:tfm_app/cli_routines.dart';
 import 'package:tfm_app/core/theme/app_styles.dart';
 import 'package:tfm_app/l10n/app_localizations.dart';
@@ -21,18 +24,98 @@ class NearbyScreen extends StatefulWidget {
   State<NearbyScreen> createState() => _NearbyScreenState();
 }
 
-class _NearbyScreenState extends State<NearbyScreen> {
+class _NearbyScreenState extends State<NearbyScreen> with WidgetsBindingObserver {
   List<ScanResult> _devices = [];
   bool _isConnecting = false;
+  
+  // Hardware & Permission States
+  BluetoothAdapterState _adapterState = BluetoothAdapterState.unknown;
+  bool _locationEnabled = true;
+  LocationPermission _locationPerm = LocationPermission.always;
+  
   StreamSubscription<List<ScanResult>>? _scanSub;
+  StreamSubscription<BluetoothAdapterState>? _adapterStateSub;
 
   @override
   void initState() {
     super.initState();
-    _startListeningToScan();
+    WidgetsBinding.instance.addObserver(this); // Listen for app resumes
+    
+    _checkLocationStatus();
+
+    // Listen to real-time Bluetooth adapter changes
+    _adapterStateSub = FlutterBluePlus.adapterState.listen((state) {
+      if (mounted) {
+        setState(() => _adapterState = state);
+        if (_isScanningAllowed) {
+          _startListeningToScan();
+        } else {
+          widget.routines.bleService.stopScan();
+          setState(() => _devices.clear());
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _adapterStateSub?.cancel();
+    _scanSub?.cancel();
+    widget.routines.bleService.stopScan();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Re-check permissions when the user returns from OS settings
+    if (state == AppLifecycleState.resumed) {
+      _checkLocationStatus();
+    }
+  }
+
+  Future<void> _checkLocationStatus() async {
+    // Desktop platforms (Windows, Linux, macOS) do not require Location services or Location permissions for BLE scanning.
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      if (mounted) {
+        setState(() {
+          _locationEnabled = true;
+          _locationPerm = LocationPermission.always;
+        });
+        if (_isScanningAllowed) {
+          _startListeningToScan();
+        }
+      }
+      return;
+    }
+
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    final permission = await Geolocator.checkPermission();
+    
+    if (mounted) {
+      setState(() {
+        _locationEnabled = serviceEnabled;
+        _locationPerm = permission;
+      });
+      
+      if (_isScanningAllowed) {
+        _startListeningToScan();
+      }
+    }
+  }
+
+  bool get _isScanningAllowed {
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      return _adapterState == BluetoothAdapterState.on;
+    }
+    return _adapterState == BluetoothAdapterState.on && 
+           _locationEnabled && 
+           (_locationPerm == LocationPermission.always || _locationPerm == LocationPermission.whileInUse);
   }
 
   void _startListeningToScan() {
+    if (!_isScanningAllowed) return;
+
     _scanSub?.cancel();
     widget.routines.searchNearbyDevices();
 
@@ -49,14 +132,9 @@ class _NearbyScreenState extends State<NearbyScreen> {
     });
   }
 
-  @override
-  void dispose() {
-    _scanSub?.cancel();
-    widget.routines.bleService.stopScan();
-    super.dispose();
-  }
-
   void _searchNearby() {
+    if (!_isScanningAllowed) return;
+    
     setState(() {
       _devices.clear();
     });
@@ -71,18 +149,17 @@ class _NearbyScreenState extends State<NearbyScreen> {
   }
 
   Future<String?> _getSavedSecret(String id) async {
-    return await widget.routines.secureStorage.getDeviceSecret(id);
+    return await const FlutterSecureStorage().read(key: 'ble_secret_$id');
   }
 
   Future<void> _saveSecret(String id, String name, String secret) async {
     widget.routines.db.saveDeviceBasic(id, name);
-    await widget.routines.secureStorage.saveDeviceSecret(
-      id,
-      secret,
+    await const FlutterSecureStorage().write(
+      key: 'ble_secret_$id',
+      value: secret,
     );
   }
 
-  // --- GUI Dialog replacing the CLI prompt ---
   Future<void> _promptConnection(ScanResult result) async {
     final l10n = AppLocalizations.of(context)!;
     final deviceId = result.device.remoteId.str;
@@ -92,7 +169,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
               ? result.device.platformName
               : deviceId);
 
-    // Fetch the saved secret before showing the dialog
     final savedSecret = await _getSavedSecret(deviceId) ?? '';
     String enteredSecret = '';
     bool isObscured = true;
@@ -107,26 +183,25 @@ class _NearbyScreenState extends State<NearbyScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: Text(l10n.nbConnectDialogTitle(deviceName)),
+              backgroundColor: AppStyles.surfaceColor,
+              title: Text(l10n.nbConnectDialogTitle(deviceName), style: AppStyles.sectionTitle),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     l10n.nbDeviceId(deviceId),
-                    style: const TextStyle(color: Colors.grey, fontSize: 12),
+                    style: AppStyles.captionStatus,
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: AppStyles.spaceMD),
                   if (savedSecret.isNotEmpty) ...[
                     Row(
                       children: [
                         Expanded(
                           child: Text(
                             l10n.nbSavedSecret(isSavedSecretObscured ? _maskSecret(savedSecret) : savedSecret),
-                            style: TextStyle(
-                              color: isSavedSecretObscured ? Colors.greenAccent : Colors.amberAccent,
-                              fontSize: 13,
-                              fontFamily: 'monospace',
+                            style: AppStyles.consoleBody.copyWith(
+                              color: isSavedSecretObscured ? AppStyles.successAccent : AppStyles.warningAccent,
                             ),
                           ),
                         ),
@@ -134,7 +209,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                           icon: Icon(
                             isSavedSecretObscured ? Icons.visibility : Icons.visibility_off,
                             size: 18,
-                            color: Colors.grey,
+                            color: AppStyles.textMuted,
                           ),
                           onPressed: () {
                             setDialogState(() {
@@ -147,19 +222,22 @@ class _NearbyScreenState extends State<NearbyScreen> {
                     ),
                     Text(
                       l10n.nbLeaveBlankHint,
-                      style: const TextStyle(color: Colors.grey, fontSize: 12),
+                      style: AppStyles.captionStatus,
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppStyles.spaceSM),
                   ],
                   TextField(
                     obscureText: isObscured,
+                    style: AppStyles.bodyText,
                     decoration: InputDecoration(
                       labelText: l10n.nbSecretLabel,
+                      labelStyle: AppStyles.bodyText.copyWith(color: AppStyles.textMuted),
                       border: const OutlineInputBorder(),
-                      prefixIcon: const Icon(Icons.lock),
+                      prefixIcon: const Icon(Icons.lock, color: AppStyles.textMuted),
                       suffixIcon: IconButton(
                         icon: Icon(
                           isObscured ? Icons.visibility : Icons.visibility_off,
+                          color: AppStyles.textMuted,
                         ),
                         onPressed: () {
                           setDialogState(() {
@@ -176,7 +254,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey)),
+                  child: Text(l10n.cancel, style: AppStyles.bodyText.copyWith(color: AppStyles.textMuted)),
                 ),
                 ElevatedButton(
                   onPressed: () {
@@ -205,7 +283,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
     setState(() => _isConnecting = true);
     widget.onStatusChange(l10n.nbConnectingStatus(deviceName));
 
-    // Trigger the connection routine
     final bool success = await widget.routines.connectToDevice(device, secret);
 
     if (!mounted) return;
@@ -215,7 +292,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
       widget.onStatusChange(l10n.nbConnectedSuccess(deviceName));
     } else {
       widget.onStatusChange(l10n.nbConnectionFailed);
-      // Optionally re-prompt here, but letting the user tap the device again is standard GUI UX.
     }
 
     setState(() => _isConnecting = false);
@@ -225,7 +301,99 @@ class _NearbyScreenState extends State<NearbyScreen> {
     final l10n = AppLocalizations.of(context)!;
     widget.routines.bleService.disconnect();
     widget.onStatusChange(l10n.nbDisconnectedStatus);
-    setState(() {}); // Trigger rebuild to update UI
+    setState(() {}); 
+  }
+
+  // Visual Warning Card Builder
+  Widget _buildWarningCard(String title, String description, IconData icon, String btnText, VoidCallback onAction) {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.all(AppStyles.spaceMD),
+        padding: const EdgeInsets.all(AppStyles.spaceLG),
+        decoration: AppStyles.cardShell(borderAccent: AppStyles.errorAccent).copyWith(
+          color: AppStyles.errorAccent.withValues(alpha: 0.05),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 48, color: AppStyles.errorAccent),
+            const SizedBox(height: AppStyles.spaceMD),
+            Text(title, style: AppStyles.displayHeader.copyWith(color: AppStyles.errorAccent)),
+            const SizedBox(height: AppStyles.spaceSM),
+            Text(
+              description,
+              textAlign: TextAlign.center,
+              style: AppStyles.bodyText,
+            ),
+            const SizedBox(height: AppStyles.spaceLG),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppStyles.errorAccent.withValues(alpha: 0.2),
+                foregroundColor: AppStyles.errorAccent,
+                side: const BorderSide(color: AppStyles.errorAccent),
+                padding: const EdgeInsets.symmetric(horizontal: AppStyles.spaceLG, vertical: AppStyles.spaceSM),
+              ),
+              onPressed: onAction,
+              child: Text(btnText),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Resolve which requirement is missing
+  Widget? _getRequirementOverlay(AppLocalizations l10n) {
+    if (_adapterState == BluetoothAdapterState.off) {
+      return _buildWarningCard(
+        l10n.nbWarningBtOff,
+        l10n.nbWarningBtOffDesc,
+        Icons.bluetooth_disabled,
+        l10n.nbBtnTurnOnBt,
+        () {
+          if (Platform.isAndroid) FlutterBluePlus.turnOn();
+        },
+      );
+    }
+    
+    if (_adapterState == BluetoothAdapterState.unauthorized) {
+      return _buildWarningCard(
+        l10n.nbWarningPerms,
+        l10n.nbWarningPermsDesc,
+        Icons.security,
+        l10n.nbBtnGrantPerms,
+        () => Geolocator.openAppSettings(),
+      );
+    }
+
+    // Location Services and Location Permissions are strictly required for BLE scanning on mobile (Android/iOS).
+    // Bypassed on desktop platforms (Windows, Linux, macOS).
+    if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) {
+      if (!_locationEnabled) {
+        return _buildWarningCard(
+          l10n.nbWarningLocOff,
+          l10n.nbWarningLocOffDesc,
+          Icons.location_off,
+          l10n.nbBtnTurnOnLoc,
+          () => Geolocator.openLocationSettings(),
+        );
+      }
+
+      if (_locationPerm == LocationPermission.denied || _locationPerm == LocationPermission.deniedForever) {
+        return _buildWarningCard(
+          l10n.nbWarningPerms,
+          l10n.nbWarningPermsDesc,
+          Icons.location_off,
+          l10n.nbBtnGrantPerms,
+          () async {
+            await Geolocator.requestPermission();
+            await _checkLocationStatus();
+          },
+        );
+      }
+    }
+
+    return null; // All checks passed
   }
 
   @override
@@ -233,6 +401,8 @@ class _NearbyScreenState extends State<NearbyScreen> {
     final l10n = AppLocalizations.of(context)!;
     final isConnected = widget.routines.bleService.isConnected;
     final connectedDev = widget.routines.bleService.connectedDevice;
+    
+    final requirementOverlay = _getRequirementOverlay(l10n);
 
     return Padding(
       padding: const EdgeInsets.all(AppStyles.spaceMD),
@@ -264,7 +434,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                   ElevatedButton.icon(
                     icon: const Icon(Icons.refresh),
                     label: Text(l10n.nbBtnScan),
-                    onPressed: _isConnecting ? null : _searchNearby,
+                    onPressed: (_isConnecting || !_isScanningAllowed) ? null : _searchNearby,
                   ),
                 ],
               ),
@@ -301,76 +471,78 @@ class _NearbyScreenState extends State<NearbyScreen> {
               ),
             ),
 
-          // Device List
+          // Core Content Area (Warning Overlay OR Device List)
           Expanded(
-            child: _isConnecting
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const CircularProgressIndicator(),
-                        const SizedBox(height: AppStyles.spaceMD),
-                        Text(
-                          l10n.nbNegotiatingStatus,
-                          style: AppStyles.captionStatus,
-                        ),
-                      ],
-                    ),
-                  )
-                : _devices.isEmpty
-                ? Center(
-                    child: Text(
-                      l10n.nbNoDevices,
-                      textAlign: TextAlign.center,
-                      style: AppStyles.captionStatus,
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: _devices.length,
-                    itemBuilder: (context, index) {
-                      final d = _devices[index];
-                      final name = d.advertisementData.advName.isNotEmpty
-                          ? d.advertisementData.advName
-                          : (d.device.platformName.isNotEmpty
-                                ? d.device.platformName
-                                : l10n.nbUnnamedDev);
-                      final isTarget =
-                          connectedDev?.remoteId == d.device.remoteId;
+            child: requirementOverlay ?? (
+              _isConnecting
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const CircularProgressIndicator(),
+                          const SizedBox(height: AppStyles.spaceMD),
+                          Text(
+                            l10n.nbNegotiatingStatus,
+                            style: AppStyles.captionStatus,
+                          ),
+                        ],
+                      ),
+                    )
+                  : _devices.isEmpty
+                  ? Center(
+                      child: Text(
+                        l10n.nbNoDevices,
+                        textAlign: TextAlign.center,
+                        style: AppStyles.captionStatus,
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: _devices.length,
+                      itemBuilder: (context, index) {
+                        final d = _devices[index];
+                        final name = d.advertisementData.advName.isNotEmpty
+                            ? d.advertisementData.advName
+                            : (d.device.platformName.isNotEmpty
+                                  ? d.device.platformName
+                                  : l10n.nbUnnamedDev);
+                        final isTarget =
+                            connectedDev?.remoteId == d.device.remoteId;
 
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: AppStyles.spaceSM),
-                        decoration: AppStyles.cardShell(isSelected: isTarget),
-                        child: ListTile(
-                          leading: Icon(
-                            Icons.bluetooth,
-                            color: isTarget
-                                ? AppStyles.successAccent
-                                : AppStyles.textMuted,
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: AppStyles.spaceSM),
+                          decoration: AppStyles.cardShell(isSelected: isTarget),
+                          child: ListTile(
+                            leading: Icon(
+                              Icons.bluetooth,
+                              color: isTarget
+                                  ? AppStyles.successAccent
+                                  : AppStyles.textMuted,
+                            ),
+                            title: Text(
+                              name,
+                              style: AppStyles.bodyText.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                            subtitle: Text(
+                              l10n.nbDeviceSub(d.device.remoteId.str, d.rssi),
+                              style: AppStyles.consoleBody,
+                            ),
+                            trailing: isTarget
+                                ? const Icon(
+                                    Icons.check_circle,
+                                    color: AppStyles.successAccent,
+                                  )
+                                : const Icon(
+                                    Icons.chevron_right,
+                                    color: AppStyles.textMuted,
+                                  ),
+                            onTap: isTarget || isConnected
+                                ? null
+                                : () => _promptConnection(d),
                           ),
-                          title: Text(
-                            name,
-                            style: AppStyles.bodyText.copyWith(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Text(
-                            l10n.nbDeviceSub(d.device.remoteId.str, d.rssi),
-                            style: AppStyles.consoleBody,
-                          ),
-                          trailing: isTarget
-                              ? const Icon(
-                                  Icons.check_circle,
-                                  color: AppStyles.successAccent,
-                                )
-                              : const Icon(
-                                  Icons.chevron_right,
-                                  color: AppStyles.textMuted,
-                                ),
-                          onTap: isTarget || isConnected
-                              ? null
-                              : () => _promptConnection(d),
-                        ),
-                      );
-                    },
-                  ),
+                        );
+                      },
+                    )
+            ),
           ),
         ],
       ),

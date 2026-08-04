@@ -1297,6 +1297,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'UNKNOWN'**
   String get cloudValUnknown;
+
+  /// No description provided for @nbWarningBtOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Bluetooth is Disabled'**
+  String get nbWarningBtOff;
+
+  /// No description provided for @nbWarningBtOffDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Bluetooth must be enabled to scan for and connect to nearby Savia hardware.'**
+  String get nbWarningBtOffDesc;
+
+  /// No description provided for @nbBtnTurnOnBt.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn On Bluetooth'**
+  String get nbBtnTurnOnBt;
+
+  /// No description provided for @nbWarningLocOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Location Services Disabled'**
+  String get nbWarningLocOff;
+
+  /// No description provided for @nbWarningLocOffDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Location services must be enabled to scan for BLE devices on this operating system.'**
+  String get nbWarningLocOffDesc;
+
+  /// No description provided for @nbBtnTurnOnLoc.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable Location'**
+  String get nbBtnTurnOnLoc;
+
+  /// No description provided for @nbWarningPerms.
+  ///
+  /// In en, this message translates to:
+  /// **'Permissions Required'**
+  String get nbWarningPerms;
+
+  /// No description provided for @nbWarningPermsDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Please grant the necessary Bluetooth and Location permissions to communicate with the hardware.'**
+  String get nbWarningPermsDesc;
+
+  /// No description provided for @nbBtnGrantPerms.
+  ///
+  /// In en, this message translates to:
+  /// **'Grant Permissions'**
+  String get nbBtnGrantPerms;
 }
 
 class _AppLocalizationsDelegate
