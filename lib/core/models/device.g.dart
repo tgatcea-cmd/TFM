@@ -2709,11 +2709,7 @@ const PredictionSchema = Schema(
       name: r'confidence',
       type: IsarType.double,
     ),
-    r'depthCm': PropertySchema(
-      id: 1,
-      name: r'depthCm',
-      type: IsarType.double,
-    ),
+    r'depthCm': PropertySchema(id: 1, name: r'depthCm', type: IsarType.double),
     r'kind': PropertySchema(id: 2, name: r'kind', type: IsarType.string),
     r'model': PropertySchema(id: 3, name: r'model', type: IsarType.string),
     r'port': PropertySchema(id: 4, name: r'port', type: IsarType.long),
@@ -2891,6 +2887,98 @@ extension PredictionQueryFilter
       return query.addFilterCondition(
         FilterCondition.between(
           property: r'confidence',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+
+          epsilon: epsilon,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<Prediction, Prediction, QAfterFilterCondition> depthCmIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        const FilterCondition.isNull(property: r'depthCm'),
+      );
+    });
+  }
+
+  QueryBuilder<Prediction, Prediction, QAfterFilterCondition>
+  depthCmIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        const FilterCondition.isNotNull(property: r'depthCm'),
+      );
+    });
+  }
+
+  QueryBuilder<Prediction, Prediction, QAfterFilterCondition> depthCmEqualTo(
+    double? value, {
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'depthCm',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<Prediction, Prediction, QAfterFilterCondition>
+  depthCmGreaterThan(
+    double? value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'depthCm',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<Prediction, Prediction, QAfterFilterCondition> depthCmLessThan(
+    double? value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'depthCm',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<Prediction, Prediction, QAfterFilterCondition> depthCmBetween(
+    double? lower,
+    double? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'depthCm',
           lower: lower,
           includeLower: includeLower,
           upper: upper,

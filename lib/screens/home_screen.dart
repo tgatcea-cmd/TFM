@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:tfm_app/cli_routines.dart';
 import 'package:tfm_app/core/theme/app_styles.dart';
+import 'package:tfm_app/l10n/app_localizations.dart';
 
 class HomeScreen extends StatefulWidget {
   final CliRoutines routines;
@@ -22,7 +23,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  String _consoleOutput = 'Console initialized. Awaiting commands...';
+  String? _consoleOutput;
   StreamSubscription<Object>? _dataSub;
   int? _clockOffsetMs;
   Timer? _clockTickTimer;
@@ -31,24 +32,26 @@ class _HomeScreenState extends State<HomeScreen> {
   Map<String, dynamic>? _predictionStats;
 
   void _copyConsoleToClipboard() {
-    Clipboard.setData(ClipboardData(text: _consoleOutput));
+    final l10n = AppLocalizations.of(context)!;
+    Clipboard.setData(ClipboardData(text: _consoleOutput ?? l10n.homeConsoleInit));
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Console output copied to clipboard!'),
-        duration: Duration(seconds: 2),
+      SnackBar(
+        content: Text(l10n.homeConsoleCopiedSnack),
+        duration: const Duration(seconds: 2),
       ),
     );
-    widget.onStatusChange('Console output copied to clipboard.');
+    widget.onStatusChange(l10n.homeConsoleCopiedStatus);
   }
 
   Future<void> _downloadConsoleJson() async {
+    final l10n = AppLocalizations.of(context)!;
     try {
       final now = DateTime.now();
       final devName = widget.routines.bleService.connectedDevice?.platformName ?? 'unknown_device';
       final jsonPayload = {
         'timestamp': now.toIso8601String(),
         'device': devName,
-        'consoleOutput': _consoleOutput,
+        'consoleOutput': _consoleOutput ?? l10n.homeConsoleInit,
       };
 
       final jsonString = const JsonEncoder.withIndent('  ').convert(jsonPayload);
@@ -61,14 +64,14 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Exported JSON: $fileName'),
+            content: Text(l10n.homeExportJsonSnack(fileName)),
             duration: const Duration(seconds: 4),
           ),
         );
       }
-      widget.onStatusChange('Console output saved to JSON: ${file.path}');
+      widget.onStatusChange(l10n.homeExportJsonStatus(file.path));
     } catch (e) {
-      widget.onStatusChange('Failed to export JSON: $e');
+      widget.onStatusChange(l10n.homeExportJsonFailed(e.toString()));
     }
   }
 
@@ -78,9 +81,9 @@ class _HomeScreenState extends State<HomeScreen> {
     // Listening to async BLE chunks
     _dataSub = widget.routines.bleService.dataStream.listen((data) {
       if (mounted) {
+        final l10n = AppLocalizations.of(context)!;
         setState(
-          () => _consoleOutput =
-              'Received Async BLE Data:\n${_prettyFormatData(data)}',
+          () => _consoleOutput = l10n.homeBleAsyncData(_prettyFormatData(data, l10n)),
         );
       }
     });
@@ -110,20 +113,20 @@ class _HomeScreenState extends State<HomeScreen> {
     return DateTime.now().millisecondsSinceEpoch - _clockOffsetMs!;
   }
 
-  String _getPrettifiedGap(int offsetMs) {
+  String _getPrettifiedGap(int offsetMs, AppLocalizations l10n) {
     final diff = Duration(milliseconds: offsetMs.abs());
 
     if (diff.inDays >= 365) {
       final years = (diff.inDays / 365).floor();
-      return '$years year${years > 1 ? 's' : ''}';
+      return l10n.homeGapYears(years.toString());
     } else if (diff.inDays > 0) {
-      return '${diff.inDays} day${diff.inDays > 1 ? 's' : ''}';
+      return l10n.homeGapDays(diff.inDays.toString());
     } else if (diff.inHours > 0) {
-      return '${diff.inHours} hour${diff.inHours > 1 ? 's' : ''}';
+      return l10n.homeGapHours(diff.inHours.toString());
     } else if (diff.inMinutes > 0) {
-      return '${diff.inMinutes} min${diff.inMinutes > 1 ? 's' : ''}';
+      return l10n.homeGapMins(diff.inMinutes.toString());
     } else {
-      return '${diff.inSeconds} sec';
+      return l10n.homeGapSecs(diff.inSeconds.toString());
     }
   }
 
@@ -152,7 +155,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _handleSyncTime() async {
-    widget.onStatusChange('Executing Sync Time...');
+    final l10n = AppLocalizations.of(context)!;
+    widget.onStatusChange(l10n.homeExecutingSync);
     try {
       // 1. Send the sync command
       await widget.routines.bleService.syncTime(0);
@@ -167,19 +171,18 @@ class _HomeScreenState extends State<HomeScreen> {
         final deviceNowMs = status['now_ms'] as int;
         setState(() {
           _clockOffsetMs = fetchTimeMs - deviceNowMs;
-          _consoleOutput =
-              'Time Synced. New internal clock: ${_formatDate(_estimatedDeviceMs!)}';
+          _consoleOutput = l10n.homeSyncSuccess(_formatDate(_estimatedDeviceMs!));
         });
       }
-      widget.onStatusChange('Sync Time Completed.');
+      widget.onStatusChange(l10n.homeSyncCompleted);
     } catch (e) {
-      setState(() => _consoleOutput = 'Error during Sync Time:\n$e');
-      widget.onStatusChange('Sync Time Failed.');
+      setState(() => _consoleOutput = l10n.homeSyncErrorConsole(e.toString()));
+      widget.onStatusChange(l10n.homeSyncFailedStatus);
     }
   }
 
-  String _prettyFormatData(dynamic data) {
-    if (data == null) return "Success (Void/No Output)";
+  String _prettyFormatData(dynamic data, AppLocalizations l10n) {
+    if (data == null) return l10n.homeVoidOutput;
     if (data is Map || data is List) {
       try {
         const encoder = JsonEncoder.withIndent('  ');
@@ -204,26 +207,26 @@ class _HomeScreenState extends State<HomeScreen> {
     String name,
     Future<dynamic> Function() action,
   ) async {
-    widget.onStatusChange('Executing $name...');
+    final l10n = AppLocalizations.of(context)!;
+    widget.onStatusChange(l10n.homeExecutingAction(name));
     try {
       final res = await action();
       setState(() {
         if (name == 'triggerStationInference' && res is Map) {
           _predictionStats = res as Map<String, dynamic>;
-          _consoleOutput =
-              'Result for $name:\n${_prettyFormatData(res['raw'] ?? res)}';
+          _consoleOutput = l10n.homeActionRes(name, _prettyFormatData(res['raw'] ?? res, l10n));
         } else {
-          _consoleOutput = 'Result for $name:\n${_prettyFormatData(res)}';
+          _consoleOutput = l10n.homeActionRes(name, _prettyFormatData(res, l10n));
         }
       });
-      widget.onStatusChange('$name Completed.');
+      widget.onStatusChange(l10n.homeActionCompleted(name));
     } catch (e) {
-      setState(() => _consoleOutput = 'Error during $name:\n$e');
-      widget.onStatusChange('$name Failed.');
+      setState(() => _consoleOutput = l10n.homeActionError(name, e.toString()));
+      widget.onStatusChange(l10n.homeActionFailed(name));
     }
   }
 
-  Widget _buildDebugPanel() {
+  Widget _buildDebugPanel(AppLocalizations l10n) {
     return Container(
       margin: const EdgeInsets.only(top: AppStyles.spaceLG, bottom: AppStyles.spaceMD),
       padding: const EdgeInsets.all(AppStyles.spaceMD),
@@ -239,11 +242,13 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               const Icon(Icons.warning_amber_rounded, color: AppStyles.errorAccent),
               const SizedBox(width: AppStyles.spaceSM),
-              Text(
-                'DANGER ZONE: DEBUG ONLY (REMOVE BEFORE PROD)',
-                style: AppStyles.consoleBody.copyWith(
-                  color: AppStyles.errorAccent,
-                  fontWeight: FontWeight.bold,
+              Expanded(
+                child: Text(
+                  l10n.homeDebugTitle,
+                  style: AppStyles.consoleBody.copyWith(
+                    color: AppStyles.errorAccent,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
@@ -256,7 +261,7 @@ class _HomeScreenState extends State<HomeScreen> {
               // Mock Data Button - High Contrast Amber
               ElevatedButton.icon(
                 icon: const Icon(Icons.science),
-                label: const Text('Force Mock 72h'),
+                label: Text(l10n.homeBtnMock),
                 style: ElevatedButton.styleFrom(
                   foregroundColor: AppStyles.surfaceColor,
                   backgroundColor: AppStyles.warningAccent,
@@ -269,7 +274,7 @@ class _HomeScreenState extends State<HomeScreen> {
               // Clear Storage Button - Destructive Red
               OutlinedButton.icon(
                 icon: const Icon(Icons.delete_forever),
-                label: const Text('Clear Station Storage'),
+                label: Text(l10n.homeBtnClearStorage),
                 style: AppStyles.destructiveButtonStyle,
                 onPressed: () => _executeAction(
                   'clearStorage',
@@ -283,7 +288,23 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildPredictionCard() {
+  String _translateVerdict(String v, AppLocalizations l10n) {
+    if (v.contains('IRRIGATE: Soil moisture threshold drop predicted')) return l10n.verdictLstmIrrigate;
+    if (v.contains('HEALTHY: Soil moisture level sufficient')) return l10n.verdictLstmHealthy;
+    if (v.contains('SATURATION RISK:')) return l10n.verdictRfSaturation;
+    if (v.contains('HEALTHY: Irrigation safe')) return l10n.verdictRfHealthy;
+    
+    if (v.startsWith('Verdict: ')) {
+      final sub = v.substring(9);
+      return 'Verdict: ${_translateVerdict(sub, l10n)}';
+    }
+
+    if (v.startsWith('Perjudicial')) return v.replaceFirst('Perjudicial', l10n.verdictEmuPerjudicial);
+    if (v.startsWith('Healthy')) return v.replaceFirst('Healthy', l10n.verdictEmuHealthy);
+    return v;
+  }
+
+  Widget _buildPredictionCard(AppLocalizations l10n) {
     if (_predictionStats == null) return const SizedBox.shrink();
 
     final verdict = _predictionStats!['verdict'] as String? ?? 'UNKNOWN';
@@ -330,22 +351,24 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Icon(icon, color: color, size: 28),
               const SizedBox(width: AppStyles.spaceSM),
-              Text(
-                isYellowZone ? 'AI RECOMMENDATION (YELLOW ZONE)' : 'AI RECOMMENDATION',
-                style: AppStyles.sectionTitle.copyWith(color: color),
+              Expanded(
+                child: Text(
+                  isYellowZone ? l10n.homeAiTitleYellow : l10n.homeAiTitle,
+                  style: AppStyles.sectionTitle.copyWith(color: color),
+                ),
               ),
             ],
           ),
           if (isYellowZone) ...[
             const SizedBox(height: AppStyles.spaceXS),
             Text(
-              '[DATA GATHERING PHASE] System gathering telemetry ($endH:00 - $startH:00). Prediction is not in optimal 19:00+ window.',
+              l10n.homeAiYellowWarning(endH, startH),
               style: AppStyles.captionStatus.copyWith(color: AppStyles.warningAccent),
             ),
           ],
           const SizedBox(height: AppStyles.spaceSM),
           Text(
-            verdict,
+            _translateVerdict(verdict, l10n),
             style: AppStyles.sectionTitle.copyWith(fontSize: 18),
           ),
           const SizedBox(height: AppStyles.spaceSM),
@@ -356,15 +379,17 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 const Icon(Icons.show_chart, color: AppStyles.textSecondary, size: 16),
                 const SizedBox(width: AppStyles.spaceSM),
-                Text(
-                  'Minimum predicted humidity: ${(minHum * 100).toStringAsFixed(1)}%\nExpected at: ${_formatDate(effectiveMinTs)}',
-                  style: AppStyles.consoleBody,
+                Expanded(
+                  child: Text(
+                    l10n.homeAiMinHum((minHum * 100).toStringAsFixed(1), _formatDate(effectiveMinTs)),
+                    style: AppStyles.consoleBody,
+                  ),
                 ),
               ],
             )
           else
-            const Text(
-              'No valid prediction time-series found in database.',
+            Text(
+              l10n.homeAiNoData,
               style: AppStyles.bodyText,
             ),
         ],
@@ -374,13 +399,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final isConnected = widget.routines.bleService.isConnected;
     final dev = widget.routines.bleService.connectedDevice;
 
     if (!isConnected) {
-      return const Center(
+      return Center(
         child: Text(
-          "No BLE station connected.\nUse the 'Nearby' tab to pair a Pico device.",
+          l10n.homeNoBleConnected,
           textAlign: TextAlign.center,
           style: AppStyles.bodyText,
         ),
@@ -392,7 +418,7 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
           // 1. Device Title
           Text(
-            'Connected: ${dev?.platformName ?? "Pico Device"}',
+            l10n.homeConnectedTitle(dev?.platformName ?? "Pico Device"),
             style: AppStyles.displayHeader,
           ),
           const SizedBox(height: AppStyles.spaceXS),
@@ -409,13 +435,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 builder: (context, val, child) => Text(
                   _estimatedDeviceMs != null
                       ? _formatDate(_estimatedDeviceMs!)
-                      : 'Clock status unknown',
+                      : l10n.homeClockUnknown,
                   style: AppStyles.captionStatus,
                 ),
               ),
               if (_clockOffsetMs != null)
                 Tooltip(
-                  message: 'Sync Time',
+                  message: l10n.homeTooltipSync,
                   child: InkWell(
                     onTap: _handleSyncTime,
                     borderRadius: BorderRadius.circular(12),
@@ -439,7 +465,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           const SizedBox(width: AppStyles.spaceXS),
                           Text(
-                            '${_getPrettifiedGap(_clockOffsetMs!)} gap',
+                            l10n.homeGapLabel(_getPrettifiedGap(_clockOffsetMs!, l10n)),
                             style: AppStyles.captionStatus.copyWith(
                               color: AppStyles.techSecondaryAccent,
                               fontWeight: FontWeight.bold,
@@ -466,7 +492,7 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               ElevatedButton.icon(
                 icon: const Icon(Icons.info_outline),
-                label: const Text('Read Status'),
+                label: Text(l10n.homeBtnReadStatus),
                 onPressed: () async => {
                   await _executeAction(
                     'readStationStatus',
@@ -477,7 +503,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               ElevatedButton.icon(
                 icon: const Icon(Icons.download),
-                label: const Text('Request Data'),
+                label: Text(l10n.homeBtnRequestData),
                 onPressed: () => _executeAction(
                   'requestStationData',
                   () => widget.routines.requestStationData('raw', limit: 150),
@@ -485,7 +511,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               ElevatedButton.icon(
                 icon: const Icon(Icons.psychology),
-                label: const Text('Trigger Inference'),
+                label: Text(l10n.homeBtnTriggerInference),
                 onPressed: () => _executeAction(
                   'triggerStationInference',
                   () => widget.routines.triggerStationInference(),
@@ -494,12 +520,12 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
 
-          _buildPredictionCard(),
-          _buildDebugPanel(),
+          _buildPredictionCard(l10n),
+          _buildDebugPanel(l10n),
 
           const SizedBox(height: AppStyles.spaceMD),
-          const Text(
-            'Console Output:',
+          Text(
+            l10n.homeConsoleTitle,
             style: AppStyles.sectionTitle,
           ),
           const SizedBox(height: AppStyles.spaceSM),
@@ -515,7 +541,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       padding: const EdgeInsets.all(AppStyles.spaceMD),
                       child: SingleChildScrollView(
                         child: Text(
-                          _consoleOutput,
+                          _consoleOutput ?? l10n.homeConsoleInit,
                           style: AppStyles.consoleBody.copyWith(color: AppStyles.successAccent),
                         ),
                       ),
@@ -535,7 +561,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           IconButton(
                             icon: const Icon(Icons.copy, size: 16, color: AppStyles.textMuted),
                             onPressed: _copyConsoleToClipboard,
-                            tooltip: 'Copy to Clipboard',
+                            tooltip: l10n.homeTooltipCopy,
                             visualDensity: VisualDensity.compact,
                             padding: const EdgeInsets.all(6),
                             constraints: const BoxConstraints(),
@@ -544,7 +570,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           IconButton(
                             icon: const Icon(Icons.download, size: 16, color: AppStyles.textMuted),
                             onPressed: _downloadConsoleJson,
-                            tooltip: 'Download JSON',
+                            tooltip: l10n.homeTooltipDownload,
                             visualDensity: VisualDensity.compact,
                             padding: const EdgeInsets.all(6),
                             constraints: const BoxConstraints(),

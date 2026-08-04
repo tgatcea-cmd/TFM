@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:tfm_app/cli_routines.dart';
 import 'package:tfm_app/core/database/db_sync.dart';
 import 'package:tfm_app/core/theme/app_styles.dart';
+import 'package:tfm_app/l10n/app_localizations.dart';
 
 class CloudScreen extends StatefulWidget {
   final CliRoutines routines;
@@ -31,9 +32,7 @@ class _CloudScreenState extends State<CloudScreen> {
   String _connStatus = 'UNKNOWN';
   int _unsyncedDevicesCount = 0;
   
-  // Replaced the string with a Map to feed our visual card
   Map<String, dynamic>? _emulationResultMap;
-
   bool _isDisposed = false;
 
   @override
@@ -49,6 +48,17 @@ class _CloudScreenState extends State<CloudScreen> {
   void dispose() {
     _isDisposed = true;
     super.dispose();
+  }
+
+  String get _localizedConnStatus {
+    final l10n = AppLocalizations.of(context)!;
+    switch (_connStatus) {
+      case 'CONNECTED': return l10n.cloudStatusConnected;
+      case 'UNREACHABLE': return l10n.cloudStatusUnreachable;
+      case 'ERROR': return l10n.cloudStatusError;
+      case 'TESTING...': return l10n.cloudStatusTesting;
+      default: return l10n.cloudStatusConnectionUnknown;
+    }
   }
 
   void _checkStatus() {
@@ -100,7 +110,9 @@ class _CloudScreenState extends State<CloudScreen> {
       _isTesting = true;
       _connStatus = 'TESTING...';
     });
-    widget.onStatusChange('Testing connection to Cloud Server...');
+    
+    final l10n = AppLocalizations.of(context)!;
+    widget.onStatusChange(l10n.cloudTestingConnection);
 
     try {
       final success = await widget.routines.cloudApi.testConnection();
@@ -108,16 +120,14 @@ class _CloudScreenState extends State<CloudScreen> {
       setState(() {
         _connStatus = success ? 'CONNECTED' : 'UNREACHABLE';
       });
-      widget.onStatusChange(success
-          ? 'Cloud API server is online and responding.'
-          : 'Cloud API server returned no response or error.');
+      widget.onStatusChange(success ? l10n.cloudApiOnline : l10n.cloudApiNoResponse);
       if (success) {
         await _loadCloudDevices();
       }
     } catch (e) {
       if (_isDisposed || !mounted) return;
       setState(() => _connStatus = 'ERROR');
-      widget.onStatusChange('Cloud API test failed: $e');
+      widget.onStatusChange(l10n.cloudApiTestFailed(e.toString()));
     } finally {
       if (!_isDisposed && mounted) setState(() => _isTesting = false);
     }
@@ -126,20 +136,21 @@ class _CloudScreenState extends State<CloudScreen> {
   Future<void> _handleSync() async {
     if (_isSyncing) return;
     setState(() => _isSyncing = true);
-    widget.onStatusChange('Initiating Cloud Synchronization...');
+    final l10n = AppLocalizations.of(context)!;
+    widget.onStatusChange(l10n.cloudSyncInitiating);
 
     try {
       final syncService = SyncService(
         db: widget.routines.db,
         api: widget.routines.cloudApi,
       );
-      await syncService.syncDirtyDevices(); //[cite: 3]
-      await syncService.discoverAndSyncCloudDevices(); //[cite: 3]
+      await syncService.syncDirtyDevices();
+      await syncService.discoverAndSyncCloudDevices();
       _checkStatus();
-      await _loadCloudDevices(); //[cite: 3]
-      widget.onStatusChange('Cloud sync finished.');
+      await _loadCloudDevices();
+      widget.onStatusChange(l10n.cloudSyncFinished);
     } catch (e) {
-      widget.onStatusChange('Cloud sync error: $e');
+      widget.onStatusChange(l10n.cloudSyncError(e.toString()));
     } finally {
       if (mounted) setState(() => _isSyncing = false);
     }
@@ -148,40 +159,42 @@ class _CloudScreenState extends State<CloudScreen> {
   Future<void> _handleCloudEmulation() async {
     if (_isEmulating) return;
     if (_cloudDevices.isEmpty) {
-      await _loadCloudDevices(); //[cite: 3]
+      await _loadCloudDevices();
     }
 
+    final l10n = AppLocalizations.of(context)!;
+
     if (_cloudDevices.isEmpty) {
-      widget.onStatusChange('Emulation Aborted: No registered station found on Cloud server.'); //[cite: 3]
+      widget.onStatusChange(l10n.cloudEmulationAbortedNoStation);
       return;
     }
 
     if (_selectedIndex == null || _selectedIndex! >= _cloudDevices.length) {
-      widget.onStatusChange('No station selected! Please select a cloud station first.');
+      widget.onStatusChange(l10n.cloudEmulationNoSelection);
       return;
     }
 
     final devMap = _cloudDevices[_selectedIndex!];
-    final devId = (devMap['deviceIdentifier'] ?? devMap['id'] ?? devMap['device_id'] ?? devMap['deviceId'] ?? 'pico_01').toString(); //[cite: 3]
-    final name = (devMap['name'] ?? devMap['deviceName'] ?? devId).toString(); //[cite: 3]
+    final devId = (devMap['deviceIdentifier'] ?? devMap['id'] ?? devMap['device_id'] ?? devMap['deviceId'] ?? 'pico_01').toString();
+    final name = (devMap['name'] ?? devMap['deviceName'] ?? devId).toString();
 
     setState(() {
       _isEmulating = true;
       _emulationResultMap = null;
     });
-    widget.onStatusChange('Executing Local RF Recommendation in RAM for [$name] ($devId)...');
+    widget.onStatusChange(l10n.cloudEmulationExecuting(name, devId));
 
     try {
-      final result = await widget.routines.emulateCloudRecommendationInMemory(devId); //[cite: 3]
+      final result = await widget.routines.emulateCloudRecommendationInMemory(devId);
       
       if (mounted) {
         setState(() {
           _emulationResultMap = result;
         });
       }
-      widget.onStatusChange('In-Memory Cloud Emulation Finished: ${result['verdict']}'); //[cite: 3]
+      widget.onStatusChange(l10n.cloudEmulationFinished(result['verdict'].toString()));
     } catch (e) {
-      widget.onStatusChange('In-Memory Cloud Emulation Error: $e'); //[cite: 3]
+      widget.onStatusChange(l10n.cloudEmulationError(e.toString()));
     } finally {
       if (mounted) setState(() => _isEmulating = false);
     }
@@ -191,6 +204,7 @@ class _CloudScreenState extends State<CloudScreen> {
     final settings = widget.routines.db.getAppSettings();
     final serverUrl = widget.routines.cloudApi.baseUrl;
     final hasApiKey = settings.tfmServerApiKey.isNotEmpty;
+    final l10n = AppLocalizations.of(context)!;
 
     final statusColor = _connStatus == 'CONNECTED'
         ? AppStyles.successAccent
@@ -211,7 +225,7 @@ class _CloudScreenState extends State<CloudScreen> {
             runSpacing: AppStyles.spaceSM,
             children: [
               Text(
-                'API CONNECTION STATUS',
+                l10n.cloudApiStatusTitle,
                 style: AppStyles.sectionTitle.copyWith(
                   color: AppStyles.successAccent,
                 ),
@@ -222,12 +236,12 @@ class _CloudScreenState extends State<CloudScreen> {
                 children: [
                   ElevatedButton.icon(
                     icon: const Icon(Icons.network_ping),
-                    label: const Text('Test API'),
+                    label: Text(l10n.cloudBtnTestApi),
                     onPressed: _isTesting ? null : _testConnection,
                   ),
                   ElevatedButton.icon(
                     icon: const Icon(Icons.sync),
-                    label: Text('Sync ($_unsyncedDevicesCount dirty)'),
+                    label: Text(l10n.cloudBtnSync(_unsyncedDevicesCount)),
                     onPressed: _isSyncing ? null : _handleSync,
                   ),
                 ],
@@ -236,12 +250,12 @@ class _CloudScreenState extends State<CloudScreen> {
           ),
           const SizedBox(height: AppStyles.spaceSM),
           Text(
-            'Target Endpoint : $serverUrl',
+            l10n.cloudTargetEndpoint(serverUrl),
             style: AppStyles.consoleBody,
           ),
           const SizedBox(height: AppStyles.spaceXS),
           Text(
-            'API Authorization: ${hasApiKey ? "Configured [OK]" : "Missing/Empty"}',
+            l10n.cloudApiAuthLabel(hasApiKey ? l10n.cloudApiAuthConfigured : l10n.cloudApiAuthMissing),
             style: AppStyles.consoleBody.copyWith(
               color: hasApiKey ? AppStyles.successAccent : AppStyles.warningAccent,
             ),
@@ -249,9 +263,9 @@ class _CloudScreenState extends State<CloudScreen> {
           const SizedBox(height: AppStyles.spaceXS),
           Row(
             children: [
-              const Text('Connection State : ', style: AppStyles.consoleBody),
+              Text(l10n.cloudConnectionStateLabel, style: AppStyles.consoleBody),
               Text(
-                _connStatus,
+                _localizedConnStatus,
                 style: AppStyles.consoleBody.copyWith(
                   color: statusColor,
                   fontWeight: FontWeight.bold,
@@ -264,10 +278,27 @@ class _CloudScreenState extends State<CloudScreen> {
     );
   }
 
+  String _translateVerdict(String v, AppLocalizations l10n) {
+    if (v.contains('IRRIGATE: Soil moisture threshold drop predicted')) return l10n.verdictLstmIrrigate;
+    if (v.contains('HEALTHY: Soil moisture level sufficient')) return l10n.verdictLstmHealthy;
+    if (v.contains('SATURATION RISK:')) return l10n.verdictRfSaturation;
+    if (v.contains('HEALTHY: Irrigation safe')) return l10n.verdictRfHealthy;
+    
+    if (v.startsWith('Verdict: ')) {
+      final sub = v.substring(9);
+      return 'Verdict: ${_translateVerdict(sub, l10n)}';
+    }
+
+    if (v.startsWith('Perjudicial')) return v.replaceFirst('Perjudicial', l10n.verdictEmuPerjudicial);
+    if (v.startsWith('Healthy')) return v.replaceFirst('Healthy', l10n.verdictEmuHealthy);
+    return v;
+  }
+
   Widget _buildEmulationCard() {
     if (_emulationResultMap == null) return const SizedBox.shrink();
 
-    final verdict = _emulationResultMap!['verdict'] as String? ?? 'UNKNOWN';
+    final l10n = AppLocalizations.of(context)!;
+    final verdict = _emulationResultMap!['verdict'] as String? ?? l10n.cloudValUnknown;
     final predHum = _emulationResultMap!['predictedHumidity'] as double?;
     final radSum = _emulationResultMap!['shortwaveRadiationSum48h'] as double?;
     final refDate = _emulationResultMap!['referenceDate'] as String?;
@@ -292,7 +323,7 @@ class _CloudScreenState extends State<CloudScreen> {
         ? Icons.warning_amber_rounded
         : (isIrrigate ? Icons.water_drop : Icons.eco);
 
-    String targetDateFormatted = 'N/A';
+    String targetDateFormatted = l10n.cloudValNA;
     if (targetMinDateMs != null) {
       final dt = DateTime.fromMillisecondsSinceEpoch(targetMinDateMs);
       targetDateFormatted = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
@@ -317,7 +348,7 @@ class _CloudScreenState extends State<CloudScreen> {
               const SizedBox(width: AppStyles.spaceSM),
               Expanded(
                 child: Text(
-                  isYellowZone ? 'IN-MEMORY CLOUD EMULATION (YELLOW ZONE)' : 'IN-MEMORY CLOUD EMULATION',
+                  isYellowZone ? l10n.cloudEmuYellowZoneTitle : l10n.cloudEmuNormalTitle,
                   style: AppStyles.sectionTitle.copyWith(color: color, fontSize: 15),
                 ),
               ),
@@ -326,13 +357,13 @@ class _CloudScreenState extends State<CloudScreen> {
           if (isYellowZone) ...[
             const SizedBox(height: AppStyles.spaceXS),
             Text(
-              '[DATA GATHERING PHASE] System in Yellow Zone ($endH:00 - $startH:00). Emulated RAM prediction is for observation only.',
+              l10n.cloudEmuYellowZoneWarning(endH, startH),
               style: AppStyles.captionStatus.copyWith(color: AppStyles.warningAccent),
             ),
           ],
           const SizedBox(height: AppStyles.spaceSM),
           Text(
-            verdict,
+            _translateVerdict(verdict, l10n),
             style: AppStyles.sectionTitle.copyWith(fontSize: 18),
           ),
           const SizedBox(height: AppStyles.spaceSM),
@@ -348,7 +379,7 @@ class _CloudScreenState extends State<CloudScreen> {
                     const SizedBox(width: AppStyles.spaceSM),
                     Expanded(
                       child: Text(
-                        'Minimum predicted humidity: ${(predHum * 100).toStringAsFixed(1)}%\nExpected at: $targetDateFormatted',
+                        l10n.cloudEmuMinHumidity((predHum * 100).toStringAsFixed(1), targetDateFormatted),
                         style: AppStyles.consoleBody,
                       ),
                     ),
@@ -361,7 +392,7 @@ class _CloudScreenState extends State<CloudScreen> {
                     const SizedBox(width: AppStyles.spaceSM),
                     Expanded(
                       child: Text(
-                        '48h Radiation Sum: ${radSum.toStringAsFixed(1)} J/m²',
+                        l10n.cloudEmuRadSum(radSum.toStringAsFixed(1)),
                         style: AppStyles.consoleBody,
                       ),
                     ),
@@ -375,7 +406,7 @@ class _CloudScreenState extends State<CloudScreen> {
                       const SizedBox(width: AppStyles.spaceSM),
                       Expanded(
                         child: Text(
-                          'Reference Timestamp: ${_formatDateString(refDate)}',
+                          l10n.cloudEmuRefTimestamp(_formatDateString(refDate)),
                           style: AppStyles.consoleBody,
                         ),
                       ),
@@ -389,8 +420,8 @@ class _CloudScreenState extends State<CloudScreen> {
     );
   }
 
-  String _formatCoord(dynamic val) {
-    if (val == null) return 'N/A';
+  String _formatCoord(dynamic val, AppLocalizations l10n) {
+    if (val == null) return l10n.cloudValNA;
     if (val is num) return val.toDouble().toStringAsFixed(4);
     if (val is String) {
       final d = double.tryParse(val);
@@ -400,26 +431,26 @@ class _CloudScreenState extends State<CloudScreen> {
     return val.toString();
   }
 
-  String _resolveCoords(String devId, dynamic rawLat, dynamic rawLon) {
-    final serverLat = _formatCoord(rawLat);
-    final serverLon = _formatCoord(rawLon);
-    if (serverLat != 'N/A' && serverLon != 'N/A') {
-      return 'Lat $serverLat, Lon $serverLon';
+  String _resolveCoords(String devId, dynamic rawLat, dynamic rawLon, AppLocalizations l10n) {
+    final serverLat = _formatCoord(rawLat, l10n);
+    final serverLon = _formatCoord(rawLon, l10n);
+    if (serverLat != l10n.cloudValNA && serverLon != l10n.cloudValNA) {
+      return l10n.cloudCoordsLatLon(serverLat, serverLon);
     }
 
     final devices = widget.routines.db.getSavedDevices();
     for (var dev in devices) {
       if (dev.deviceIdentifier == devId && dev.latitude != null && dev.longitude != null) {
-        return 'Lat ${dev.latitude!.toStringAsFixed(4)}, Lon ${dev.longitude!.toStringAsFixed(4)}';
+        return l10n.cloudCoordsLatLon(dev.latitude!.toStringAsFixed(4), dev.longitude!.toStringAsFixed(4));
       }
     }
 
     final appLoc = widget.routines.db.getLocationSettings();
     if (appLoc.latitude != 0.0 || appLoc.longitude != 0.0) {
-      return 'Lat ${appLoc.latitude.toStringAsFixed(4)}, Lon ${appLoc.longitude.toStringAsFixed(4)}';
+      return l10n.cloudCoordsLatLon(appLoc.latitude.toStringAsFixed(4), appLoc.longitude.toStringAsFixed(4));
     }
 
-    return 'Lat N/A, Lon N/A';
+    return l10n.cloudCoordsNA;
   }
 
   String _resolveDeviceDisplayName(String devId, String serverName) {
@@ -434,13 +465,15 @@ class _CloudScreenState extends State<CloudScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    
     return Padding(
       padding: const EdgeInsets.all(AppStyles.spaceMD),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Cloud Services & Emulation',
+          Text(
+            l10n.cloudHeaderTitle,
             style: AppStyles.displayHeader,
           ),
           const SizedBox(height: AppStyles.spaceMD),
@@ -455,17 +488,17 @@ class _CloudScreenState extends State<CloudScreen> {
               child: LinearProgressIndicator(),
             ),
 
-          const Text(
-            'Registered Cloud Stations:',
+          Text(
+            l10n.cloudRegisteredStationsTitle,
             style: AppStyles.sectionTitle,
           ),
           const SizedBox(height: AppStyles.spaceSM),
 
           Expanded(
             child: _cloudDevices.isEmpty
-                ? const Center(
+                ? Center(
                     child: Text(
-                      'No registered stations found on Cloud Server.\nTest the connection or run a Sync.',
+                      l10n.cloudNoStationsFound,
                       textAlign: TextAlign.center,
                       style: AppStyles.captionStatus,
                     ),
@@ -480,7 +513,7 @@ class _CloudScreenState extends State<CloudScreen> {
                       final name = _resolveDeviceDisplayName(devId, serverName);
                       final rawLat = devMap['lat'] ?? devMap['latitude'];
                       final rawLon = devMap['lon'] ?? devMap['longitude'] ?? devMap['lng'];
-                      final coordsStr = _resolveCoords(devId, rawLat, rawLon);
+                      final coordsStr = _resolveCoords(devId, rawLat, rawLon, l10n);
 
                       return Container(
                         margin: const EdgeInsets.only(bottom: AppStyles.spaceSM),
@@ -492,7 +525,7 @@ class _CloudScreenState extends State<CloudScreen> {
                               _selectedIndex = index;
                               _emulationResultMap = null;
                             });
-                            widget.onStatusChange('Selected Cloud Station: $name');
+                            widget.onStatusChange(l10n.cloudSelectedStationMsg(name));
                           },
                           child: Padding(
                             padding: const EdgeInsets.all(AppStyles.spaceMD),
@@ -523,14 +556,14 @@ class _CloudScreenState extends State<CloudScreen> {
                                 ),
                                 const SizedBox(height: AppStyles.spaceXS),
                                 Text(
-                                  'Coordinates: $coordsStr',
+                                  l10n.cloudCoordinatesLabel(coordsStr),
                                   style: AppStyles.consoleBody,
                                 ),
                                 if (isSelected) ...[
                                   const SizedBox(height: AppStyles.spaceMD),
                                   ElevatedButton.icon(
                                     icon: const Icon(Icons.memory),
-                                    label: const Text('Emulate Cloud Station'),
+                                    label: Text(l10n.cloudBtnEmulateStation),
                                     onPressed: _isEmulating ? null : _handleCloudEmulation,
                                   ),
                                   _buildEmulationCard(),

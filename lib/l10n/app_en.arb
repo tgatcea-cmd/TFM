@@ -1,0 +1,378 @@
+{
+  "@@locale": "en",
+  
+  "@@_GLOBAL_VALUES": "",
+  "appTitle": "Terralink Dashboard",
+  "hide": "Hide",
+  "status": "Status",
+  "cancel": "Cancel",
+  
+  "statusLabel": "STATUS: {msg}",
+  "@statusLabel": {
+    "placeholders": {
+      "msg": { "type": "String" }
+    }
+  },
+
+  "verdictLstmIrrigate": "IRRIGATE: Soil moisture threshold drop predicted",
+  "verdictLstmHealthy": "HEALTHY: Soil moisture level sufficient",
+  "verdictRfSaturation": "SATURATION RISK: Irrigation perjudicial tomorrow. DO NOT IRRIGATE.",
+  "verdictRfHealthy": "HEALTHY: Irrigation safe / Not perjudicial.",
+  "verdictEmuPerjudicial": "Perjudicial",
+  "verdictEmuHealthy": "Healthy",
+
+  "mainScreenError": "Unknown Screen",
+  "mainStatusReady": "Ready",
+  "mainStatusBleConnected": "Connected to Savia station",
+  "mainStatusBleDisconnected": "Disconnected from Savia station",
+
+  "@@_NAVIGATION_TABS": "",
+  "homeTab": "Home",
+  "nearbyTab": "Nearby",
+  "localDbTab": "Local DB",
+  "cloudTab": "Cloud",
+  "configTab": "Config",
+
+  "@@_HOME_SCREEN": "",
+  "homeConsoleInit": "Console initialized. Awaiting commands...",
+  "homeConsoleCopiedSnack": "Console output copied to clipboard!",
+  "homeConsoleCopiedStatus": "Console output copied to clipboard.",
+  "homeExportJsonSnack": "Exported JSON: {fileName}",
+  "@homeExportJsonSnack": { "placeholders": { "fileName": { "type": "String" } } },
+  "homeExportJsonStatus": "Console output saved to JSON: {path}",
+  "@homeExportJsonStatus": { "placeholders": { "path": { "type": "String" } } },
+  "homeExportJsonFailed": "Failed to export JSON: {error}",
+  "@homeExportJsonFailed": { "placeholders": { "error": { "type": "String" } } },
+  "homeBleAsyncData": "Received Async BLE Data:\n{data}",
+  "@homeBleAsyncData": { "placeholders": { "data": { "type": "String" } } },
+  "homeGapYears": "{years} year(s)",
+  "@homeGapYears": { "placeholders": { "years": { "type": "String" } } },
+  "homeGapDays": "{days} day(s)",
+  "@homeGapDays": { "placeholders": { "days": { "type": "String" } } },
+  "homeGapHours": "{hours} hour(s)",
+  "@homeGapHours": { "placeholders": { "hours": { "type": "String" } } },
+  "homeGapMins": "{mins} min(s)",
+  "@homeGapMins": { "placeholders": { "mins": { "type": "String" } } },
+  "homeGapSecs": "{secs} sec",
+  "@homeGapSecs": { "placeholders": { "secs": { "type": "String" } } },
+  "homeExecutingSync": "Executing Sync Time...",
+  "homeSyncSuccess": "Time Synced. New internal clock: {date}",
+  "@homeSyncSuccess": { "placeholders": { "date": { "type": "String" } } },
+  "homeSyncCompleted": "Sync Time Completed.",
+  "homeSyncErrorConsole": "Error during Sync Time:\n{error}",
+  "@homeSyncErrorConsole": { "placeholders": { "error": { "type": "String" } } },
+  "homeSyncFailedStatus": "Sync Time Failed.",
+  "homeVoidOutput": "Success (Void/No Output)",
+  "homeExecutingAction": "Executing {name}...",
+  "@homeExecutingAction": { "placeholders": { "name": { "type": "String" } } },
+  "homeActionRes": "Result for {name}:\n{res}",
+  "@homeActionRes": { "placeholders": { "name": { "type": "String" }, "res": { "type": "String" } } },
+  "homeActionCompleted": "{name} Completed.",
+  "@homeActionCompleted": { "placeholders": { "name": { "type": "String" } } },
+  "homeActionError": "Error during {name}:\n{error}",
+  "@homeActionError": { "placeholders": { "name": { "type": "String" }, "error": { "type": "String" } } },
+  "homeActionFailed": "{name} Failed.",
+  "@homeActionFailed": { "placeholders": { "name": { "type": "String" } } },
+  "homeDebugTitle": "DANGER ZONE: DEBUG ONLY (REMOVE BEFORE PROD)",
+  "homeBtnMock": "Force Mock 72h",
+  "homeBtnClearStorage": "Clear Station Storage",
+  "homeAiTitleYellow": "AI RECOMMENDATION (YELLOW ZONE)",
+  "homeAiTitle": "AI RECOMMENDATION",
+  "homeAiYellowWarning": "[DATA GATHERING PHASE] System gathering telemetry ({endH}:00 - {startH}:00). Prediction is not in optimal 19:00+ window.",
+  "@homeAiYellowWarning": { "placeholders": { "endH": { "type": "int" }, "startH": { "type": "int" } } },
+  "homeAiMinHum": "Minimum predicted humidity: {humidity}%\nExpected at: {date}",
+  "@homeAiMinHum": { "placeholders": { "humidity": { "type": "String" }, "date": { "type": "String" } } },
+  "homeAiNoData": "No valid prediction time-series found in database.",
+  "homeNoBleConnected": "No BLE station connected.\nUse the 'Nearby' tab to pair a Pico device.",
+  "homeConnectedTitle": "Connected: {devName}",
+  "@homeConnectedTitle": { "placeholders": { "devName": { "type": "String" } } },
+  "homeClockUnknown": "Clock status unknown",
+  "homeTooltipSync": "Sync Time",
+  "homeGapLabel": "{gap} gap",
+  "@homeGapLabel": { "placeholders": { "gap": { "type": "String" } } },
+  "homeBtnReadStatus": "Read Status",
+  "homeBtnRequestData": "Request Data",
+  "homeBtnTriggerInference": "Trigger Inference",
+  "homeConsoleTitle": "Console Output:",
+  "homeTooltipCopy": "Copy to Clipboard",
+  "homeTooltipDownload": "Download JSON",
+  
+  "@@_LOCAL_DB_SCREEN": "",
+  "dbSyncingCloud": "Syncing with Cloud API...",
+  "dbSyncCompleted": "Cloud sync completed. Loaded {count} devices from cloud/local DB.",
+  "@dbSyncCompleted": { "placeholders": { "count": { "type": "int" } } },
+  "dbSyncError": "Cloud Sync Error: Connection unavailable or failed ({error})",
+  "@dbSyncError": { "placeholders": { "error": { "type": "String" } } },
+  "dbNoSelection": "No device selected! Select a device first.",
+  "dbRunningInference": "Running Random Forest Inference for {name} ({id})...",
+  "@dbRunningInference": { "placeholders": { "name": { "type": "String" }, "id": { "type": "String" } } },
+  "dbInferenceFinished": "RF Inference Finished: {verdict}",
+  "@dbInferenceFinished": { "placeholders": { "verdict": { "type": "String" } } },
+  "dbInferenceFailed": "Inference Failed: {error}",
+  "@dbInferenceFailed": { "placeholders": { "error": { "type": "String" } } },
+  "dbClearTitle": "Clear Local Database?",
+  "dbClearDesc": "This will delete all saved station telemetry and prediction records stored locally.",
+  "dbBtnClearData": "Clear All Data",
+  "dbClearSuccess": "Local DB records cleared successfully.",
+  "dbRfNotCalculated": "NOT CALCULATED",
+  "dbRfYellowTitle": "RANDOM FOREST RECOMMENDATION (YELLOW ZONE)",
+  "dbRfTitle": "RANDOM FOREST RECOMMENDATION",
+  "dbRfYellowWarning": "[DATA GATHERING PHASE] System is in Yellow Zone ({endH}:00 - {startH}:00). Stored predictions are for observation only.",
+  "@dbRfYellowWarning": { "placeholders": { "endH": { "type": "int" }, "startH": { "type": "int" } } },
+  "dbRfMinHum": "Minimum predicted humidity: {humidity}%\nExpected at: {date}",
+  "@dbRfMinHum": { "placeholders": { "humidity": { "type": "String" }, "date": { "type": "String" } } },
+  "dbRfNoPredictions": "No predictions stored for this device yet.",
+  "dbScreenTitle": "Local DB Devices",
+  "dbBtnSyncCloud": "Sync Cloud",
+  "dbBtnClearDb": "Clear DB",
+  "dbNoDevices": "No saved devices found in Local DB.\nPair a BLE station or run sync with Cloud to populate.",
+  "dbStateSynced": "SYNCED",
+  "dbStateUnsynced": "UNSYNCED",
+  "dbTelemetryInfo": "Telemetry Records: {records}  |  Predictions: {predictions}",
+  "@dbTelemetryInfo": { "placeholders": { "records": { "type": "int" }, "predictions": { "type": "int" } } },
+  "dbLocationInfo": "  |  Lat: {lat}, Lon: {lon}",
+  "@dbLocationInfo": { "placeholders": { "lat": { "type": "String" }, "lon": { "type": "String" } } },
+  "dbBtnRunInference": "Run RF Inference",
+  
+  "@@_NEARBY_SCREEN": "",
+  "nbFoundDevices": "Found {count} devices...",
+  "@nbFoundDevices": { "placeholders": { "count": { "type": "int" } } },
+  "nbRefreshingScan": "Refreshing BLE scan...",
+  "nbConnectDialogTitle": "Connect to {name}",
+  "@nbConnectDialogTitle": { "placeholders": { "name": { "type": "String" } } },
+  "nbDeviceId": "Device ID: {id}",
+  "@nbDeviceId": { "placeholders": { "id": { "type": "String" } } },
+  "nbSavedSecret": "Saved secret: {secret}",
+  "@nbSavedSecret": { "placeholders": { "secret": { "type": "String" } } },
+  "nbTooltipShowSaved": "Show saved secret",
+  "nbTooltipHideSaved": "Hide saved secret",
+  "nbLeaveBlankHint": "Leave blank to use the saved secret.",
+  "nbSecretLabel": "Handshake Secret",
+  "nbTooltipShowSecret": "Show secret",
+  "nbTooltipHideSecret": "Hide secret",
+  "nbBtnConnect": "Connect",
+  "nbConnectingStatus": "Connecting to {name}...",
+  "@nbConnectingStatus": { "placeholders": { "name": { "type": "String" } } },
+  "nbConnectedSuccess": "Connected successfully to {name}!",
+  "@nbConnectedSuccess": { "placeholders": { "name": { "type": "String" } } },
+  "nbConnectionFailed": "Connection failed. Please check the secret or device range.",
+  "nbDisconnectedStatus": "Disconnected from station.",
+  "nbScreenTitle": "Nearby BLE Stations",
+  "nbBtnDisconnect": "Disconnect",
+  "nbBtnScan": "Scan",
+  "nbCurrentConnection": "Currently connected to: {name}",
+  "@nbCurrentConnection": { "placeholders": { "name": { "type": "String" } } },
+  "nbNegotiatingStatus": "Negotiating handshake...",
+  "nbNoDevices": "No devices found.\nEnsure your Pico station is powered and advertising.",
+  "nbDeviceSub": "{id}  •  RSSI: {rssi} dBm",
+  "@nbDeviceSub": { "placeholders": { "id": { "type": "String" }, "rssi": { "type": "int" } } },
+  "nbUnknownDev": "Unknown",
+  "nbUnnamedDev": "Unnamed Device",
+  
+  "@@_CONFIG_SCREEN": "",
+  "cfgChecking": "Checking...",
+  "cfgAcquiringGps": "Acquiring GPS location...",
+  "cfgGpsUpdated": "Location updated automatically via GPS: Lat {lat}, Lon {lon}",
+  "@cfgGpsUpdated": { "placeholders": { "lat": { "type": "String" }, "lon": { "type": "String" } } },
+  "cfgGpsFailed": "Failed to get GPS location. Check location permissions/services.",
+  "cfgGpsError": "GPS Location Error: {error}",
+  "@cfgGpsError": { "placeholders": { "error": { "type": "String" } } },
+  "cfgMapTitle": "Select Location on Map",
+  "cfgMapHint": "Tap anywhere on the map to place point:\nLat: {lat}, Lon: {lon}",
+  "@cfgMapHint": { "placeholders": { "lat": { "type": "String" }, "lon": { "type": "String" } } },
+  "cfgBtnConfirmLoc": "Confirm Location",
+  "cfgMapUpdated": "Location manually set: Lat {lat}, Lon {lon}",
+  "@cfgMapUpdated": { "placeholders": { "lat": { "type": "String" }, "lon": { "type": "String" } } },
+  "cfgLocModeTitle": "Configure Location Mode",
+  "cfgLocModeAuto": "Automatic (GPS)",
+  "cfgLocModeAutoDesc": "Acquire current position using device GPS hardware",
+  "cfgLocModeManual": "Manual (Interactive Map)",
+  "cfgLocModeManualDesc": "Tap on an interactive map to pick exact field coordinates",
+  "cfgPredStartUpdated": "Prediction start updated to {start}:00.",
+  "@cfgPredStartUpdated": { "placeholders": { "start": { "type": "int" } } },
+  "cfgPredLimit": "Limit reached: Prediction start can only be adjusted ±3h from base ({base}:00).",
+  "@cfgPredLimit": { "placeholders": { "base": { "type": "int" } } },
+  "cfgIrrEndUpdated": "Irrigation end updated to {end}:00.",
+  "@cfgIrrEndUpdated": { "placeholders": { "end": { "type": "int" } } },
+  "cfgIrrLimit": "Limit reached: Irrigation end can only be adjusted ±3h from base ({base}:00).",
+  "@cfgIrrLimit": { "placeholders": { "base": { "type": "int" } } },
+  "cfgMeteoOk": "OK (200)",
+  "cfgMeteoError": "Error ({code})",
+  "@cfgMeteoError": { "placeholders": { "code": { "type": "int" } } },
+  "cfgMeteoOffline": "Offline / Failed",
+  "cfgPingTesting": "Testing...",
+  "cfgPingRes": "{status} ({ms} ms)",
+  "@cfgPingRes": { "placeholders": { "status": { "type": "String" }, "ms": { "type": "int" } } },
+  "cfgPingFailed": "Unreachable / Failed",
+  "cfgSavedStatus": "Configuration applied and saved to database & live ApiClient!",
+  "cfgEndpointTitle": "Edit Cloud Endpoint",
+  "cfgEndpointLabel": "Server URL",
+  "cfgEndpointHint": "e.g. {hint}",
+  "@cfgEndpointHint": { "placeholders": { "hint": { "type": "String" } } },
+  "cfgBtnUpdate": "Update",
+  "cfgEndpointUpdated": "Cloud endpoint updated. Remember to press Apply & Save.",
+  "cfgLocString": "Lat: {lat}, Lon: {lon} ({type})",
+  "@cfgLocString": { "placeholders": { "lat": { "type": "String" }, "lon": { "type": "String" }, "type": { "type": "String" } } },
+  "cfgScreenTitle": "System Configuration",
+  "cfgBtnApplySave": "Apply & Save",
+  "cfgEnvSection": "ENVIRONMENT",
+  "cfgSysTimeLabel": "System Date & Time",
+  "cfgLocSettingsLabel": "Location Settings",
+  "cfgTooltipLoc": "Configure Location Mode",
+  "cfgNetSection": "NETWORK SERVICES",
+  "cfgMeteoLabel": "Open-Meteo API Status",
+  "cfgCloudLabel": "Cloud Server Endpoint",
+  "cfgTooltipEditEnd": "Edit Endpoint",
+  "cfgAgroSection": "AGRONOMIC SCHEDULE (24H)",
+  "cfgIrrPeriod": "Irrigation Period",
+  "cfgPeriodRange": "{start}hrs to {end}hrs",
+  "@cfgPeriodRange": { "placeholders": { "start": { "type": "String" }, "end": { "type": "String" } } },
+  "cfgShiftBtn": "Shift",
+  "cfgPredPeriod": "Prediction Period",
+
+  "@@_CLOUD_SCREEN": "",
+  "cloudTestingConnection": "Testing connection to Cloud Server...",
+  "cloudStatusConnected": "CONNECTED",
+  "cloudStatusUnreachable": "UNREACHABLE",
+  "cloudStatusError": "ERROR",
+  "cloudStatusConnectionUnknown": "UNKNOWN",
+  "cloudStatusTesting": "TESTING...",
+  
+  "cloudApiOnline": "Cloud API server is online and responding.",
+  "cloudApiNoResponse": "Cloud API server returned no response or error.",
+  "cloudApiTestFailed": "Cloud API test failed: {error}",
+  "@cloudApiTestFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+
+  "cloudSyncInitiating": "Initiating Cloud Synchronization...",
+  "cloudSyncFinished": "Cloud sync finished.",
+  "cloudSyncError": "Cloud sync error: {error}",
+  "@cloudSyncError": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+
+  "cloudEmulationAbortedNoStation": "Emulation Aborted: No registered station found on Cloud server.",
+  "cloudEmulationNoSelection": "No station selected! Please select a cloud station first.",
+  
+  "cloudEmulationExecuting": "Executing Local RF Recommendation in RAM for [{name}] ({id})...",
+  "@cloudEmulationExecuting": {
+    "placeholders": {
+      "name": { "type": "String" },
+      "id": { "type": "String" }
+    }
+  },
+  
+  "cloudEmulationFinished": "In-Memory Cloud Emulation Finished: {verdict}",
+  "@cloudEmulationFinished": {
+    "placeholders": {
+      "verdict": { "type": "String" }
+    }
+  },
+  
+  "cloudEmulationError": "In-Memory Cloud Emulation Error: {error}",
+  "@cloudEmulationError": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+
+  "cloudApiStatusTitle": "API CONNECTION STATUS",
+  "cloudBtnTestApi": "Test API",
+  
+  "cloudBtnSync": "Sync ({count} dirty)",
+  "@cloudBtnSync": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+
+  "cloudTargetEndpoint": "Target Endpoint : {url}",
+  "@cloudTargetEndpoint": {
+    "placeholders": {
+      "url": { "type": "String" }
+    }
+  },
+
+  "cloudApiAuthLabel": "API Authorization: {status}",
+  "@cloudApiAuthLabel": {
+    "placeholders": {
+      "status": { "type": "String" }
+    }
+  },
+  "cloudApiAuthConfigured": "Configured [OK]",
+  "cloudApiAuthMissing": "Missing/Empty",
+  
+  "cloudConnectionStateLabel": "Connection State : ",
+
+  "cloudEmuYellowZoneTitle": "IN-MEMORY CLOUD EMULATION (YELLOW ZONE)",
+  "cloudEmuNormalTitle": "IN-MEMORY CLOUD EMULATION",
+  
+  "cloudEmuYellowZoneWarning": "[DATA GATHERING PHASE] System in Yellow Zone ({endH}:00 - {startH}:00). Emulated RAM prediction is for observation only.",
+  "@cloudEmuYellowZoneWarning": {
+    "placeholders": {
+      "endH": { "type": "int" },
+      "startH": { "type": "int" }
+    }
+  },
+
+  "cloudEmuMinHumidity": "Minimum predicted humidity: {humidity}%\nExpected at: {date}",
+  "@cloudEmuMinHumidity": {
+    "placeholders": {
+      "humidity": { "type": "String" },
+      "date": { "type": "String" }
+    }
+  },
+
+  "cloudEmuRadSum": "48h Radiation Sum: {sum} J/m²",
+  "@cloudEmuRadSum": {
+    "placeholders": {
+      "sum": { "type": "String" }
+    }
+  },
+
+  "cloudEmuRefTimestamp": "Reference Timestamp: {date}",
+  "@cloudEmuRefTimestamp": {
+    "placeholders": {
+      "date": { "type": "String" }
+    }
+  },
+
+  "cloudCoordsLatLon": "Lat {lat}, Lon {lon}",
+  "@cloudCoordsLatLon": {
+    "placeholders": {
+      "lat": { "type": "String" },
+      "lon": { "type": "String" }
+    }
+  },
+  "cloudCoordsNA": "Lat N/A, Lon N/A",
+  
+  "cloudCoordinatesLabel": "Coordinates: {coords}",
+  "@cloudCoordinatesLabel": {
+    "placeholders": {
+      
+      "coords": { "type": "String" }
+    }
+  },
+
+  "cloudHeaderTitle": "Cloud Services & Emulation",
+  "cloudRegisteredStationsTitle": "Registered Cloud Stations:",
+  
+  "cloudNoStationsFound": "No registered stations found on Cloud Server.\nTest the connection or run a Sync.",
+  
+  "cloudSelectedStationMsg": "Selected Cloud Station: {name}",
+  "@cloudSelectedStationMsg": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+
+  "cloudBtnEmulateStation": "Emulate Cloud Station",
+  
+  "cloudValNA": "N/A",
+  "cloudValUnknown": "UNKNOWN"
+}

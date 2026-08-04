@@ -4,6 +4,7 @@ import 'package:tfm_app/cli_routines.dart';
 import 'package:tfm_app/core/models/device.dart';
 import 'package:tfm_app/core/database/db_sync.dart';
 import 'package:tfm_app/core/theme/app_styles.dart';
+import 'package:tfm_app/l10n/app_localizations.dart';
 
 class LocalDbScreen extends StatefulWidget {
   final CliRoutines routines;
@@ -80,7 +81,8 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
   Future<void> _handleSync() async {
     if (_isSyncing) return;
     setState(() => _isSyncing = true);
-    widget.onStatusChange('Syncing with Cloud API...');
+    final l10n = AppLocalizations.of(context)!;
+    widget.onStatusChange(l10n.dbSyncingCloud);
 
     try {
       final syncService = SyncService(
@@ -105,30 +107,25 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
       }
 
       _loadDevices();
-      widget.onStatusChange(
-        'Cloud sync completed. Loaded ${_devices.length} devices from cloud/local DB.',
-      );
+      widget.onStatusChange(l10n.dbSyncCompleted(_devices.length));
     } catch (e) {
-      widget.onStatusChange(
-        'Cloud Sync Error: Connection unavailable or failed ($e)',
-      );
+      widget.onStatusChange(l10n.dbSyncError(e.toString()));
     } finally {
       if (mounted) setState(() => _isSyncing = false);
     }
   }
 
   Future<void> _handleInference() async {
+    final l10n = AppLocalizations.of(context)!;
     if (_selectedIndex == null || _selectedIndex! >= _devices.length) {
-      widget.onStatusChange('No device selected! Select a device first.');
+      widget.onStatusChange(l10n.dbNoSelection);
       return;
     }
     if (_isInferring) return;
 
     final dev = _devices[_selectedIndex!];
     setState(() => _isInferring = true);
-    widget.onStatusChange(
-      'Running Random Forest Inference for ${dev.name} (${dev.deviceIdentifier})...',
-    );
+    widget.onStatusChange(l10n.dbRunningInference(dev.name, dev.deviceIdentifier));
 
     try {
       await widget.routines.runLocalInference(dev.deviceIdentifier);
@@ -137,27 +134,28 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
       if (mounted) {
         _extractPredictionStats(dev, overrideVerdict: verdict);
       }
-      widget.onStatusChange('RF Inference Finished: $verdict');
+      widget.onStatusChange(l10n.dbInferenceFinished(_translateVerdict(verdict, l10n)));
     } catch (e) {
-      widget.onStatusChange('Inference Failed: $e');
+      widget.onStatusChange(l10n.dbInferenceFailed(e.toString()));
     } finally {
       if (mounted) setState(() => _isInferring = false);
     }
   }
 
   void _handleClearDb() {
+    final l10n = AppLocalizations.of(context)!;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Clear Local Database?', style: AppStyles.sectionTitle),
-        content: const Text(
-          'This will delete all saved station telemetry and prediction records stored locally.',
+        title: Text(l10n.dbClearTitle, style: AppStyles.sectionTitle),
+        content: Text(
+          l10n.dbClearDesc,
           style: AppStyles.bodyText,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel', style: AppStyles.captionStatus),
+            child: Text(l10n.cancel, style: AppStyles.captionStatus),
           ),
           OutlinedButton(
             style: AppStyles.destructiveButtonStyle,
@@ -169,20 +167,36 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
                 _selectedIndex = null;
                 _predictionStats = null;
               });
-              widget.onStatusChange('Local DB records cleared successfully.');
+              widget.onStatusChange(l10n.dbClearSuccess);
             },
-            child: const Text('Clear All Data'),
+            child: Text(l10n.dbBtnClearData),
           ),
         ],
       ),
     );
   }
 
+  String _translateVerdict(String v, AppLocalizations l10n) {
+    if (v.contains('IRRIGATE: Soil moisture threshold drop predicted')) return l10n.verdictLstmIrrigate;
+    if (v.contains('HEALTHY: Soil moisture level sufficient')) return l10n.verdictLstmHealthy;
+    if (v.contains('SATURATION RISK:')) return l10n.verdictRfSaturation;
+    if (v.contains('HEALTHY: Irrigation safe')) return l10n.verdictRfHealthy;
+    
+    if (v.startsWith('Verdict: ')) {
+      final sub = v.substring(9);
+      return 'Verdict: ${_translateVerdict(sub, l10n)}';
+    }
+
+    if (v.startsWith('Perjudicial')) return v.replaceFirst('Perjudicial', l10n.verdictEmuPerjudicial);
+    if (v.startsWith('Healthy')) return v.replaceFirst('Healthy', l10n.verdictEmuHealthy);
+    return v;
+  }
+
   // Visual Prediction Recommendation Card mirroring HomeScreen
-  Widget _buildPredictionCard() {
+  Widget _buildPredictionCard(AppLocalizations l10n) {
     if (_predictionStats == null) return const SizedBox.shrink();
 
-    final verdict = _predictionStats!['verdict'] as String? ?? 'NOT CALCULATED';
+    final verdict = _predictionStats!['verdict'] as String? ?? l10n.dbRfNotCalculated;
     final minHum = _predictionStats!['minHumidity'] as double?;
     final minTs = _predictionStats!['minDateMs'] as int?;
 
@@ -228,7 +242,7 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
               const SizedBox(width: AppStyles.spaceSM),
               Expanded(
                 child: Text(
-                  isYellowZone ? 'RANDOM FOREST RECOMMENDATION (YELLOW ZONE)' : 'RANDOM FOREST RECOMMENDATION',
+                  isYellowZone ? l10n.dbRfYellowTitle : l10n.dbRfTitle,
                   style: AppStyles.sectionTitle.copyWith(color: color, fontSize: 15),
                 ),
               ),
@@ -237,13 +251,13 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
           if (isYellowZone) ...[
             const SizedBox(height: AppStyles.spaceXS),
             Text(
-              '[DATA GATHERING PHASE] System is in Yellow Zone ($endH:00 - $startH:00). Stored predictions are for observation only.',
+              l10n.dbRfYellowWarning(endH, startH),
               style: AppStyles.captionStatus.copyWith(color: AppStyles.warningAccent),
             ),
           ],
           const SizedBox(height: AppStyles.spaceSM),
           Text(
-            verdict,
+            _translateVerdict(verdict, l10n),
             style: AppStyles.sectionTitle.copyWith(fontSize: 18),
           ),
           const SizedBox(height: AppStyles.spaceSM),
@@ -256,15 +270,15 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
                 const SizedBox(width: AppStyles.spaceSM),
                 Expanded(
                   child: Text(
-                    'Minimum predicted humidity: ${(minHum * 100).toStringAsFixed(1)}%\nExpected at: ${_formatDate(effectiveMinTs)}',
+                    l10n.dbRfMinHum((minHum * 100).toStringAsFixed(1), _formatDate(effectiveMinTs)),
                     style: AppStyles.consoleBody,
                   ),
                 ),
               ],
             )
           else
-            const Text(
-              'No predictions stored for this device yet.',
+            Text(
+              l10n.dbRfNoPredictions,
               style: AppStyles.consoleBody,
             ),
         ],
@@ -274,6 +288,8 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    
     return Padding(
       padding: const EdgeInsets.all(AppStyles.spaceMD),
       child: Column(
@@ -286,8 +302,8 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
             spacing: AppStyles.spaceSM,
             runSpacing: AppStyles.spaceSM,
             children: [
-              const Text(
-                'Local DB Devices',
+              Text(
+                l10n.dbScreenTitle,
                 style: AppStyles.displayHeader,
               ),
               Wrap(
@@ -296,12 +312,12 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
                 children: [
                   ElevatedButton.icon(
                     icon: const Icon(Icons.cloud_download),
-                    label: const Text('Sync Cloud'),
+                    label: Text(l10n.dbBtnSyncCloud),
                     onPressed: _isSyncing || _isInferring ? null : _handleSync,
                   ),
                   OutlinedButton.icon(
                     icon: const Icon(Icons.delete_sweep),
-                    label: const Text('Clear DB'),
+                    label: Text(l10n.dbBtnClearDb),
                     style: AppStyles.destructiveButtonStyle,
                     onPressed: _isSyncing || _isInferring
                         ? null
@@ -322,9 +338,9 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
           // Device List / Details View
           Expanded(
             child: _devices.isEmpty
-                ? const Center(
+                ? Center(
                     child: Text(
-                      'No saved devices found in Local DB.\nPair a BLE station or run sync with Cloud to populate.',
+                      l10n.dbNoDevices,
                       textAlign: TextAlign.center,
                       style: AppStyles.captionStatus,
                     ),
@@ -395,7 +411,7 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Text(
-                                        dev.isSynced ? 'SYNCED' : 'UNSYNCED',
+                                        dev.isSynced ? l10n.dbStateSynced : l10n.dbStateUnsynced,
                                         style: AppStyles.captionStatus.copyWith(
                                           color: syncColor,
                                           fontWeight: FontWeight.bold,
@@ -406,8 +422,8 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
                                 ),
                                 const SizedBox(height: AppStyles.spaceSM),
                                 Text(
-                                  'Telemetry Records: ${dev.historicValues.length}  |  Predictions: ${dev.newPredictions.length}'
-                                  '${dev.latitude != null ? "  |  Lat: ${dev.latitude?.toStringAsFixed(3)}, Lon: ${dev.longitude?.toStringAsFixed(3)}" : ""}',
+                                  '${l10n.dbTelemetryInfo(dev.historicValues.length, dev.newPredictions.length)}'
+                                  '${dev.latitude != null ? l10n.dbLocationInfo(dev.latitude!.toStringAsFixed(3), dev.longitude!.toStringAsFixed(3)) : ""}',
                                   style: AppStyles.consoleBody,
                                 ),
 
@@ -416,12 +432,12 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
                                   const SizedBox(height: AppStyles.spaceMD),
                                   ElevatedButton.icon(
                                     icon: const Icon(Icons.psychology),
-                                    label: const Text('Run RF Inference'),
+                                    label: Text(l10n.dbBtnRunInference),
                                     onPressed: _isInferring
                                         ? null
                                         : _handleInference,
                                   ),
-                                  _buildPredictionCard(),
+                                  _buildPredictionCard(l10n),
                                 ],
                               ],
                             ),

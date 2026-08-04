@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:tfm_app/cli_routines.dart';
 import 'package:tfm_app/core/theme/app_styles.dart';
+import 'package:tfm_app/l10n/app_localizations.dart';
 
 class NearbyScreen extends StatefulWidget {
   final CliRoutines routines;
@@ -40,7 +41,10 @@ class _NearbyScreenState extends State<NearbyScreen> {
         setState(() {
           _devices = results;
         });
-        widget.onStatusChange('Found ${_devices.length} devices...');
+        final l10n = AppLocalizations.of(context);
+        if (l10n != null) {
+          widget.onStatusChange(l10n.nbFoundDevices(_devices.length));
+        }
       }
     });
   }
@@ -56,7 +60,8 @@ class _NearbyScreenState extends State<NearbyScreen> {
     setState(() {
       _devices.clear();
     });
-    widget.onStatusChange('Refreshing BLE scan...');
+    final l10n = AppLocalizations.of(context)!;
+    widget.onStatusChange(l10n.nbRefreshingScan);
     _startListeningToScan();
   }
 
@@ -66,7 +71,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
   }
 
   Future<String?> _getSavedSecret(String id) async {
-    return await widget.routines.secureStorage.getDeviceSecret(id); //[cite: 11]
+    return await widget.routines.secureStorage.getDeviceSecret(id);
   }
 
   Future<void> _saveSecret(String id, String name, String secret) async {
@@ -74,19 +79,20 @@ class _NearbyScreenState extends State<NearbyScreen> {
     await widget.routines.secureStorage.saveDeviceSecret(
       id,
       secret,
-    ); //[cite: 11]
+    );
   }
 
   // --- GUI Dialog replacing the CLI prompt ---
   Future<void> _promptConnection(ScanResult result) async {
+    final l10n = AppLocalizations.of(context)!;
     final deviceId = result.device.remoteId.str;
     final deviceName = result.advertisementData.advName.isNotEmpty
         ? result.advertisementData.advName
         : (result.device.platformName.isNotEmpty
               ? result.device.platformName
-              : deviceId); //[cite: 11]
+              : deviceId);
 
-    // Fetch the saved secret before showing the dialog[cite: 11]
+    // Fetch the saved secret before showing the dialog
     final savedSecret = await _getSavedSecret(deviceId) ?? '';
     String enteredSecret = '';
     bool isObscured = true;
@@ -101,13 +107,13 @@ class _NearbyScreenState extends State<NearbyScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: Text('Connect to $deviceName'),
+              title: Text(l10n.nbConnectDialogTitle(deviceName)),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Device ID: $deviceId',
+                    l10n.nbDeviceId(deviceId),
                     style: const TextStyle(color: Colors.grey, fontSize: 12),
                   ),
                   const SizedBox(height: 16),
@@ -116,9 +122,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                       children: [
                         Expanded(
                           child: Text(
-                            isSavedSecretObscured
-                                ? 'Saved secret: ${_maskSecret(savedSecret)}'
-                                : 'Saved secret: $savedSecret',
+                            l10n.nbSavedSecret(isSavedSecretObscured ? _maskSecret(savedSecret) : savedSecret),
                             style: TextStyle(
                               color: isSavedSecretObscured ? Colors.greenAccent : Colors.amberAccent,
                               fontSize: 13,
@@ -137,20 +141,20 @@ class _NearbyScreenState extends State<NearbyScreen> {
                               isSavedSecretObscured = !isSavedSecretObscured;
                             });
                           },
-                          tooltip: isSavedSecretObscured ? 'Show saved secret' : 'Hide saved secret',
+                          tooltip: isSavedSecretObscured ? l10n.nbTooltipShowSaved : l10n.nbTooltipHideSaved,
                         ),
                       ],
                     ),
-                    const Text(
-                      'Leave blank to use the saved secret.',
-                      style: TextStyle(color: Colors.grey, fontSize: 12),
+                    Text(
+                      l10n.nbLeaveBlankHint,
+                      style: const TextStyle(color: Colors.grey, fontSize: 12),
                     ),
                     const SizedBox(height: 12),
                   ],
                   TextField(
                     obscureText: isObscured,
                     decoration: InputDecoration(
-                      labelText: 'Handshake Secret',
+                      labelText: l10n.nbSecretLabel,
                       border: const OutlineInputBorder(),
                       prefixIcon: const Icon(Icons.lock),
                       suffixIcon: IconButton(
@@ -162,7 +166,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                             isObscured = !isObscured;
                           });
                         },
-                        tooltip: isObscured ? 'Show secret' : 'Hide secret',
+                        tooltip: isObscured ? l10n.nbTooltipShowSecret : l10n.nbTooltipHideSecret,
                       ),
                     ),
                     onChanged: (val) => enteredSecret = val,
@@ -172,7 +176,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                  child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey)),
                 ),
                 ElevatedButton(
                   onPressed: () {
@@ -182,7 +186,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                         : savedSecret;
                     _attemptConnection(result.device, deviceName, secretToUse);
                   },
-                  child: const Text('Connect'),
+                  child: Text(l10n.nbBtnConnect),
                 ),
               ],
             );
@@ -197,21 +201,20 @@ class _NearbyScreenState extends State<NearbyScreen> {
     String deviceName,
     String secret,
   ) async {
+    final l10n = AppLocalizations.of(context)!;
     setState(() => _isConnecting = true);
-    widget.onStatusChange('Connecting to $deviceName...');
+    widget.onStatusChange(l10n.nbConnectingStatus(deviceName));
 
-    // Trigger the connection routine[cite: 7, 11]
+    // Trigger the connection routine
     final bool success = await widget.routines.connectToDevice(device, secret);
 
     if (!mounted) return;
 
     if (success) {
-      await _saveSecret(device.remoteId.str, deviceName, secret); //[cite: 11]
-      widget.onStatusChange('Connected successfully to $deviceName!');
+      await _saveSecret(device.remoteId.str, deviceName, secret);
+      widget.onStatusChange(l10n.nbConnectedSuccess(deviceName));
     } else {
-      widget.onStatusChange(
-        'Connection failed. Please check the secret or device range.',
-      );
+      widget.onStatusChange(l10n.nbConnectionFailed);
       // Optionally re-prompt here, but letting the user tap the device again is standard GUI UX.
     }
 
@@ -219,13 +222,15 @@ class _NearbyScreenState extends State<NearbyScreen> {
   }
 
   void _disconnect() {
-    widget.routines.bleService.disconnect(); //[cite: 11]
-    widget.onStatusChange('Disconnected from station.');
+    final l10n = AppLocalizations.of(context)!;
+    widget.routines.bleService.disconnect();
+    widget.onStatusChange(l10n.nbDisconnectedStatus);
     setState(() {}); // Trigger rebuild to update UI
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final isConnected = widget.routines.bleService.isConnected;
     final connectedDev = widget.routines.bleService.connectedDevice;
 
@@ -241,8 +246,8 @@ class _NearbyScreenState extends State<NearbyScreen> {
             spacing: AppStyles.spaceSM,
             runSpacing: AppStyles.spaceSM,
             children: [
-              const Text(
-                'Nearby BLE Stations',
+              Text(
+                l10n.nbScreenTitle,
                 style: AppStyles.displayHeader,
               ),
               Wrap(
@@ -252,13 +257,13 @@ class _NearbyScreenState extends State<NearbyScreen> {
                   if (isConnected)
                     OutlinedButton.icon(
                       icon: const Icon(Icons.bluetooth_disabled),
-                      label: const Text('Disconnect'),
+                      label: Text(l10n.nbBtnDisconnect),
                       style: AppStyles.destructiveButtonStyle,
                       onPressed: _disconnect,
                     ),
                   ElevatedButton.icon(
                     icon: const Icon(Icons.refresh),
-                    label: const Text('Scan'),
+                    label: Text(l10n.nbBtnScan),
                     onPressed: _isConnecting ? null : _searchNearby,
                   ),
                 ],
@@ -286,7 +291,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                   ),
                   const SizedBox(width: AppStyles.spaceSM),
                   Text(
-                    'Currently connected to: ${connectedDev?.platformName ?? connectedDev?.remoteId.str ?? "Unknown"}',
+                    l10n.nbCurrentConnection(connectedDev?.platformName ?? connectedDev?.remoteId.str ?? l10n.nbUnknownDev),
                     style: AppStyles.consoleBody.copyWith(
                       color: AppStyles.successAccent,
                       fontWeight: FontWeight.bold,
@@ -299,23 +304,23 @@ class _NearbyScreenState extends State<NearbyScreen> {
           // Device List
           Expanded(
             child: _isConnecting
-                ? const Center(
+                ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        CircularProgressIndicator(),
-                        SizedBox(height: AppStyles.spaceMD),
+                        const CircularProgressIndicator(),
+                        const SizedBox(height: AppStyles.spaceMD),
                         Text(
-                          'Negotiating handshake...',
+                          l10n.nbNegotiatingStatus,
                           style: AppStyles.captionStatus,
                         ),
                       ],
                     ),
                   )
                 : _devices.isEmpty
-                ? const Center(
+                ? Center(
                     child: Text(
-                      'No devices found.\nEnsure your Pico station is powered and advertising.',
+                      l10n.nbNoDevices,
                       textAlign: TextAlign.center,
                       style: AppStyles.captionStatus,
                     ),
@@ -328,7 +333,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                           ? d.advertisementData.advName
                           : (d.device.platformName.isNotEmpty
                                 ? d.device.platformName
-                                : "Unnamed Device");
+                                : l10n.nbUnnamedDev);
                       final isTarget =
                           connectedDev?.remoteId == d.device.remoteId;
 
@@ -347,7 +352,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                             style: AppStyles.bodyText.copyWith(fontWeight: FontWeight.bold),
                           ),
                           subtitle: Text(
-                            '${d.device.remoteId.str}  •  RSSI: ${d.rssi} dBm',
+                            l10n.nbDeviceSub(d.device.remoteId.str, d.rssi),
                             style: AppStyles.consoleBody,
                           ),
                           trailing: isTarget

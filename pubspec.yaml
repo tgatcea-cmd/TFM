@@ -13,6 +13,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
 
   ### BLE API and OPEN-METEO ###
   cbor: ^6.5.1                      # CBOR encoding/decoding.
@@ -39,7 +41,8 @@ dependencies:
   path: ^1.9.0
   flutter_map: ^8.3.1
   latlong2: ^0.10.1
-  intl: ^0.20.3
+  intl: 0.20.2
+  flutter_gen: ^5.15.0
 
 
 
@@ -50,6 +53,7 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
+  auto_translator: ^2.3.2
 
 
 
@@ -58,6 +62,7 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+  generate: true
   uses-material-design: true
 
   assets:
