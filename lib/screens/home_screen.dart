@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
+
 import 'package:tfm_app/cli_routines.dart';
 import 'package:tfm_app/core/theme/app_styles.dart';
 import 'package:tfm_app/l10n/app_localizations.dart';
@@ -48,6 +50,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final now = DateTime.now();
       final devName = widget.routines.bleService.connectedDevice?.platformName ?? 'unknown_device';
+      
       final jsonPayload = {
         'timestamp': now.toIso8601String(),
         'device': devName,
@@ -55,12 +58,11 @@ class _HomeScreenState extends State<HomeScreen> {
       };
 
       final jsonString = const JsonEncoder.withIndent('  ').convert(jsonPayload);
-
       final dir = await getApplicationDocumentsDirectory();
       final fileName = 'console_log_${now.millisecondsSinceEpoch}.json';
       final file = File('${dir.path}/$fileName');
+      
       await file.writeAsString(jsonString);
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -115,7 +117,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _getPrettifiedGap(int offsetMs, AppLocalizations l10n) {
     final diff = Duration(milliseconds: offsetMs.abs());
-
     if (diff.inDays >= 365) {
       final years = (diff.inDays / 365).floor();
       return l10n.homeGapYears(years.toString());
@@ -160,10 +161,8 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       // 1. Send the sync command
       await widget.routines.bleService.syncTime(0);
-
       // 2. Wait a brief moment for the station to process the new RTC value
       await Future.delayed(const Duration(milliseconds: 500));
-
       // 3. Re-read the status to visually update the gap
       final status = await widget.routines.readStationStatus();
       if (status != null && status['now_ms'] != null) {
@@ -291,16 +290,17 @@ class _HomeScreenState extends State<HomeScreen> {
   String _translateVerdict(String v, AppLocalizations l10n) {
     if (v.contains('IRRIGATE: Soil moisture threshold drop predicted')) return l10n.verdictLstmIrrigate;
     if (v.contains('HEALTHY: Soil moisture level sufficient')) return l10n.verdictLstmHealthy;
-    if (v.contains('SATURATION RISK:')) return l10n.verdictRfSaturation;
-    if (v.contains('HEALTHY: Irrigation safe')) return l10n.verdictRfHealthy;
+    
+    // Updated translation mappings based on the new logic
+    if (v.contains('IRRIGATION AVOIDABLE:')) return l10n.verdictRfAvoidable;
+    if (v.contains('IRRIGATION NEEDED:')) return l10n.verdictRfNeeded;
     
     if (v.startsWith('Verdict: ')) {
       final sub = v.substring(9);
       return 'Verdict: ${_translateVerdict(sub, l10n)}';
     }
-
-    if (v.startsWith('Perjudicial')) return v.replaceFirst('Perjudicial', l10n.verdictEmuPerjudicial);
-    if (v.startsWith('Healthy')) return v.replaceFirst('Healthy', l10n.verdictEmuHealthy);
+    if (v.startsWith('Irrigation Avoidable')) return v.replaceFirst('Irrigation Avoidable', l10n.verdictEmuAvoidable);
+    if (v.startsWith('Irrigation Needed')) return v.replaceFirst('Irrigation Needed', l10n.verdictEmuNeeded);
     return v;
   }
 
@@ -316,13 +316,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final h = now.hour;
     final startH = settings.agronomicDayStart;
     final endH = settings.agronomicDayEnd;
+
     final bool isYellowZone = (endH < startH) 
         ? (h >= endH && h < startH)
         : (h >= endH || h < startH);
 
-    final bool isIrrigate =
-        verdict.toUpperCase().contains('IRRIGATE') &&
-        !verdict.toUpperCase().contains('DO NOT');
+    // FIX: Color trigger relies explicitly on 'NEEDED' or the LSTM 'IRRIGATE:' text
+    final bool isIrrigate = verdict.contains('NEEDED') || verdict.contains('IRRIGATE:');
 
     final color = isYellowZone
         ? AppStyles.warningAccent
@@ -422,7 +422,7 @@ class _HomeScreenState extends State<HomeScreen> {
             style: AppStyles.displayHeader,
           ),
           const SizedBox(height: AppStyles.spaceXS),
-
+          
           // 2. Date and Interactive Sync Time Gap Badge
           Wrap(
             crossAxisAlignment: WrapCrossAlignment.center,
@@ -485,6 +485,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           const SizedBox(height: AppStyles.spaceLG),
+
           // Action Buttons
           Wrap(
             spacing: AppStyles.spaceSM,
@@ -519,10 +520,10 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-
+          
           _buildPredictionCard(l10n),
           _buildDebugPanel(l10n),
-
+          
           const SizedBox(height: AppStyles.spaceMD),
           Text(
             l10n.homeConsoleTitle,
@@ -583,7 +584,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-        ],
+      ],
     );
   }
 }

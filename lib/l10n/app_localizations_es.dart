@@ -32,18 +32,17 @@ class AppLocalizationsEs extends AppLocalizations {
   String get verdictLstmHealthy => 'SALUDABLE: Nivel de humedad suficiente';
 
   @override
-  String get verdictRfSaturation =>
-      'RIESGO DE SATURACIÓN: Riego perjudicial mañana. NO REGAR.';
+  String get verdictRfAvoidable => 'RIEGO EVITABLE: Humedad del suelo estable.';
 
   @override
-  String get verdictRfHealthy => 'SALUDABLE: Riego seguro / No perjudicial.';
+  String get verdictRfNeeded =>
+      'RIEGO NECESARIO: Humedad del suelo baja. REGAR para restaurar.';
 
   @override
-  String get verdictEmuPerjudicial =>
-      'RIESGO DE SATURACIÓN: Riego perjudicial mañana. NO REGAR.';
+  String get verdictEmuAvoidable => 'Riego Evitable';
 
   @override
-  String get verdictEmuHealthy => 'SALUDABLE: Riego seguro / No perjudicial.';
+  String get verdictEmuNeeded => 'Riego Necesario';
 
   @override
   String get mainScreenError => 'Menú Desconocido';
@@ -52,10 +51,10 @@ class AppLocalizationsEs extends AppLocalizations {
   String get mainStatusReady => 'Listo';
 
   @override
-  String get mainStatusBleConnected => 'Conectado a la estación';
+  String get mainStatusBleConnected => 'Conectado a la estación Savia';
 
   @override
-  String get mainStatusBleDisconnected => 'Desconectado de la estación';
+  String get mainStatusBleDisconnected => 'Desconectado de la estación Savia';
 
   @override
   String get homeTab => 'Inicio';
@@ -77,7 +76,7 @@ class AppLocalizationsEs extends AppLocalizations {
       'Consola Inicializada. Los resultados de los comandos aparecerán aquí...';
 
   @override
-  String get homeConsoleCopiedSnack => 'Copiado al portapapes!';
+  String get homeConsoleCopiedSnack => '¡Copiado al portapapeles!';
 
   @override
   String get homeConsoleCopiedStatus => 'Consola copiada al portapapeles';
@@ -424,7 +423,7 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String nbDeviceSub(String id, int rssi) {
-    return '$id  •  RSSI: $rssi dBm';
+    return '$id     RSSI: $rssi dBm';
   }
 
   @override

@@ -27,7 +27,7 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
   int? _selectedIndex;
   bool _isSyncing = false;
   bool _isInferring = false;
-
+  
   // Stats for the active prediction recommendation card
   Map<String, dynamic>? _predictionStats;
 
@@ -44,7 +44,6 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
         _selectedIndex = _devices.isNotEmpty ? 0 : null;
       }
     });
-
     if (_selectedIndex != null && _selectedIndex! < _devices.length) {
       _extractPredictionStats(_devices[_selectedIndex!]);
     }
@@ -59,14 +58,12 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
   void _extractPredictionStats(Device dev, {String? overrideVerdict}) {
     double? minHum;
     int? minTs;
-
     for (var p in dev.newPredictions) {
       if (minHum == null || (p.value != null && p.value! < minHum)) {
         minHum = p.value;
         minTs = p.tsMs;
       }
     }
-
     setState(() {
       _predictionStats = {
         'verdict':
@@ -89,13 +86,10 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
         db: widget.routines.db,
         api: widget.routines.cloudApi,
       );
-
       // Push dirty devices first
       await syncService.syncDirtyDevices();
-
       // Discover registered devices from cloud
       await syncService.discoverAndSyncCloudDevices();
-
       // Pull latest telemetry for each existing device
       for (var dev in widget.routines.db.getSavedDevices()) {
         try {
@@ -105,7 +99,6 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
           await syncService.pullTelemetry(dev.deviceIdentifier, latestTs);
         } catch (_) {}
       }
-
       _loadDevices();
       widget.onStatusChange(l10n.dbSyncCompleted(_devices.length));
     } catch (e) {
@@ -122,15 +115,14 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
       return;
     }
     if (_isInferring) return;
-
     final dev = _devices[_selectedIndex!];
+    
     setState(() => _isInferring = true);
     widget.onStatusChange(l10n.dbRunningInference(dev.name, dev.deviceIdentifier));
 
     try {
       await widget.routines.runLocalInference(dev.deviceIdentifier);
       final verdict = widget.routines.inferenceBridge.status.value;
-
       if (mounted) {
         _extractPredictionStats(dev, overrideVerdict: verdict);
       }
@@ -179,16 +171,15 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
   String _translateVerdict(String v, AppLocalizations l10n) {
     if (v.contains('IRRIGATE: Soil moisture threshold drop predicted')) return l10n.verdictLstmIrrigate;
     if (v.contains('HEALTHY: Soil moisture level sufficient')) return l10n.verdictLstmHealthy;
-    if (v.contains('SATURATION RISK:')) return l10n.verdictRfSaturation;
-    if (v.contains('HEALTHY: Irrigation safe')) return l10n.verdictRfHealthy;
+    if (v.contains('IRRIGATION AVOIDABLE:')) return l10n.verdictRfAvoidable;
+    if (v.contains('IRRIGATION NEEDED:')) return l10n.verdictRfNeeded;
     
     if (v.startsWith('Verdict: ')) {
       final sub = v.substring(9);
       return 'Verdict: ${_translateVerdict(sub, l10n)}';
     }
-
-    if (v.startsWith('Perjudicial')) return v.replaceFirst('Perjudicial', l10n.verdictEmuPerjudicial);
-    if (v.startsWith('Healthy')) return v.replaceFirst('Healthy', l10n.verdictEmuHealthy);
+    if (v.startsWith('Irrigation Avoidable')) return v.replaceFirst('Irrigation Avoidable', l10n.verdictEmuAvoidable);
+    if (v.startsWith('Irrigation Needed')) return v.replaceFirst('Irrigation Needed', l10n.verdictEmuNeeded);
     return v;
   }
 
@@ -205,13 +196,12 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
     final h = now.hour;
     final startH = settings.agronomicDayStart;
     final endH = settings.agronomicDayEnd;
+
     final bool isYellowZone = (endH < startH) 
         ? (h >= endH && h < startH)
         : (h >= endH || h < startH);
 
-    final bool isIrrigate =
-        verdict.toUpperCase().contains('IRRIGATE') &&
-        !verdict.toUpperCase().contains('DO NOT');
+    final bool isIrrigate = verdict.contains('NEEDED') || verdict.contains('IRRIGATE:');
 
     final color = isYellowZone
         ? AppStyles.warningAccent
@@ -328,7 +318,7 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
             ],
           ),
           const SizedBox(height: AppStyles.spaceSM),
-
+          
           if (_isSyncing || _isInferring)
             const Padding(
               padding: EdgeInsets.only(bottom: AppStyles.spaceSM),
@@ -426,7 +416,6 @@ class _LocalDbScreenState extends State<LocalDbScreen> {
                                   '${dev.latitude != null ? l10n.dbLocationInfo(dev.latitude!.toStringAsFixed(3), dev.longitude!.toStringAsFixed(3)) : ""}',
                                   style: AppStyles.consoleBody,
                                 ),
-
                                 // Expand details and prediction card if selected
                                 if (isSelected) ...[
                                   const SizedBox(height: AppStyles.spaceMD),

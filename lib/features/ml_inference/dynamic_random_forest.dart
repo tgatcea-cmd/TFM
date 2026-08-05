@@ -28,8 +28,8 @@ class DynamicRandomForest {
   /// Returns average probabilities across all trees.
   List<double> predict(List<double> features) {
     if (trees.isEmpty) return [0.0];
-    int numClasses = trees.first.firstWhere((n) => n.isLeaf).value.length;
-    List<double> classScores = List.filled(numClasses, 0.0);
+    final int numClasses = trees.first.firstWhere((n) => n.isLeaf).value.length;
+    final List<double> classScores = List.filled(numClasses, 0.0);
 
     for (final treeNodes in trees) {
       final leaf = _traverse(treeNodes, 0, features);

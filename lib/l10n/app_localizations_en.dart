@@ -33,17 +33,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get verdictLstmHealthy => 'HEALTHY: Soil moisture level sufficient';
 
   @override
-  String get verdictRfSaturation =>
-      'SATURATION RISK: Irrigation perjudicial tomorrow. DO NOT IRRIGATE.';
+  String get verdictRfAvoidable =>
+      'IRRIGATION AVOIDABLE: Soil moisture stable.';
 
   @override
-  String get verdictRfHealthy => 'HEALTHY: Irrigation safe / Not perjudicial.';
+  String get verdictRfNeeded =>
+      'IRRIGATION NEEDED: Soil moisture low. IRRIGATE to restore.';
 
   @override
-  String get verdictEmuPerjudicial => 'Perjudicial';
+  String get verdictEmuAvoidable => 'Irrigation Avoidable';
 
   @override
-  String get verdictEmuHealthy => 'Healthy';
+  String get verdictEmuNeeded => 'Irrigation Needed';
 
   @override
   String get mainScreenError => 'Unknown Screen';
@@ -422,7 +423,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String nbDeviceSub(String id, int rssi) {
-    return '$id  •  RSSI: $rssi dBm';
+    return '$id     RSSI: $rssi dBm';
   }
 
   @override
@@ -491,7 +492,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String cfgPredLimit(int base) {
-    return 'Limit reached: Prediction start can only be adjusted ±3h from base ($base:00).';
+    return 'Limit reached: Prediction start can only be adjusted  3h from base ($base:00).';
   }
 
   @override
@@ -501,7 +502,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String cfgIrrLimit(int base) {
-    return 'Limit reached: Irrigation end can only be adjusted ±3h from base ($base:00).';
+    return 'Limit reached: Irrigation end can only be adjusted  3h from base ($base:00).';
   }
 
   @override

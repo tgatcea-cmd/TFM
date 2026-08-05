@@ -30,6 +30,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
   late String _cloudScheme;
   late String _cloudUrl;
   late int _cloudPort;
+  late String _cloudApiKey;
   
   late int _agronomicDayStart; // Prediction start
   late int _agronomicDayEnd;   // Prediction end / Irrigation start - 1
@@ -50,6 +51,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
     _cloudScheme = settings.tfmServerScheme;
     _cloudUrl = settings.tfmServerUrl;
     _cloudPort = settings.tfmServerPort;
+    _cloudApiKey = settings.tfmServerApiKey;
     _agronomicDayStart = settings.agronomicDayStart;
     _agronomicDayEnd = settings.agronomicDayEnd;
     _baseDayStart = settings.agronomicDayStart;
@@ -314,7 +316,9 @@ class _ConfigScreenState extends State<ConfigScreen> {
 
     for (final path in ['/health', '/api/ping']) {
       try {
-        final res = await http.get(Uri.parse('$_cloudScheme://$_cloudUrl:$_cloudPort$path')).timeout(const Duration(seconds: 3));
+        final res = await http.get(Uri.parse('$_cloudScheme://$_cloudUrl:$_cloudPort$path'), headers: {
+          if (_cloudApiKey.isNotEmpty) 'Authorization': 'Bearer $_cloudApiKey',
+        }).timeout(const Duration(seconds: 3));
         if (res.statusCode == 200) {
           final data = jsonDecode(res.body);
           if (mounted) setState(() => _cloudPingStatus = l10n.cfgPingRes(data['status']?.toString().toUpperCase() ?? 'OK', sw.elapsedMilliseconds));
@@ -333,10 +337,12 @@ class _ConfigScreenState extends State<ConfigScreen> {
       tfmServerScheme: _cloudScheme,
       tfmServerUrl: _cloudUrl,
       tfmServerPort: _cloudPort,
+      tfmServerApiKey: _cloudApiKey,
       agronomicDayStart: _agronomicDayStart,
       agronomicDayEnd: _agronomicDayEnd,
     );
     widget.routines.cloudApi.updateEndpoint(_cloudScheme, _cloudUrl, _cloudPort);
+    widget.routines.cloudApi.apiKey = _cloudApiKey; // Make sure runtime gets it
     widget.onStatusChange(l10n.cfgSavedStatus);
   }
 
@@ -364,6 +370,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(l10n.cfgEndpointTitle),
+        backgroundColor: AppStyles.surfaceColor,
         content: TextField(
           decoration: InputDecoration(
             labelText: l10n.cfgEndpointLabel,
@@ -391,6 +398,55 @@ class _ConfigScreenState extends State<ConfigScreen> {
         _parseAndSetCloudEndpoint(result);
       });
       widget.onStatusChange(l10n.cfgEndpointUpdated);
+      unawaited(_checkCloudPing());
+    }
+  }
+
+  // --- GUI Dialog for API Key ---
+  Future<void> _editApiKeyDialog() async {
+    final l10n = AppLocalizations.of(context)!;
+    String enteredValue = _cloudApiKey;
+    bool isObscured = true;
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Edit Cloud API Key', style: AppStyles.sectionTitle),
+          backgroundColor: AppStyles.surfaceColor,
+          content: TextField(
+            obscureText: isObscured,
+            style: AppStyles.bodyText,
+            decoration: InputDecoration(
+              labelText: 'Secret API Key',
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                icon: Icon(isObscured ? Icons.visibility : Icons.visibility_off, color: AppStyles.textMuted),
+                onPressed: () => setDialogState(() => isObscured = !isObscured),
+              ),
+            ),
+            controller: TextEditingController(text: _cloudApiKey),
+            onChanged: (val) => enteredValue = val,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(l10n.cancel, style: AppStyles.bodyText.copyWith(color: AppStyles.textMuted)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, enteredValue),
+              child: Text(l10n.cfgBtnUpdate),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null && result != _cloudApiKey) {
+      setState(() {
+        _cloudApiKey = result;
+      });
+      widget.onStatusChange('API Key updated locally. Remember to press Apply & Save.');
       unawaited(_checkCloudPing());
     }
   }
@@ -631,6 +687,50 @@ class _ConfigScreenState extends State<ConfigScreen> {
                           ),
                         ],
                       ),
+
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: AppStyles.spaceSM),
+                        child: Divider(color: AppStyles.dividerColor, height: 1),
+                      ),
+
+                      // Cloud API Key Row
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.only(top: 4.0),
+                            child: Icon(Icons.key, color: AppStyles.textSecondary, size: 24),
+                          ),
+                          const SizedBox(width: AppStyles.spaceSM),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Cloud API Key', style: AppStyles.bodyText.copyWith(fontWeight: FontWeight.bold)),
+                                const SizedBox(height: AppStyles.spaceXS),
+                                Text(
+                                  _cloudApiKey.isEmpty ? 'Not Configured' : '••••••••••••••••', 
+                                  style: AppStyles.consoleBody.copyWith(
+                                    color: _cloudApiKey.isEmpty ? AppStyles.warningAccent : AppStyles.successAccent,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: AppStyles.spaceSM),
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.edit, size: 16),
+                            label: Text(l10n.cfgBtnUpdate),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppStyles.waterActionAccent,
+                              side: const BorderSide(color: AppStyles.waterActionAccent),
+                              minimumSize: const Size(130, 36),
+                            ),
+                            onPressed: _editApiKeyDialog,
+                          ),
+                        ],
+                      ),
+
                     ],
                   ),
                 ),
@@ -916,7 +1016,7 @@ class _MlModelManagerSheetState extends State<MlModelManagerSheet> {
               ),
               const SizedBox(height: AppStyles.spaceSM),
               Text(
-                'Download crop-specific Random Forest classifiers from the server to use for local & cloud inference. Long-press a downloaded model to delete it.',
+                'Download crop-specific Random Forest classifiers from the server to use for local & cloud inference.',
                 style: AppStyles.bodyText.copyWith(
                   color: AppStyles.textSecondary,
                 ),
@@ -983,20 +1083,32 @@ class _MlModelManagerSheetState extends State<MlModelManagerSheet> {
                             style: AppStyles.captionStatus,
                           ),
                           isThreeLine: true,
-                          trailing: isProcessing
-                              ? const SizedBox(
+                          // REPLACED LONG PRESS WITH EXPLICIT ROW BUTTONS
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isDownloaded && !isActive)
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline, color: AppStyles.errorAccent),
+                                  tooltip: 'Delete Model',
+                                  onPressed: () => _handleDelete(mId, meta['crop_name'] ?? mId),
+                                ),
+                              if (isDownloaded && !isActive)
+                                const SizedBox(width: AppStyles.spaceSM),
+                              
+                              if (isProcessing)
+                                const SizedBox(
                                   width: 24,
                                   height: 24,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : isDownloaded
-                              ? (isActive
+                              else if (isDownloaded)
+                                (isActive
                                     ? const Chip(
                                         label: Text('ACTIVE'),
-                                        backgroundColor:
-                                            AppStyles.successAccent,
+                                        backgroundColor: AppStyles.successAccent,
                                         labelStyle: TextStyle(
                                           color: Colors.black,
                                           fontWeight: FontWeight.bold,
@@ -1007,15 +1119,14 @@ class _MlModelManagerSheetState extends State<MlModelManagerSheet> {
                                         onPressed: () => _handleSetActive(mId),
                                         child: const Text('Set Active'),
                                       ))
-                              : ElevatedButton.icon(
+                              else
+                                ElevatedButton.icon(
                                   icon: const Icon(Icons.download, size: 16),
                                   label: const Text('Download'),
                                   onPressed: () => _handleDownload(meta),
                                 ),
-                          onLongPress: isDownloaded && !isActive
-                              ? () =>
-                                    _handleDelete(mId, meta['crop_name'] ?? mId)
-                              : null,
+                            ],
+                          ),
                         ),
                       );
                     },

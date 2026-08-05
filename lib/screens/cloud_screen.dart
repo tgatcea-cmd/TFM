@@ -23,15 +23,15 @@ class CloudScreen extends StatefulWidget {
 class _CloudScreenState extends State<CloudScreen> {
   List<dynamic> _cloudDevices = [];
   int? _selectedIndex;
-
+  
   bool _isLoadingDevices = false;
   bool _isTesting = false;
   bool _isSyncing = false;
   bool _isEmulating = false;
-
+  
   String _connStatus = 'UNKNOWN';
   int _unsyncedDevicesCount = 0;
-
+  
   Map<String, dynamic>? _emulationResultMap;
   bool _isDisposed = false;
 
@@ -86,7 +86,7 @@ class _CloudScreenState extends State<CloudScreen> {
   Future<void> _loadCloudDevices() async {
     if (_isLoadingDevices || _isDisposed || !mounted) return;
     setState(() => _isLoadingDevices = true);
-
+    
     try {
       final devices = await widget.routines.cloudApi.getRegisteredDevices();
       if (!_isDisposed && mounted) {
@@ -116,10 +116,9 @@ class _CloudScreenState extends State<CloudScreen> {
       _isTesting = true;
       _connStatus = 'TESTING...';
     });
-
+    
     final l10n = AppLocalizations.of(context)!;
     widget.onStatusChange(l10n.cloudTestingConnection);
-
     try {
       final success = await widget.routines.cloudApi.testConnection();
       if (_isDisposed || !mounted) return;
@@ -146,7 +145,6 @@ class _CloudScreenState extends State<CloudScreen> {
     setState(() => _isSyncing = true);
     final l10n = AppLocalizations.of(context)!;
     widget.onStatusChange(l10n.cloudSyncInitiating);
-
     try {
       final syncService = SyncService(
         db: widget.routines.db,
@@ -169,20 +167,16 @@ class _CloudScreenState extends State<CloudScreen> {
     if (_cloudDevices.isEmpty) {
       await _loadCloudDevices();
     }
-
     if (!mounted) return;
     final l10n = AppLocalizations.of(context)!;
-
     if (_cloudDevices.isEmpty) {
       widget.onStatusChange(l10n.cloudEmulationAbortedNoStation);
       return;
     }
-
     if (_selectedIndex == null || _selectedIndex! >= _cloudDevices.length) {
       widget.onStatusChange(l10n.cloudEmulationNoSelection);
       return;
     }
-
     final devMap = _cloudDevices[_selectedIndex!];
     final devId =
         (devMap['deviceIdentifier'] ??
@@ -192,18 +186,16 @@ class _CloudScreenState extends State<CloudScreen> {
                 'pico_01')
             .toString();
     final name = (devMap['name'] ?? devMap['deviceName'] ?? devId).toString();
-
     setState(() {
       _isEmulating = true;
       _emulationResultMap = null;
     });
     widget.onStatusChange(l10n.cloudEmulationExecuting(name, devId));
-
     try {
       final result = await widget.routines.emulateCloudRecommendationInMemory(
         devId,
       );
-
+      
       if (mounted) {
         setState(() {
           _emulationResultMap = result;
@@ -224,13 +216,11 @@ class _CloudScreenState extends State<CloudScreen> {
     final serverUrl = widget.routines.cloudApi.baseUrl;
     final hasApiKey = settings.tfmServerApiKey.isNotEmpty;
     final l10n = AppLocalizations.of(context)!;
-
     final statusColor = _connStatus == 'CONNECTED'
         ? AppStyles.successAccent
         : (_connStatus == 'UNREACHABLE' || _connStatus == 'ERROR'
               ? AppStyles.errorAccent
               : AppStyles.warningAccent);
-
     return Container(
       padding: const EdgeInsets.all(AppStyles.spaceMD),
       decoration: AppStyles.cardShell(),
@@ -307,28 +297,23 @@ class _CloudScreenState extends State<CloudScreen> {
   }
 
   String _translateVerdict(String v, AppLocalizations l10n) {
-    if (v.contains('IRRIGATE: Soil moisture threshold drop predicted'))
-      return l10n.verdictLstmIrrigate;
-    if (v.contains('HEALTHY: Soil moisture level sufficient'))
-      return l10n.verdictLstmHealthy;
-    if (v.contains('SATURATION RISK:')) return l10n.verdictRfSaturation;
-    if (v.contains('HEALTHY: Irrigation safe')) return l10n.verdictRfHealthy;
-
+    if (v.contains('IRRIGATE: Soil moisture threshold drop predicted')) return l10n.verdictLstmIrrigate;
+    if (v.contains('HEALTHY: Soil moisture level sufficient')) return l10n.verdictLstmHealthy;
+    
+    if (v.contains('IRRIGATION AVOIDABLE:')) return l10n.verdictRfAvoidable;
+    if (v.contains('IRRIGATION NEEDED:')) return l10n.verdictRfNeeded;
+    
     if (v.startsWith('Verdict: ')) {
       final sub = v.substring(9);
       return 'Verdict: ${_translateVerdict(sub, l10n)}';
     }
-
-    if (v.startsWith('Perjudicial'))
-      return v.replaceFirst('Perjudicial', l10n.verdictEmuPerjudicial);
-    if (v.startsWith('Healthy'))
-      return v.replaceFirst('Healthy', l10n.verdictEmuHealthy);
+    if (v.startsWith('Irrigation Avoidable')) return v.replaceFirst('Irrigation Avoidable', l10n.verdictEmuAvoidable);
+    if (v.startsWith('Irrigation Needed')) return v.replaceFirst('Irrigation Needed', l10n.verdictEmuNeeded);
     return v;
   }
 
   Widget _buildEmulationCard() {
     if (_emulationResultMap == null) return const SizedBox.shrink();
-
     final l10n = AppLocalizations.of(context)!;
     final verdict =
         _emulationResultMap!['verdict'] as String? ?? l10n.cloudValUnknown;
@@ -336,28 +321,27 @@ class _CloudScreenState extends State<CloudScreen> {
     final radSum = _emulationResultMap!['shortwaveRadiationSum48h'] as double?;
     final refDate = _emulationResultMap!['referenceDate'] as String?;
     final targetMinDateMs = _emulationResultMap!['targetMinDateMs'] as int?;
-
+    
     final settings = widget.routines.db.getAppSettings();
     final now = DateTime.now();
     final h = now.hour;
     final startH = settings.agronomicDayStart;
     final endH = settings.agronomicDayEnd;
+    
     final bool isYellowZone = (endH < startH)
         ? (h >= endH && h < startH)
         : (h >= endH || h < startH);
-
-    final bool isIrrigate =
-        verdict.toUpperCase().contains('IRRIGATE') &&
-        !verdict.toUpperCase().contains('DO NOT');
-
+        
+    final bool isIrrigate = verdict.contains('NEEDED') || verdict.contains('IRRIGATE:');
+    
     final color = isYellowZone
         ? AppStyles.warningAccent
         : (isIrrigate ? AppStyles.waterActionAccent : AppStyles.successAccent);
-
+        
     final icon = isYellowZone
         ? Icons.warning_amber_rounded
         : (isIrrigate ? Icons.water_drop : Icons.eco);
-
+        
     String targetDateFormatted = l10n.cloudValNA;
     if (targetMinDateMs != null) {
       final dt = DateTime.fromMillisecondsSinceEpoch(targetMinDateMs);
@@ -371,7 +355,7 @@ class _CloudScreenState extends State<CloudScreen> {
             '${target.day.toString().padLeft(2, '0')}/${target.month.toString().padLeft(2, '0')}/${target.year} ${target.hour.toString().padLeft(2, '0')}:${target.minute.toString().padLeft(2, '0')}';
       }
     }
-
+    
     return Container(
       margin: const EdgeInsets.only(top: AppStyles.spaceMD),
       padding: const EdgeInsets.all(AppStyles.spaceMD),
@@ -501,7 +485,6 @@ class _CloudScreenState extends State<CloudScreen> {
     if (serverLat != l10n.cloudValNA && serverLon != l10n.cloudValNA) {
       return l10n.cloudCoordsLatLon(serverLat, serverLon);
     }
-
     final devices = widget.routines.db.getSavedDevices();
     for (var dev in devices) {
       if (dev.deviceIdentifier == devId &&
@@ -513,7 +496,6 @@ class _CloudScreenState extends State<CloudScreen> {
         );
       }
     }
-
     final appLoc = widget.routines.db.getLocationSettings();
     if (appLoc.latitude != 0.0 || appLoc.longitude != 0.0) {
       return l10n.cloudCoordsLatLon(
@@ -521,7 +503,6 @@ class _CloudScreenState extends State<CloudScreen> {
         appLoc.longitude.toStringAsFixed(4),
       );
     }
-
     return l10n.cloudCoordsNA;
   }
 
@@ -537,20 +518,13 @@ class _CloudScreenState extends State<CloudScreen> {
     return serverName;
   }
 
-
-
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-
     return Padding(
       padding: const EdgeInsets.all(AppStyles.spaceMD),
-      // =======================================================================
-      // LAYOUT FIX: Replaced Column+Expanded with CustomScrollView
-      // =======================================================================
       child: CustomScrollView(
         slivers: [
-          // 1. Static Header & Status Card (Scrolls seamlessly out of the way)
           SliverToBoxAdapter(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -564,7 +538,6 @@ class _CloudScreenState extends State<CloudScreen> {
                 const SizedBox(height: AppStyles.spaceMD),
                 _buildApiStatusCard(),
                 const SizedBox(height: AppStyles.spaceMD),
-
                 if (_isTesting ||
                     _isSyncing ||
                     _isEmulating ||
@@ -573,7 +546,6 @@ class _CloudScreenState extends State<CloudScreen> {
                     padding: EdgeInsets.only(bottom: AppStyles.spaceMD),
                     child: LinearProgressIndicator(),
                   ),
-
                 Text(
                   l10n.cloudRegisteredStationsTitle,
                   style: AppStyles.sectionTitle,
@@ -582,8 +554,6 @@ class _CloudScreenState extends State<CloudScreen> {
               ],
             ),
           ),
-
-          // 2. Dynamic Device List (Takes up the rest of the scrolling space)
           if (_cloudDevices.isEmpty)
             SliverToBoxAdapter(
               child: Center(
@@ -617,7 +587,6 @@ class _CloudScreenState extends State<CloudScreen> {
                 final rawLon =
                     devMap['lon'] ?? devMap['longitude'] ?? devMap['lng'];
                 final coordsStr = _resolveCoords(devId, rawLat, rawLon, l10n);
-
                 return Container(
                   margin: const EdgeInsets.only(bottom: AppStyles.spaceSM),
                   decoration: AppStyles.cardShell(isSelected: isSelected),
@@ -686,5 +655,3 @@ class _CloudScreenState extends State<CloudScreen> {
     );
   }
 }
-
-

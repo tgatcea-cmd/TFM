@@ -200,10 +200,10 @@ class InferenceBridge {
   }
 
   String _generateRecommendationFromClass(int resultClass) {
-    if (resultClass == 1) {
-      return 'SATURATION RISK: Irrigation perjudicial tomorrow. DO NOT IRRIGATE.';
+    if (resultClass == 0) {
+      return 'IRRIGATION AVOIDABLE: Soil moisture stable.';
     } else {
-      return 'HEALTHY: Irrigation safe / Not perjudicial.';
+      return 'IRRIGATION NEEDED: Soil moisture low. IRRIGATE to restore.';
     }
   }
 
@@ -259,7 +259,7 @@ class InferenceBridge {
     }
 
     final recommendation = _generateRecommendationFromClass(resultClass);
-    final verdictStr = resultClass == 1 ? 'Perjudicial' : 'Healthy';
+    final verdictStr = resultClass == 0 ? 'Irrigation Avoidable' : 'Irrigation Needed';
 
     final now = DateTime.now();
     final bool isEmulated =

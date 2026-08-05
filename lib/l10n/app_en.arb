@@ -1,38 +1,32 @@
 {
   "@@locale": "en",
-  
   "@@_GLOBAL_VALUES": "",
   "appTitle": "Terralink Dashboard",
   "hide": "Hide",
   "status": "Status",
   "cancel": "Cancel",
-  
   "statusLabel": "STATUS: {msg}",
   "@statusLabel": {
     "placeholders": {
       "msg": { "type": "String" }
     }
   },
-
   "verdictLstmIrrigate": "IRRIGATE: Soil moisture threshold drop predicted",
   "verdictLstmHealthy": "HEALTHY: Soil moisture level sufficient",
-  "verdictRfSaturation": "SATURATION RISK: Irrigation perjudicial tomorrow. DO NOT IRRIGATE.",
-  "verdictRfHealthy": "HEALTHY: Irrigation safe / Not perjudicial.",
-  "verdictEmuPerjudicial": "Perjudicial",
-  "verdictEmuHealthy": "Healthy",
-
+  "verdictRfAvoidable": "IRRIGATION AVOIDABLE: Soil moisture stable.",
+  "verdictRfNeeded": "IRRIGATION NEEDED: Soil moisture low. IRRIGATE to restore.",
+  "verdictEmuAvoidable": "Irrigation Avoidable",
+  "verdictEmuNeeded": "Irrigation Needed",
   "mainScreenError": "Unknown Screen",
   "mainStatusReady": "Ready",
   "mainStatusBleConnected": "Connected to Savia station",
   "mainStatusBleDisconnected": "Disconnected from Savia station",
-
   "@@_NAVIGATION_TABS": "",
   "homeTab": "Home",
   "nearbyTab": "Nearby",
   "localDbTab": "Local DB",
   "cloudTab": "Cloud",
   "configTab": "Config",
-
   "@@_HOME_SCREEN": "",
   "homeConsoleInit": "Console initialized. Awaiting commands...",
   "homeConsoleCopiedSnack": "Console output copied to clipboard!",
@@ -96,7 +90,6 @@
   "homeConsoleTitle": "Console Output:",
   "homeTooltipCopy": "Copy to Clipboard",
   "homeTooltipDownload": "Download JSON",
-  
   "@@_LOCAL_DB_SCREEN": "",
   "dbSyncingCloud": "Syncing with Cloud API...",
   "dbSyncCompleted": "Cloud sync completed. Loaded {count} devices from cloud/local DB.",
@@ -133,7 +126,6 @@
   "dbLocationInfo": "  |  Lat: {lat}, Lon: {lon}",
   "@dbLocationInfo": { "placeholders": { "lat": { "type": "String" }, "lon": { "type": "String" } } },
   "dbBtnRunInference": "Run RF Inference",
-  
   "@@_NEARBY_SCREEN": "",
   "nbFoundDevices": "Found {count} devices...",
   "@nbFoundDevices": { "placeholders": { "count": { "type": "int" } } },
@@ -164,11 +156,10 @@
   "@nbCurrentConnection": { "placeholders": { "name": { "type": "String" } } },
   "nbNegotiatingStatus": "Negotiating handshake...",
   "nbNoDevices": "No devices found.\nEnsure your Pico station is powered and advertising.",
-  "nbDeviceSub": "{id}  •  RSSI: {rssi} dBm",
+  "nbDeviceSub": "{id}     RSSI: {rssi} dBm",
   "@nbDeviceSub": { "placeholders": { "id": { "type": "String" }, "rssi": { "type": "int" } } },
   "nbUnknownDev": "Unknown",
   "nbUnnamedDev": "Unnamed Device",
-  
   "@@_CONFIG_SCREEN": "",
   "cfgChecking": "Checking...",
   "cfgAcquiringGps": "Acquiring GPS location...",
@@ -190,11 +181,11 @@
   "cfgLocModeManualDesc": "Tap on an interactive map to pick exact field coordinates",
   "cfgPredStartUpdated": "Prediction start updated to {start}:00.",
   "@cfgPredStartUpdated": { "placeholders": { "start": { "type": "int" } } },
-  "cfgPredLimit": "Limit reached: Prediction start can only be adjusted ±3h from base ({base}:00).",
+  "cfgPredLimit": "Limit reached: Prediction start can only be adjusted  3h from base ({base}:00).",
   "@cfgPredLimit": { "placeholders": { "base": { "type": "int" } } },
   "cfgIrrEndUpdated": "Irrigation end updated to {end}:00.",
   "@cfgIrrEndUpdated": { "placeholders": { "end": { "type": "int" } } },
-  "cfgIrrLimit": "Limit reached: Irrigation end can only be adjusted ±3h from base ({base}:00).",
+  "cfgIrrLimit": "Limit reached: Irrigation end can only be adjusted  3h from base ({base}:00).",
   "@cfgIrrLimit": { "placeholders": { "base": { "type": "int" } } },
   "cfgMeteoOk": "OK (200)",
   "cfgMeteoError": "Error ({code})",
@@ -229,7 +220,6 @@
   "@cfgPeriodRange": { "placeholders": { "start": { "type": "String" }, "end": { "type": "String" } } },
   "cfgShiftBtn": "Shift",
   "cfgPredPeriod": "Prediction Period",
-
   "@@_CLOUD_SCREEN": "",
   "cloudTestingConnection": "Testing connection to Cloud Server...",
   "cloudStatusConnected": "CONNECTED",
@@ -237,7 +227,6 @@
   "cloudStatusError": "ERROR",
   "cloudStatusConnectionUnknown": "UNKNOWN",
   "cloudStatusTesting": "TESTING...",
-  
   "cloudApiOnline": "Cloud API server is online and responding.",
   "cloudApiNoResponse": "Cloud API server returned no response or error.",
   "cloudApiTestFailed": "Cloud API test failed: {error}",
@@ -246,7 +235,6 @@
       "error": { "type": "String" }
     }
   },
-
   "cloudSyncInitiating": "Initiating Cloud Synchronization...",
   "cloudSyncFinished": "Cloud sync finished.",
   "cloudSyncError": "Cloud sync error: {error}",
@@ -255,10 +243,8 @@
       "error": { "type": "String" }
     }
   },
-
   "cloudEmulationAbortedNoStation": "Emulation Aborted: No registered station found on Cloud server.",
   "cloudEmulationNoSelection": "No station selected! Please select a cloud station first.",
-  
   "cloudEmulationExecuting": "Executing Local RF Recommendation in RAM for [{name}] ({id})...",
   "@cloudEmulationExecuting": {
     "placeholders": {
@@ -266,38 +252,32 @@
       "id": { "type": "String" }
     }
   },
-  
   "cloudEmulationFinished": "In-Memory Cloud Emulation Finished: {verdict}",
   "@cloudEmulationFinished": {
     "placeholders": {
       "verdict": { "type": "String" }
     }
   },
-  
   "cloudEmulationError": "In-Memory Cloud Emulation Error: {error}",
   "@cloudEmulationError": {
     "placeholders": {
       "error": { "type": "String" }
     }
   },
-
   "cloudApiStatusTitle": "API CONNECTION STATUS",
   "cloudBtnTestApi": "Test API",
-  
   "cloudBtnSync": "Sync ({count} dirty)",
   "@cloudBtnSync": {
     "placeholders": {
       "count": { "type": "int" }
     }
   },
-
   "cloudTargetEndpoint": "Target Endpoint : {url}",
   "@cloudTargetEndpoint": {
     "placeholders": {
       "url": { "type": "String" }
     }
   },
-
   "cloudApiAuthLabel": "API Authorization: {status}",
   "@cloudApiAuthLabel": {
     "placeholders": {
@@ -306,12 +286,9 @@
   },
   "cloudApiAuthConfigured": "Configured [OK]",
   "cloudApiAuthMissing": "Missing/Empty",
-  
   "cloudConnectionStateLabel": "Connection State : ",
-
   "cloudEmuYellowZoneTitle": "IN-MEMORY CLOUD EMULATION (YELLOW ZONE)",
   "cloudEmuNormalTitle": "IN-MEMORY CLOUD EMULATION",
-  
   "cloudEmuYellowZoneWarning": "[DATA GATHERING PHASE] System in Yellow Zone ({endH}:00 - {startH}:00). Emulated RAM prediction is for observation only.",
   "@cloudEmuYellowZoneWarning": {
     "placeholders": {
@@ -319,7 +296,6 @@
       "startH": { "type": "int" }
     }
   },
-
   "cloudEmuMinHumidity": "Minimum predicted humidity: {humidity}%\nExpected at: {date}",
   "@cloudEmuMinHumidity": {
     "placeholders": {
@@ -327,21 +303,18 @@
       "date": { "type": "String" }
     }
   },
-
   "cloudEmuRadSum": "48h Radiation Sum: {sum} J/m²",
   "@cloudEmuRadSum": {
     "placeholders": {
       "sum": { "type": "String" }
     }
   },
-
   "cloudEmuRefTimestamp": "Reference Timestamp: {date}",
   "@cloudEmuRefTimestamp": {
     "placeholders": {
       "date": { "type": "String" }
     }
   },
-
   "cloudCoordsLatLon": "Lat {lat}, Lon {lon}",
   "@cloudCoordsLatLon": {
     "placeholders": {
@@ -350,32 +323,24 @@
     }
   },
   "cloudCoordsNA": "Lat N/A, Lon N/A",
-  
   "cloudCoordinatesLabel": "Coordinates: {coords}",
   "@cloudCoordinatesLabel": {
     "placeholders": {
-      
       "coords": { "type": "String" }
     }
   },
-
   "cloudHeaderTitle": "Cloud Services & Emulation",
   "cloudRegisteredStationsTitle": "Registered Cloud Stations:",
-  
   "cloudNoStationsFound": "No registered stations found on Cloud Server.\nTest the connection or run a Sync.",
-  
   "cloudSelectedStationMsg": "Selected Cloud Station: {name}",
   "@cloudSelectedStationMsg": {
     "placeholders": {
       "name": { "type": "String" }
     }
   },
-
   "cloudBtnEmulateStation": "Emulate Cloud Station",
-  
   "cloudValNA": "N/A",
   "cloudValUnknown": "UNKNOWN",
-
   "nbWarningBtOff": "Bluetooth is Disabled",
   "nbWarningBtOffDesc": "Bluetooth must be enabled to scan for and connect to nearby Savia hardware.",
   "nbBtnTurnOnBt": "Turn On Bluetooth",

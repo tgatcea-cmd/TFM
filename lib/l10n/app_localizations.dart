@@ -140,29 +140,29 @@ abstract class AppLocalizations {
   /// **'HEALTHY: Soil moisture level sufficient'**
   String get verdictLstmHealthy;
 
-  /// No description provided for @verdictRfSaturation.
+  /// No description provided for @verdictRfAvoidable.
   ///
   /// In en, this message translates to:
-  /// **'SATURATION RISK: Irrigation perjudicial tomorrow. DO NOT IRRIGATE.'**
-  String get verdictRfSaturation;
+  /// **'IRRIGATION AVOIDABLE: Soil moisture stable.'**
+  String get verdictRfAvoidable;
 
-  /// No description provided for @verdictRfHealthy.
+  /// No description provided for @verdictRfNeeded.
   ///
   /// In en, this message translates to:
-  /// **'HEALTHY: Irrigation safe / Not perjudicial.'**
-  String get verdictRfHealthy;
+  /// **'IRRIGATION NEEDED: Soil moisture low. IRRIGATE to restore.'**
+  String get verdictRfNeeded;
 
-  /// No description provided for @verdictEmuPerjudicial.
+  /// No description provided for @verdictEmuAvoidable.
   ///
   /// In en, this message translates to:
-  /// **'Perjudicial'**
-  String get verdictEmuPerjudicial;
+  /// **'Irrigation Avoidable'**
+  String get verdictEmuAvoidable;
 
-  /// No description provided for @verdictEmuHealthy.
+  /// No description provided for @verdictEmuNeeded.
   ///
   /// In en, this message translates to:
-  /// **'Healthy'**
-  String get verdictEmuHealthy;
+  /// **'Irrigation Needed'**
+  String get verdictEmuNeeded;
 
   /// No description provided for @mainScreenError.
   ///
@@ -761,7 +761,7 @@ abstract class AppLocalizations {
   /// No description provided for @nbDeviceSub.
   ///
   /// In en, this message translates to:
-  /// **'{id}  •  RSSI: {rssi} dBm'**
+  /// **'{id}     RSSI: {rssi} dBm'**
   String nbDeviceSub(String id, int rssi);
 
   /// No description provided for @nbUnknownDev.
@@ -869,7 +869,7 @@ abstract class AppLocalizations {
   /// No description provided for @cfgPredLimit.
   ///
   /// In en, this message translates to:
-  /// **'Limit reached: Prediction start can only be adjusted ±3h from base ({base}:00).'**
+  /// **'Limit reached: Prediction start can only be adjusted  3h from base ({base}:00).'**
   String cfgPredLimit(int base);
 
   /// No description provided for @cfgIrrEndUpdated.
@@ -881,7 +881,7 @@ abstract class AppLocalizations {
   /// No description provided for @cfgIrrLimit.
   ///
   /// In en, this message translates to:
-  /// **'Limit reached: Irrigation end can only be adjusted ±3h from base ({base}:00).'**
+  /// **'Limit reached: Irrigation end can only be adjusted  3h from base ({base}:00).'**
   String cfgIrrLimit(int base);
 
   /// No description provided for @cfgMeteoOk.

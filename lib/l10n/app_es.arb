@@ -1,36 +1,30 @@
 {
   "@@locale": "es",
-  
   "@@_GLOBAL_VALUES": "",
   "appTitle": "Panel Predictivo Savia",
   "hide": "Ocultar",
   "status": "Estado",
   "cancel": "Cancelar",
-  
   "statusLabel": "ESTADO: {msg}",
-
   "verdictLstmIrrigate": "REGAR: Caída de humedad prevista",
   "verdictLstmHealthy": "SALUDABLE: Nivel de humedad suficiente",
-  "verdictRfSaturation": "RIESGO DE SATURACIÓN: Riego perjudicial mañana. NO REGAR.",
-  "verdictRfHealthy": "SALUDABLE: Riego seguro / No perjudicial.",
-  "verdictEmuPerjudicial": "RIESGO DE SATURACIÓN: Riego perjudicial mañana. NO REGAR.",
-  "verdictEmuHealthy": "SALUDABLE: Riego seguro / No perjudicial.",
-
+  "verdictRfAvoidable": "RIEGO EVITABLE: Humedad del suelo estable.",
+  "verdictRfNeeded": "RIEGO NECESARIO: Humedad del suelo baja. REGAR para restaurar.",
+  "verdictEmuAvoidable": "Riego Evitable",
+  "verdictEmuNeeded": "Riego Necesario",
   "mainScreenError": "Menú Desconocido",
   "mainStatusReady": "Listo",
-  "mainStatusBleConnected": "Conectado a la estación",
-  "mainStatusBleDisconnected": "Desconectado de la estación",
-
+  "mainStatusBleConnected": "Conectado a la estación Savia",
+  "mainStatusBleDisconnected": "Desconectado de la estación Savia",
   "@@_NAVIGATION_TABS": "",
   "homeTab": "Inicio",
   "nearbyTab": "Cercanos",
   "localDbTab": "BD Local",
   "cloudTab": "Nube",
   "configTab": "Configuración",
-
   "@@_HOME_SCREEN": "",
   "homeConsoleInit": "Consola Inicializada. Los resultados de los comandos aparecerán aquí...",
-  "homeConsoleCopiedSnack": "Copiado al portapapes!",
+  "homeConsoleCopiedSnack": "¡Copiado al portapapeles!",
   "homeConsoleCopiedStatus": "Consola copiada al portapapeles",
   "homeExportJsonSnack": "JSON de consola exportado {fileName}",
   "homeExportJsonStatus": " JSON de consola exportado: {path}",
@@ -71,7 +65,6 @@
   "homeConsoleTitle": "Salida de Consola:",
   "homeTooltipCopy": "Copiar al Portapapeles",
   "homeTooltipDownload": "Descargar JSON",
-  
   "@@_LOCAL_DB_SCREEN": "",
   "dbSyncingCloud": "Syncing with Cloud API...",
   "dbSyncCompleted": "Cloud sync completed. Loaded {count} devices from cloud/local DB.",
@@ -99,7 +92,6 @@
   "dbTelemetryInfo": "Telemetry Records: {records}  |  Predictions: {predictions}",
   "dbLocationInfo": "  |  Lat: {lat}, Lon: {lon}",
   "dbBtnRunInference": "Run RF Inference",
-  
   "@@_NEARBY_SCREEN": "",
   "nbFoundDevices": "Found {count} devices...",
   "nbRefreshingScan": "Refreshing BLE scan...",
@@ -123,10 +115,9 @@
   "nbCurrentConnection": "Currently connected to: {name}",
   "nbNegotiatingStatus": "Negotiating handshake...",
   "nbNoDevices": "No devices found.\nEnsure your Pico station is powered and advertising.",
-  "nbDeviceSub": "{id}  •  RSSI: {rssi} dBm",
+  "nbDeviceSub": "{id}     RSSI: {rssi} dBm",
   "nbUnknownDev": "Unknown",
   "nbUnnamedDev": "Unnamed Device",
-  
   "@@_CONFIG_SCREEN": "",
   "cfgChecking": "Checking...",
   "cfgAcquiringGps": "Acquiring GPS location...",
@@ -174,7 +165,6 @@
   "cfgPeriodRange": "{start}hrs to {end}hrs",
   "cfgShiftBtn": "Shift",
   "cfgPredPeriod": "Prediction Period",
-
   "@@_CLOUD_SCREEN": "",
   "cloudTestingConnection": "Testing connection to Cloud Server...",
   "cloudStatusConnected": "CONNECTED",
@@ -182,7 +172,6 @@
   "cloudStatusError": "ERROR",
   "cloudStatusConnectionUnknown": "UNKNOWN",
   "cloudStatusTesting": "TESTING...",
-  
   "cloudApiOnline": "Cloud API server is online and responding.",
   "cloudApiNoResponse": "Cloud API server returned no response or error.",
   "cloudApiTestFailed": "Cloud API test failed: {error}",
@@ -218,7 +207,6 @@
   "cloudBtnEmulateStation": "Emulate Cloud Station",
   "cloudValNA": "N/A",
   "cloudValUnknown": "UNKNOWN",
-
   "nbWarningBtOff": "Bluetooth Desactivado",
   "nbWarningBtOffDesc": "El Bluetooth debe estar activado para escanear y conectar con el hardware Savia.",
   "nbBtnTurnOnBt": "Activar Bluetooth",
