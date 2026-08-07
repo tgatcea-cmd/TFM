@@ -262,7 +262,7 @@ class _HomeScreenState extends State<HomeScreen> {
               // Inject Low Moisture Toggle Button
               ElevatedButton.icon(
                 icon: Icon(isLowMoistureActive ? Icons.water_drop : Icons.water_drop_outlined),
-                label: Text(isLowMoistureActive ? 'Low Moisture: ON (15%)' : 'Inject Low Moisture'),
+                label: Text(isLowMoistureActive ? l10n.debugInjectLowMoistureOn : l10n.debugInjectLowMoistureOff),
                 style: ElevatedButton.styleFrom(
                   foregroundColor: Colors.white,
                   backgroundColor: isLowMoistureActive ? AppStyles.errorAccent : AppStyles.techSecondaryAccent,

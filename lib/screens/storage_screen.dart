@@ -264,11 +264,9 @@ class _StorageScreenState extends State<StorageScreen> {
       }
       
       final settings = widget.routines.db.getAppSettings();
-      final now = DateTime.now();
-      final h = now.hour;
-      final startH = settings.agronomicDayStart;
-      final endH = settings.agronomicDayEnd;
-      final bool isYellowZone = (endH < startH) ? (h >= endH && h < startH) : (h >= endH || h < startH);
+      final bool isUnrecommended = (res['isUnrecommended'] as bool?) ?? false;
+      final int startH = (res['agronomicStart'] as int?) ?? settings.agronomicDayStart;
+      final int endH = (res['agronomicEnd'] as int?) ?? settings.agronomicDayEnd;
 
       if (mounted) {
         setState(() {
@@ -279,7 +277,7 @@ class _StorageScreenState extends State<StorageScreen> {
             'minDateMs': minTs,
             'radSum': res['radSum'],
             'refDate': res['refDate'],
-            'isUnrecommended': isYellowZone,
+            'isUnrecommended': isUnrecommended,
             'agronomicStart': startH,
             'agronomicEnd': endH,
           };

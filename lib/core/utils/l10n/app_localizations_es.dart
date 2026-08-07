@@ -811,4 +811,118 @@ class AppLocalizationsEs extends AppLocalizations {
   String inferenceInfoSource(String source) {
     return 'Origen: $source';
   }
+
+  @override
+  String get debugInjectLowMoistureOn => 'Humedad Baja: ON (15%)';
+
+  @override
+  String get debugInjectLowMoistureOff => 'Inyectar Humedad Baja';
+
+  @override
+  String get dialogRunLocalPredTitle => '¿Ejecutar Predicción Local?';
+
+  @override
+  String dialogRunLocalPredDesc(String name) {
+    return 'La estación \"$name\" dispone de telemetría de sensores, pero aún no se han generado predicciones.\n\n¿Desea ejecutar la inferencia completa LSTM y Random Forest ahora?';
+  }
+
+  @override
+  String get dialogBtnSkip => 'Omitir';
+
+  @override
+  String get dialogBtnRunFullInference => 'Ejecutar Inferencia Completa';
+
+  @override
+  String get dialogNewTelemetryTitle => 'Nueva Telemetría Detectada';
+
+  @override
+  String dialogNewTelemetryDesc(String name) {
+    return 'Han llegado nuevos datos de telemetría para \"$name\" desde que se generó la última predicción.\n\n¿Desea usar la predicción existente o volver a ejecutar la inferencia completa con la telemetría más reciente?';
+  }
+
+  @override
+  String get dialogBtnUseExisting => 'Usar Predicción Existente';
+
+  @override
+  String get dialogBtnRerun => 'Re-ejecutar Predicción Completa';
+
+  @override
+  String get dbDashboardTitle => 'Estado Unificado y Sincronización';
+
+  @override
+  String dbUnsyncedLocals(int count) {
+    return ' | Locales No Sincronizados: $count';
+  }
+
+  @override
+  String get dbNoStationsFound =>
+      'No se encontraron estaciones en la BD local ni en la Nube.\nConecte un módulo de hardware o sincronice con la Nube.';
+
+  @override
+  String get badgeLocalDb => 'BD LOCAL';
+
+  @override
+  String get badgeCloudDb => 'NUBE';
+
+  @override
+  String get btnRunLocalDbInference => 'Ejecutar Inferencia BD Local';
+
+  @override
+  String get btnRunCloudEmulation => 'Ejecutar Emulación en Nube';
+
+  @override
+  String get btnLocateOnMap => 'Localizar en el Mapa';
+
+  @override
+  String get mapDialogTitle => 'Ubicación';
+
+  @override
+  String get mlActiveCustomDesc =>
+      'Clasificador Random Forest personalizado descargado';
+
+  @override
+  String get mlActiveBuiltInDesc =>
+      'Clasificador Random Forest de 2 características integrado (Radiación Solar + Humedad del Suelo)';
+
+  @override
+  String mlStoredModelsCount(int count) {
+    return '$count modelo(s) personalizado(s) guardado(s) en el dispositivo';
+  }
+
+  @override
+  String get cfgBtnManageCatalog => 'Gestionar Catálogo';
+
+  @override
+  String mlDownloadedSnack(String cropName) {
+    return 'Descargado $cropName';
+  }
+
+  @override
+  String mlDownloadFailedSnack(String error) {
+    return 'Error en la descarga: $error';
+  }
+
+  @override
+  String mlDeletedSnack(String name) {
+    return 'Eliminado $name del dispositivo.';
+  }
+
+  @override
+  String get mlCatalogTitle => 'Catálogo de Modelos IA';
+
+  @override
+  String get mlCatalogDesc =>
+      'Descargue clasificadores Random Forest específicos por cultivo desde el servidor para inferencia local y en nube.';
+
+  @override
+  String get mlDeleteTooltip => 'Eliminar Modelo';
+
+  @override
+  String get badgeActive => 'ACTIVO';
+
+  @override
+  String get btnSetActive => 'Activar';
+
+  @override
+  String get btnDownload => 'Descargar';
 }

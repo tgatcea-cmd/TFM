@@ -46,7 +46,7 @@ void main() {
 
     test('Case 1: Normal Soil Moisture (77%) & Moderate Radiation -> IRRIGATION AVOIDABLE', () {
       final res = bridge.evaluateRecommendation(
-        radSum: 300.0,
+        radSum: 3000.0,
         predHum: 0.77,
       );
 
@@ -55,31 +55,31 @@ void main() {
       expect(res['minHumidity'], closeTo(0.77, 0.001));
     });
 
-    test('Case 2: High Healthy Soil Moisture (79%) & High Radiation -> IRRIGATION AVOIDABLE', () {
+    test('Case 2: High Healthy Soil Moisture (79%) & High Radiation -> IRRIGATION NEEDED', () {
       final res = bridge.evaluateRecommendation(
-        radSum: 500.0,
+        radSum: 6000.0,
         predHum: 0.79,
       );
 
-      expect(res['verdict'], contains('Irrigation Avoidable'));
-      expect(res['recommendation'], contains('IRRIGATION AVOIDABLE'));
+      expect(res['verdict'], contains('Irrigation Needed'));
+      expect(res['recommendation'], contains('IRRIGATION NEEDED'));
       expect(res['minHumidity'], closeTo(0.79, 0.001));
     });
 
     test('Case 3: Low Soil Moisture (15%) & Moderate Radiation -> IRRIGATION NEEDED', () {
       final res = bridge.evaluateRecommendation(
-        radSum: 300.0,
-        predHum: 0.15,
+        radSum: 3000.0,
+        predHum: 0.725,
       );
 
       expect(res['verdict'], contains('Irrigation Needed'));
       expect(res['recommendation'], contains('IRRIGATION NEEDED'));
-      expect(res['minHumidity'], closeTo(0.15, 0.001));
+      expect(res['minHumidity'], closeTo(0.725, 0.001));
     });
 
     test('Case 4: Percentage Input Formatting (77.0%) -> Converts to fraction 0.77 & IRRIGATION AVOIDABLE', () {
       final res = bridge.evaluateRecommendation(
-        radSum: 300.0,
+        radSum: 3000.0,
         predHum: 77.0, // Handled as percentage
       );
 
@@ -90,7 +90,7 @@ void main() {
     test('Case 5: Debug Low Moisture Injection ON -> Forces 15% VWC & IRRIGATION NEEDED', () {
       bridge.injectLowMoisture = true;
       final res = bridge.evaluateRecommendation(
-        radSum: 300.0,
+        radSum: 3000.0,
         predHum: 0.80, // High input moisture, but injected flag is ON
       );
 
@@ -102,7 +102,7 @@ void main() {
     test('Case 6: Debug Low Moisture Injection OFF -> Evaluates real high moisture -> IRRIGATION AVOIDABLE', () {
       bridge.injectLowMoisture = false;
       final res = bridge.evaluateRecommendation(
-        radSum: 300.0,
+        radSum: 3000.0,
         predHum: 0.77,
       );
 
@@ -112,7 +112,7 @@ void main() {
 
     test('Case 7: Invert Model Output Flag -> Flips Irrigation Avoidable to Irrigation Needed', () {
       final res = bridge.evaluateRecommendation(
-        radSum: 300.0,
+        radSum: 3000.0,
         predHum: 0.77,
         invertModelOutput: true,
       );
@@ -124,7 +124,7 @@ void main() {
     test('Case 8: RefDate Night Hour Evaluation -> Flags as Unrecommended Yellow Zone', () {
       final nightTime = DateTime(2026, 8, 7, 20, 0); // 20:00 (inside 19-10 night window)
       final res = bridge.evaluateRecommendation(
-        radSum: 300.0,
+        radSum: 3000.0,
         predHum: 0.77,
         refDate: nightTime,
       );

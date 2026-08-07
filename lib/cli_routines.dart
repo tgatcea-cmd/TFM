@@ -1,3 +1,5 @@
+// ignore_for_file: curly_braces_in_flow_control_structures
+
 import 'package:tfm_app/core/database/app_database.dart';
 import 'package:tfm_app/core/models/device.dart';
 import 'package:tfm_app/core/network/cloud_api.dart';
@@ -5,15 +7,15 @@ import 'package:tfm_app/features/ble/ble_service.dart';
 import 'package:tfm_app/features/ble/ble_controller.dart';
 import 'package:tfm_app/features/ml_inference/inference_engine.dart';
 import 'package:tfm_app/features/ml_inference/lstm_inference.dart';
-import 'package:tfm_app/features/weather/open_meteo_api.dart';
-import 'package:tfm_app/features/weather/weather_data.dart';
+import 'package:tfm_app/core/network/open_meteo_api.dart';
+import 'package:tfm_app/core/models/weather_data.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:geolocator/geolocator.dart' hide LocationSettings;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:tfm_app/core/database/db_sync.dart';
 import 'package:tfm_app/core/models/app_settings.dart';
 import 'package:tfm_app/core/models/app_rf_model.dart';
-import 'package:tfm_app/features/location/location_settings.dart';
+import 'package:tfm_app/core/models/location_settings.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
@@ -33,11 +35,10 @@ class CliRoutines {
     // 0. Prerequisites and status checks:
     // - bluetooth MUST BE enabled
     try {
-      if (!await FlutterBluePlus.isSupported) {
+      if (!await FlutterBluePlus.isSupported)
         print(
           'CLI Routines Warning: Bluetooth is not supported on this platform.',
         );
-      }
     } catch (e) {
       print('CLI Routines Warning: Failed to check Bluetooth support: $e');
     }
@@ -45,9 +46,8 @@ class CliRoutines {
     // - location MAY BE enabled
     try {
       final isLocationEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!isLocationEnabled) {
+      if (!isLocationEnabled)
         print('CLI Routines Info: Location services are currently disabled.');
-      }
     } catch (e) {
       print('CLI Routines Info: Location service check skipped ($e).');
     }
@@ -142,9 +142,18 @@ class CliRoutines {
     }
     // -----------------------------------------------------------------
 
+    // Ensure we have weather data before proceeding to core ML logic
+    WeatherData? weather = preloadedWeatherData;
+    if (weather == null) {
+      print(
+        'CLI Routines: Fetching prerequisite weather data for inference...',
+      );
+      weather = await fetchStationWeatherForecast(deviceId);
+    }
+
     final res = await inferenceBridge.runIrrigationRecommendation(
       deviceId: deviceId,
-      preloadedWeatherData: preloadedWeatherData,
+      preloadedWeatherData: weather,
       persistResults: persistResults,
     );
     print('Inference finished. Verdict: ${inferenceBridge.status}');
@@ -247,39 +256,11 @@ class CliRoutines {
   /// Routine: Fetch weather forecast from Open-Meteo API, send to BLE station, and persist in local DB
   Future<void> sendHourlyForecast({DateTime? targetReferenceDate}) async {
     final devId = bleService.connectedDevice?.remoteId.str;
-    final bool isConnected = bleService.isConnected;
-    final refDate =
-        targetReferenceDate ??
-        (devId != null
-            ? db.getReferenceTime(devId, isConnected: isConnected)
-            : DateTime.now());
-    final now = DateTime.now();
-    final bool isEmulated =
-        refDate.day != now.day ||
-        refDate.month != now.month ||
-        refDate.year != now.year;
+    if (devId == null) return;
 
-    if (isEmulated) {
-      print('=== [EMULATION NOTICE] ===');
-      print(
-        'Operating relative to historical device reference timestamp: $refDate (Target Date: ${refDate.toIso8601String().split('T')[0]})',
-      );
-      print('==========================');
-    }
-
-    print('Fetching location settings...');
-    final loc = db.getLocationSettings();
-    print(
-      'Fetching weather forecast for (${loc.latitude}, ${loc.longitude}) for reference timestamp $refDate via Open-Meteo...',
-    );
-    final client = OpenMeteoClient(
-      latitude: loc.latitude,
-      longitude: loc.longitude,
-    );
-    final weatherData = await client.fetchForecast(referenceDate: refDate);
-
-    print(
-      'Fetched ${weatherData.temperature2m.length} hourly temperature records.',
+    final weatherData = await fetchStationWeatherForecast(
+      devId,
+      targetReferenceDate: targetReferenceDate,
     );
     final temps = weatherData.temperature2m;
 
@@ -296,11 +277,6 @@ class CliRoutines {
       future = temps.sublist(pastCount);
     }
 
-    if (devId != null) {
-      db.saveWeatherForecast(devId, weatherData);
-      print('Persisted weather forecast records to DB for $devId.');
-    }
-
     print(
       'Sending forecast (Past: ${past.length}h, Future: ${future.length}h) to BLE station...',
     );
@@ -308,11 +284,39 @@ class CliRoutines {
     print('Hourly forecast successfully transmitted to BLE station.');
   }
 
+  /// Routine: Fetch weather forecast for a station (Shared logic extracted from core)
+  Future<WeatherData> fetchStationWeatherForecast(
+    String deviceId, {
+    DateTime? targetReferenceDate,
+  }) async {
+    final isConnected =
+        bleService.connectedDevice?.remoteId.str == deviceId &&
+        bleService.isConnected;
+    final refDate =
+        targetReferenceDate ??
+        db.getReferenceTime(deviceId, isConnected: isConnected);
+
+    final dev = db.findDevice(deviceId);
+    final loc = db.getLocationSettings();
+    final lat = dev?.latitude ?? loc.latitude;
+    final lon = dev?.longitude ?? loc.longitude;
+
+    print(
+      'CLI Routines: Fetching weather forecast for ($lat, $lon) relative to $refDate...',
+    );
+    final client = OpenMeteoClient(latitude: lat, longitude: lon);
+    final weatherData = await client.fetchForecast(referenceDate: refDate);
+
+    db.saveWeatherForecast(deviceId, weatherData);
+    print(
+      'CLI Routines: Persisted weather forecast records to DB for $deviceId.',
+    );
+    return weatherData;
+  }
+
   /// Routine: Read latest prediction directly stored in connected BLE device
   Future<String> fetchLatestPredictionFromConnectedDevice() async {
-    if (!bleService.isConnected) {
-      throw Exception('No BLE device connected.');
-    }
+    if (!bleService.isConnected) throw Exception('No BLE device connected.');
 
     print('[BLE Routine] Requesting latest prediction stored on device...');
     try {
@@ -374,14 +378,10 @@ class CliRoutines {
   /// Routine: Trigger LSTM inference based on station mode ('forward' vs 'local'),
   /// then execute the Random Forest recommendation and extract minimums.
   Future<Map<String, dynamic>> triggerStationInference() async {
-    if (!bleService.isConnected) {
-      throw Exception('No BLE device connected.');
-    }
-
+    if (!bleService.isConnected) throw Exception('No BLE device connected.');
     final devId = bleService.connectedDevice?.remoteId.str;
     if (devId == null) throw Exception('Device ID is null.');
 
-    // --- AGRONOMIC SCHEDULE CHECK (Protecting BLE Bandwidth) ---
     final settings = db.getAppSettings();
     final now = DateTime.now();
     final h = now.hour;
@@ -409,39 +409,25 @@ class CliRoutines {
         'minDateMs': null,
       };
     }
-    // -----------------------------------------------------------
 
-    print('Step 1: Reading station status to determine inference mode...');
     final status = await readStationStatus();
     final mode = status?['mode'] as String? ?? 'local';
-    print('Station mode detected: $mode');
 
     String modeMessage = "";
     Object? rawPayload;
     WeatherData? preloadedWeather;
 
     if (mode == 'forward') {
-      // --- FORWARD MODE ---
-      print('=== FORWARD MODE INFERENCE ===');
       await requestStationData('raw', limit: 150);
-
-      final loc = db.getLocationSettings();
-      final client = OpenMeteoClient(
-        latitude: loc.latitude,
-        longitude: loc.longitude,
-      );
-      final refDate = db.getReferenceTime(devId);
-      final weatherData = await client.fetchForecast(referenceDate: refDate);
+      final weatherData = await fetchStationWeatherForecast(devId);
       preloadedWeather = weatherData;
-
-      db.saveWeatherForecast(devId, weatherData);
-
-      final lstmResult = await inferenceBridge.runLocalLstmInference(devId);
+      final lstmResult = await inferenceBridge.runLocalLstmInference(
+        devId,
+        preloadedWeather,
+      );
       modeMessage = 'Forward Inference Executed';
       rawPayload = lstmResult;
     } else {
-      // --- LOCAL MODE ---
-      print('=== LOCAL MODE INFERENCE ===');
       try {
         await sendHourlyForecast();
       } catch (e) {
@@ -505,17 +491,13 @@ class CliRoutines {
       rawPayload = newPred;
     }
 
-    // --- NEW STEP: Run Random Forest & Extract Minimums ---
-    print('Step: Running Random Forest Inference...');
     await runLocalInference(
       devId,
       preloadedWeatherData: preloadedWeather,
       persistResults: true,
     );
-    final verdict = inferenceBridge.status;
 
-    print('Step: Extracting minimum predicted humidity from Local DB...');
-    // Fetch the device directly to iterate over its predictions
+    final verdict = inferenceBridge.status;
     final savedDevices = db.getSavedDevices();
     final dev = savedDevices.firstWhere(
       (d) => d.deviceIdentifier == devId,
@@ -547,17 +529,11 @@ class CliRoutines {
   Future<Map<String, dynamic>> emulateCloudRecommendationInMemory(
     String deviceId,
   ) async {
-    print('[Cloud Emulation RAM Verbose] === START RAM EMULATION ROUTINE ===');
-    print('[Cloud Emulation RAM Verbose] Station ID: $deviceId');
-
     // 1. Fetch station details (location / coordinates)
-    double lat = 40.4168; // Default Madrid
-    double lon = -3.7038;
+    double lat = 0;
+    double lon = 0;
     try {
       final status = await cloudApi.getStationStatus(deviceId);
-      print(
-        '[Cloud Emulation RAM Verbose] Station status payload from cloud: $status',
-      );
       if (status['location'] is Map) {
         lat = (status['location']['lat'] as num?)?.toDouble() ?? lat;
         lon = (status['location']['lon'] as num?)?.toDouble() ?? lon;
@@ -567,26 +543,18 @@ class CliRoutines {
         '[Cloud Emulation RAM Verbose] Station status fetch skipped/defaulted: $e',
       );
     }
-    print(
-      '[Cloud Emulation RAM Verbose] Target Coordinates: Lat=$lat, Lon=$lon',
-    );
 
-    // 2. Determine telemetry reference timestamp T_ref (end of 48h telemetry window)
     DateTime refDate = db.getReferenceTime(deviceId);
-
-    // If local DB is empty/cleared, pull cloud telemetry to resolve actual last_telemetry_data timestamp
+  
     try {
       final cloudTelemetry = await cloudApi.syncTelemetryPull(deviceId, 0);
       if (cloudTelemetry.isNotEmpty) {
         final lastTel = cloudTelemetry.last;
         if (lastTel is Map) {
-          final ts = (lastTel['tsMs'] ?? lastTel['ts_ms'] ?? lastTel['timestamp']) as int?;
-          if (ts != null) {
-            refDate = DateTime.fromMillisecondsSinceEpoch(ts);
-            print(
-              '[Cloud Emulation RAM Verbose] Resolved T_ref from latest Cloud telemetry record: $refDate',
-            );
-          }
+          final ts =
+              (lastTel['tsMs'] ?? lastTel['ts_ms'] ?? lastTel['timestamp'])
+                  as int?;
+          if (ts != null) refDate = DateTime.fromMillisecondsSinceEpoch(ts);
         }
       }
     } catch (_) {}
@@ -674,8 +642,10 @@ class CliRoutines {
     print(
       '[Cloud Emulation RAM Verbose] Fetching 48h weather forecast from Open-Meteo for ($lat, $lon) relative to $refDate...',
     );
-    final weatherClient = OpenMeteoClient(latitude: lat, longitude: lon);
-    final weather = await weatherClient.fetchForecast(referenceDate: refDate);
+    final weather = await fetchStationWeatherForecast(
+      deviceId,
+      targetReferenceDate: refDate,
+    );
     final double radSum = weather.shortwaveRadiation.isNotEmpty
         ? weather.shortwaveRadiation.reduce((a, b) => a + b)
         : 0.0;
@@ -865,48 +835,53 @@ class CliRoutines {
   String get inferenceVerdict => inferenceBridge.status;
 
   /// Routine: Push locally set coordinates to the Cloud API
-  Future<void> pushStationLocationToCloud(String deviceId, double lat, double lon) async {
+  Future<void> pushStationLocationToCloud(
+    String deviceId,
+    double lat,
+    double lon,
+  ) async {
     final settings = db.getAppSettings();
-    
+
     // Using the unified /api/devices/:id/location endpoint the backend team provided
     final url = Uri.parse(
-      '${settings.tfmServerScheme}://${settings.tfmServerUrl}:${settings.tfmServerPort}/api/devices/$deviceId/location'
+      '${settings.tfmServerScheme}://${settings.tfmServerUrl}:${settings.tfmServerPort}/api/devices/$deviceId/location',
     );
 
     print('Pushing location update for $deviceId to Cloud...');
 
     try {
-      final response = await http.put(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          if (settings.tfmServerApiKey.isNotEmpty)
-            'Authorization': 'Bearer ${settings.tfmServerApiKey}',
-        },
-        body: jsonEncode({
-          'lat': lat,
-          'lon': lon,
-        }),
-      ).timeout(const Duration(seconds: 5));
+      final response = await http
+          .put(
+            url,
+            headers: {
+              'Content-Type': 'application/json',
+              if (settings.tfmServerApiKey.isNotEmpty)
+                'Authorization': 'Bearer ${settings.tfmServerApiKey}',
+            },
+            body: jsonEncode({'lat': lat, 'lon': lon}),
+          )
+          .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         print('Successfully updated Cloud location for $deviceId.');
-        
+
         // Update the local Isar database so it doesn't wait for the next sync
         final devices = db.getSavedDevices();
         final dev = devices.firstWhere(
-          (d) => d.deviceIdentifier == deviceId, 
-          orElse: () => Device()
+          (d) => d.deviceIdentifier == deviceId,
+          orElse: () => Device(),
         );
-        
+
         if (dev.deviceIdentifier.isNotEmpty) {
-           dev.latitude = lat;
-           dev.longitude = lon;
-           // Assuming you have a method to save/update the device in Isar:
-           // db.saveDevice(dev); 
+          dev.latitude = lat;
+          dev.longitude = lon;
+          // Assuming you have a method to save/update the device in Isar:
+          // db.saveDevice(dev);
         }
       } else {
-        print('Failed to update Cloud location. Status: ${response.statusCode} Body: ${response.body}');
+        print(
+          'Failed to update Cloud location. Status: ${response.statusCode} Body: ${response.body}',
+        );
         throw Exception('Cloud location update rejected by server.');
       }
     } catch (e) {

@@ -4,8 +4,8 @@
 import 'dart:math';
 import 'package:tfm_app/core/database/app_database.dart';
 import 'package:tfm_app/core/models/device.dart';
-import 'package:tfm_app/features/weather/open_meteo_api.dart';
-import 'package:tfm_app/features/weather/weather_data.dart';
+import 'package:tfm_app/core/network/open_meteo_api.dart';
+import 'package:tfm_app/core/models/weather_data.dart';
 
 /// Error & Diagnostic Codes as defined in Savia C firmware (inference.h)
 class SaviaLstmErrorCode {
@@ -67,7 +67,7 @@ class SaviaLstmInferenceEngine {
 
   /// Executes the complete 24-hour LSTM Soil Moisture ($HS_{30}$) Inference procedure
   /// Matching Savia firmware inference_run_daily()
-  Future<Map<String, dynamic>> runDailyInference(String deviceId, {DateTime? targetRefDate}) async {
+  Future<Map<String, dynamic>> runDailyInference(String deviceId, {DateTime? targetRefDate, WeatherData? preloadedWeatherData}) async {
     print('[Savia LSTM Engine] === START OFF-DEVICE LSTM INFERENCE ===');
     print('[Savia LSTM Engine] Target Device: $deviceId');
 
@@ -84,7 +84,7 @@ class SaviaLstmInferenceEngine {
     print('[Savia LSTM Engine] Reference Timestamp: $refDate');
 
     // Step 1: Gather past 48h history and weather forecast
-    final gathered = await _gatherInputs(device, refDate);
+    final gathered = await _gatherInputs(device, refDate, preloadedWeatherData: preloadedWeatherData);
     if (gathered['code'] != SaviaLstmErrorCode.success) {
       print('[Savia LSTM Engine] Input Gathering Failed: ${gathered["message"]}');
       return gathered;
@@ -137,7 +137,7 @@ class SaviaLstmInferenceEngine {
 
   /// Input Gathering with LOCF (Last Observation Carried Forward) and leading backfill
   /// Matching src/system/lstm_input.c
-  Future<Map<String, dynamic>> _gatherInputs(Device device, DateTime refDate) async {
+  Future<Map<String, dynamic>> _gatherInputs(Device device, DateTime refDate, {WeatherData? preloadedWeatherData}) async {
     final history = device.historicValues;
 
     // Filter historical sensor readings within past 48 hours [refDate - 48h, refDate]
@@ -162,23 +162,13 @@ class SaviaLstmInferenceEngine {
       };
     }
 
-    // Fetch weather forecast for Air Temperature (TA)
-    final loc = db.getLocationSettings();
-    final lat = device.latitude ?? loc.latitude;
-    final lon = device.longitude ?? loc.longitude;
-
-    final weatherClient = OpenMeteoClient(latitude: lat, longitude: lon);
-    WeatherData weatherData;
-    try {
-      weatherData = await weatherClient.fetchForecast(referenceDate: refDate);
-      db.saveWeatherForecast(device.deviceIdentifier, weatherData);
-    } catch (e) {
-      print('[Savia LSTM Engine] Weather forecast fetch error: $e');
+    if (preloadedWeatherData == null) {
       return {
         'code': SaviaLstmErrorCode.noForecast,
-        'message': 'LSTM_INPUT_NO_FORECAST: Failed to fetch Open-Meteo weather forecast.',
+        'message': 'LSTM_INPUT_NO_FORECAST: No weather forecast provided.',
       };
     }
+    WeatherData weatherData = preloadedWeatherData;
 
     if (weatherData.temperature2m.length < 72) {
       return {

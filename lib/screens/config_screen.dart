@@ -31,12 +31,12 @@ class _ConfigScreenState extends State<ConfigScreen> {
   late String _cloudUrl;
   late int _cloudPort;
   late String _cloudApiKey;
-  
+
   late int _agronomicDayStart; // Prediction start
-  late int _agronomicDayEnd;   // Prediction end / Irrigation start - 1
+  late int _agronomicDayEnd; // Prediction end / Irrigation start - 1
 
   static const int _defaultDayStart = 19; // Default 19hrs prediction start
-  static const int _defaultDayEnd = 10;   // Default 10hrs irrigation start
+  static const int _defaultDayEnd = 10; // Default 10hrs irrigation start
 
   String? _openMeteoStatus;
   String? _cloudPingStatus;
@@ -59,11 +59,11 @@ class _ConfigScreenState extends State<ConfigScreen> {
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _now = DateTime.now());
     });
-    
+
     // We defer calling the checks slightly so `context` is fully ready for l10n
     WidgetsBinding.instance.addPostFrameCallback((_) {
-       _checkOpenMeteo();
-       _checkCloudPing();
+      _checkOpenMeteo();
+      _checkCloudPing();
     });
   }
 
@@ -78,10 +78,12 @@ class _ConfigScreenState extends State<ConfigScreen> {
       context: context,
       backgroundColor: AppStyles.surfaceColor,
       isScrollControlled: true,
+      useSafeArea: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (ctx) => MlModelManagerSheet(routines: widget.routines),
+      builder: (ctx) =>
+          SafeArea(child: MlModelManagerSheet(routines: widget.routines)),
     ).then((_) {
       if (mounted) setState(() {});
     });
@@ -91,16 +93,26 @@ class _ConfigScreenState extends State<ConfigScreen> {
     final l10n = AppLocalizations.of(context)!;
     widget.onStatusChange(l10n.cfgAcquiringGps);
     try {
-      if (!await Geolocator.isLocationServiceEnabled()) throw Exception('Location services disabled');
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        throw Exception('Location services disabled');
+      }
       var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
-      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) throw Exception('Location permission denied');
-      
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
+        throw Exception('Location permission denied');
+      }
+
       final pos = await Geolocator.getCurrentPosition();
       widget.routines.saveLocationSettings(pos.latitude, pos.longitude, true);
       setState(() {});
       widget.onStatusChange(
-        l10n.cfgGpsUpdated(pos.latitude.toStringAsFixed(4), pos.longitude.toStringAsFixed(4))
+        l10n.cfgGpsUpdated(
+          pos.latitude.toStringAsFixed(4),
+          pos.longitude.toStringAsFixed(4),
+        ),
       );
     } catch (e) {
       widget.onStatusChange(l10n.cfgGpsError(e.toString()));
@@ -132,8 +144,13 @@ class _ConfigScreenState extends State<ConfigScreen> {
                       padding: const EdgeInsets.all(AppStyles.spaceSM),
                       color: AppStyles.consoleBackground.withValues(alpha: 0.5),
                       child: Text(
-                        l10n.cfgMapHint(selectedPoint.latitude.toStringAsFixed(4), selectedPoint.longitude.toStringAsFixed(4)),
-                        style: AppStyles.consoleBody.copyWith(color: AppStyles.successAccent),
+                        l10n.cfgMapHint(
+                          selectedPoint.latitude.toStringAsFixed(4),
+                          selectedPoint.longitude.toStringAsFixed(4),
+                        ),
+                        style: AppStyles.consoleBody.copyWith(
+                          color: AppStyles.successAccent,
+                        ),
                       ),
                     ),
                     const SizedBox(height: AppStyles.spaceSM),
@@ -152,8 +169,10 @@ class _ConfigScreenState extends State<ConfigScreen> {
                           ),
                           children: [
                             TileLayer(
-                              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                              userAgentPackageName: 'org.tfm.tfm_app',
+                              urlTemplate:
+                                  'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+                              subdomains: const ['a', 'b', 'c', 'd'],
+                              userAgentPackageName: 'com.tfm.tfm_app',
                             ),
                             MarkerLayer(
                               markers: [
@@ -191,7 +210,10 @@ class _ConfigScreenState extends State<ConfigScreen> {
                     );
                     setState(() {});
                     widget.onStatusChange(
-                      l10n.cfgMapUpdated(selectedPoint.latitude.toStringAsFixed(4), selectedPoint.longitude.toStringAsFixed(4))
+                      l10n.cfgMapUpdated(
+                        selectedPoint.latitude.toStringAsFixed(4),
+                        selectedPoint.longitude.toStringAsFixed(4),
+                      ),
                     );
                   },
                 ),
@@ -208,38 +230,53 @@ class _ConfigScreenState extends State<ConfigScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppStyles.surfaceColor,
+      useSafeArea: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (ctx) {
-        return Padding(
-          padding: const EdgeInsets.all(AppStyles.spaceMD),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(l10n.cfgLocModeTitle, style: AppStyles.sectionTitle),
-              const SizedBox(height: AppStyles.spaceMD),
-              ListTile(
-                leading: const Icon(Icons.my_location, color: AppStyles.successAccent),
-                title: Text(l10n.cfgLocModeAuto, style: AppStyles.bodyText),
-                subtitle: Text(l10n.cfgLocModeAutoDesc, style: AppStyles.captionStatus),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _handleAutoGpsLocation();
-                },
-              ),
-              const Divider(color: AppStyles.dividerColor),
-              ListTile(
-                leading: const Icon(Icons.map, color: AppStyles.waterActionAccent),
-                title: Text(l10n.cfgLocModeManual, style: AppStyles.bodyText),
-                subtitle: Text(l10n.cfgLocModeManualDesc, style: AppStyles.captionStatus),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _openMapPickerDialog();
-                },
-              ),
-            ],
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(AppStyles.spaceMD),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(l10n.cfgLocModeTitle, style: AppStyles.sectionTitle),
+                const SizedBox(height: AppStyles.spaceMD),
+                ListTile(
+                  leading: const Icon(
+                    Icons.my_location,
+                    color: AppStyles.successAccent,
+                  ),
+                  title: Text(l10n.cfgLocModeAuto, style: AppStyles.bodyText),
+                  subtitle: Text(
+                    l10n.cfgLocModeAutoDesc,
+                    style: AppStyles.captionStatus,
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _handleAutoGpsLocation();
+                  },
+                ),
+                const Divider(color: AppStyles.dividerColor),
+                ListTile(
+                  leading: const Icon(
+                    Icons.map,
+                    color: AppStyles.waterActionAccent,
+                  ),
+                  title: Text(l10n.cfgLocModeManual, style: AppStyles.bodyText),
+                  subtitle: Text(
+                    l10n.cfgLocModeManualDesc,
+                    style: AppStyles.captionStatus,
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _openMapPickerDialog();
+                  },
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -251,7 +288,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
     final l10n = AppLocalizations.of(context)!;
     final newVal = (_agronomicDayStart + delta) % 24;
     final diff = ((newVal - _defaultDayStart + 36) % 24) - 12;
-    
+
     if (diff.abs() <= 3) {
       setState(() {
         _agronomicDayStart = newVal;
@@ -272,7 +309,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
     final l10n = AppLocalizations.of(context)!;
     final newVal = (_agronomicDayEnd + delta) % 24;
     final diff = ((newVal - _defaultDayEnd + 36) % 24) - 12;
-    
+
     if (diff.abs() <= 3) {
       setState(() {
         _agronomicDayEnd = newVal;
@@ -293,7 +330,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
   Future<void> _checkOpenMeteo() async {
     final l10n = AppLocalizations.of(context)!;
     setState(() => _openMeteoStatus = l10n.cfgChecking);
-    
+
     final res = await widget.routines.testWeatherConnection();
     if (mounted) {
       setState(() {
@@ -311,11 +348,13 @@ class _ConfigScreenState extends State<ConfigScreen> {
   Future<void> _checkCloudPing() async {
     final l10n = AppLocalizations.of(context)!;
     setState(() => _cloudPingStatus = l10n.cfgPingTesting);
-    
+
     final res = await widget.routines.testCloudPing();
     if (mounted) {
       if (res['success'] == true) {
-        setState(() => _cloudPingStatus = l10n.cfgPingRes(res['status'], res['ms']));
+        setState(
+          () => _cloudPingStatus = l10n.cfgPingRes(res['status'], res['ms']),
+        );
       } else {
         setState(() => _cloudPingStatus = l10n.cfgPingFailed);
       }
@@ -375,7 +414,10 @@ class _ConfigScreenState extends State<ConfigScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(l10n.cancel, style: AppStyles.bodyText.copyWith(color: AppStyles.textMuted)),
+            child: Text(
+              l10n.cancel,
+              style: AppStyles.bodyText.copyWith(color: AppStyles.textMuted),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, enteredValue),
@@ -404,7 +446,10 @@ class _ConfigScreenState extends State<ConfigScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Edit Cloud API Key', style: AppStyles.sectionTitle),
+          title: const Text(
+            'Edit Cloud API Key',
+            style: AppStyles.sectionTitle,
+          ),
           backgroundColor: AppStyles.surfaceColor,
           content: TextField(
             obscureText: isObscured,
@@ -413,7 +458,10 @@ class _ConfigScreenState extends State<ConfigScreen> {
               labelText: 'Secret API Key',
               border: const OutlineInputBorder(),
               suffixIcon: IconButton(
-                icon: Icon(isObscured ? Icons.visibility : Icons.visibility_off, color: AppStyles.textMuted),
+                icon: Icon(
+                  isObscured ? Icons.visibility : Icons.visibility_off,
+                  color: AppStyles.textMuted,
+                ),
                 onPressed: () => setDialogState(() => isObscured = !isObscured),
               ),
             ),
@@ -423,7 +471,10 @@ class _ConfigScreenState extends State<ConfigScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text(l10n.cancel, style: AppStyles.bodyText.copyWith(color: AppStyles.textMuted)),
+              child: Text(
+                l10n.cancel,
+                style: AppStyles.bodyText.copyWith(color: AppStyles.textMuted),
+              ),
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(context, enteredValue),
@@ -438,7 +489,9 @@ class _ConfigScreenState extends State<ConfigScreen> {
       setState(() {
         _cloudApiKey = result;
       });
-      widget.onStatusChange('API Key updated locally. Remember to press Apply & Save.');
+      widget.onStatusChange(
+        'API Key updated locally. Remember to press Apply & Save.',
+      );
       unawaited(_checkCloudPing());
     }
   }
@@ -449,7 +502,11 @@ class _ConfigScreenState extends State<ConfigScreen> {
     final dateStr = AppDateFormatter.format(_now, showSeconds: true);
 
     final locSettings = widget.routines.getLocationSettings();
-    final locStr = l10n.cfgLocString(locSettings.latitude.toStringAsFixed(4), locSettings.longitude.toStringAsFixed(4), locSettings.isGps ? 'GPS' : 'Manual');
+    final locStr = l10n.cfgLocString(
+      locSettings.latitude.toStringAsFixed(4),
+      locSettings.longitude.toStringAsFixed(4),
+      locSettings.isGps ? 'GPS' : 'Manual',
+    );
     final activeModel = widget.routines.getActiveRfModel();
     final savedModels = widget.routines.getSavedRfModels();
 
@@ -457,13 +514,15 @@ class _ConfigScreenState extends State<ConfigScreen> {
     final irrEnd = (_agronomicDayStart - 1 + 24) % 24;
     final predStart = _agronomicDayStart;
     final predEnd = _agronomicDayEnd;
-    
+
     final resolvedMeteoStatus = _openMeteoStatus ?? l10n.cfgChecking;
     final resolvedPingStatus = _cloudPingStatus ?? l10n.cfgPingTesting;
 
     // Resolve Ping Visual Color Feedback
     Color pingColor = AppStyles.textSecondary;
-    if (resolvedPingStatus.contains('Failed') || resolvedPingStatus.contains('Error') || resolvedPingStatus.contains('Fall')) {
+    if (resolvedPingStatus.contains('Failed') ||
+        resolvedPingStatus.contains('Error') ||
+        resolvedPingStatus.contains('Fall')) {
       pingColor = AppStyles.errorAccent;
     } else if (resolvedPingStatus.contains('OK')) {
       pingColor = AppStyles.successAccent;
@@ -480,15 +539,14 @@ class _ConfigScreenState extends State<ConfigScreen> {
             spacing: AppStyles.spaceSM,
             runSpacing: AppStyles.spaceSM,
             children: [
-              Text(
-                l10n.cfgScreenTitle,
-                style: AppStyles.displayHeader,
-              ),
+              Text(l10n.cfgScreenTitle, style: AppStyles.displayHeader),
               ElevatedButton.icon(
                 icon: const Icon(Icons.save),
                 label: Text(l10n.cfgBtnApplySave),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppStyles.successAccent.withValues(alpha: 0.2),
+                  backgroundColor: AppStyles.successAccent.withValues(
+                    alpha: 0.2,
+                  ),
                   foregroundColor: AppStyles.successAccent,
                   side: const BorderSide(color: AppStyles.successAccent),
                 ),
@@ -507,50 +565,81 @@ class _ConfigScreenState extends State<ConfigScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(l10n.cfgEnvSection, style: AppStyles.captionStatus.copyWith(fontWeight: FontWeight.bold)),
+                      Text(
+                        l10n.cfgEnvSection,
+                        style: AppStyles.captionStatus.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       const Divider(color: AppStyles.dividerColor),
-                      
+
                       // Time Row
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           const Padding(
                             padding: EdgeInsets.only(top: 4.0),
-                            child: Icon(Icons.access_time, color: AppStyles.textSecondary, size: 24),
+                            child: Icon(
+                              Icons.access_time,
+                              color: AppStyles.textSecondary,
+                              size: 24,
+                            ),
                           ),
                           const SizedBox(width: AppStyles.spaceSM),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(l10n.cfgSysTimeLabel, style: AppStyles.bodyText.copyWith(fontWeight: FontWeight.bold)),
+                                Text(
+                                  l10n.cfgSysTimeLabel,
+                                  style: AppStyles.bodyText.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                                 const SizedBox(height: AppStyles.spaceXS),
-                                Text('$dateStr  (${_now.millisecondsSinceEpoch})', style: AppStyles.consoleBody),
+                                Text(
+                                  '$dateStr  (${_now.millisecondsSinceEpoch})',
+                                  style: AppStyles.consoleBody,
+                                ),
                               ],
                             ),
                           ),
                         ],
                       ),
-                      
+
                       const Padding(
-                        padding: EdgeInsets.symmetric(vertical: AppStyles.spaceSM),
-                        child: Divider(color: AppStyles.dividerColor, height: 1),
+                        padding: EdgeInsets.symmetric(
+                          vertical: AppStyles.spaceSM,
+                        ),
+                        child: Divider(
+                          color: AppStyles.dividerColor,
+                          height: 1,
+                        ),
                       ),
-                      
+
                       // Location Row
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Padding(
                             padding: EdgeInsets.only(top: 4.0),
-                            child: Icon(Icons.location_on, color: AppStyles.textSecondary, size: 24),
+                            child: Icon(
+                              Icons.location_on,
+                              color: AppStyles.textSecondary,
+                              size: 24,
+                            ),
                           ),
                           const SizedBox(width: AppStyles.spaceSM),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(l10n.cfgLocSettingsLabel, style: AppStyles.bodyText.copyWith(fontWeight: FontWeight.bold)),
+                                Text(
+                                  l10n.cfgLocSettingsLabel,
+                                  style: AppStyles.bodyText.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                                 const SizedBox(height: AppStyles.spaceXS),
                                 Text(locStr, style: AppStyles.consoleBody),
                               ],
@@ -562,7 +651,9 @@ class _ConfigScreenState extends State<ConfigScreen> {
                             label: Text(l10n.cfgBtnUpdate),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: AppStyles.techSecondaryAccent,
-                              side: const BorderSide(color: AppStyles.techSecondaryAccent),
+                              side: const BorderSide(
+                                color: AppStyles.techSecondaryAccent,
+                              ),
                               minimumSize: const Size(130, 36),
                             ),
                             onPressed: _showLocationSettingsChoice,
@@ -581,28 +672,44 @@ class _ConfigScreenState extends State<ConfigScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(l10n.cfgNetSection, style: AppStyles.captionStatus.copyWith(fontWeight: FontWeight.bold)),
+                      Text(
+                        l10n.cfgNetSection,
+                        style: AppStyles.captionStatus.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       const Divider(color: AppStyles.dividerColor),
-                      
+
                       // Open Meteo Row
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Padding(
                             padding: EdgeInsets.only(top: 4.0),
-                            child: Icon(Icons.wb_sunny, color: AppStyles.textSecondary, size: 24),
+                            child: Icon(
+                              Icons.wb_sunny,
+                              color: AppStyles.textSecondary,
+                              size: 24,
+                            ),
                           ),
                           const SizedBox(width: AppStyles.spaceSM),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(l10n.cfgMeteoLabel, style: AppStyles.bodyText.copyWith(fontWeight: FontWeight.bold)),
+                                Text(
+                                  l10n.cfgMeteoLabel,
+                                  style: AppStyles.bodyText.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                                 const SizedBox(height: AppStyles.spaceXS),
                                 Text(
-                                  resolvedMeteoStatus, 
+                                  resolvedMeteoStatus,
                                   style: AppStyles.consoleBody.copyWith(
-                                    color: resolvedMeteoStatus.contains('OK') ? AppStyles.successAccent : AppStyles.errorAccent, 
+                                    color: resolvedMeteoStatus.contains('OK')
+                                        ? AppStyles.successAccent
+                                        : AppStyles.errorAccent,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
@@ -615,37 +722,61 @@ class _ConfigScreenState extends State<ConfigScreen> {
                             label: Text(l10n.cloudBtnTestApi),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: AppStyles.textSecondary,
-                              side: const BorderSide(color: AppStyles.dividerColor),
+                              side: const BorderSide(
+                                color: AppStyles.dividerColor,
+                              ),
                               minimumSize: const Size(130, 36),
                             ),
                             onPressed: _checkOpenMeteo,
                           ),
                         ],
                       ),
-                      
+
                       const Padding(
-                        padding: EdgeInsets.symmetric(vertical: AppStyles.spaceSM),
-                        child: Divider(color: AppStyles.dividerColor, height: 1),
+                        padding: EdgeInsets.symmetric(
+                          vertical: AppStyles.spaceSM,
+                        ),
+                        child: Divider(
+                          color: AppStyles.dividerColor,
+                          height: 1,
+                        ),
                       ),
-                      
+
                       // Cloud Server Endpoint Row
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Padding(
                             padding: EdgeInsets.only(top: 4.0),
-                            child: Icon(Icons.cloud, color: AppStyles.textSecondary, size: 24),
+                            child: Icon(
+                              Icons.cloud,
+                              color: AppStyles.textSecondary,
+                              size: 24,
+                            ),
                           ),
                           const SizedBox(width: AppStyles.spaceSM),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(l10n.cfgCloudLabel, style: AppStyles.bodyText.copyWith(fontWeight: FontWeight.bold)),
+                                Text(
+                                  l10n.cfgCloudLabel,
+                                  style: AppStyles.bodyText.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                                 const SizedBox(height: AppStyles.spaceXS),
-                                Text('$_cloudScheme://$_cloudUrl:$_cloudPort', style: AppStyles.consoleBody),
+                                Text(
+                                  '$_cloudScheme://$_cloudUrl:$_cloudPort',
+                                  style: AppStyles.consoleBody,
+                                ),
                                 const SizedBox(height: AppStyles.spaceXS),
-                                Text('Ping: $resolvedPingStatus', style: AppStyles.consoleBody.copyWith(color: pingColor)),
+                                Text(
+                                  'Ping: $resolvedPingStatus',
+                                  style: AppStyles.consoleBody.copyWith(
+                                    color: pingColor,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -658,7 +789,9 @@ class _ConfigScreenState extends State<ConfigScreen> {
                                 label: Text(l10n.cfgBtnUpdate),
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: AppStyles.waterActionAccent,
-                                  side: const BorderSide(color: AppStyles.waterActionAccent),
+                                  side: const BorderSide(
+                                    color: AppStyles.waterActionAccent,
+                                  ),
                                   minimumSize: const Size(130, 36),
                                 ),
                                 onPressed: _editCloudEndpointDialog,
@@ -669,7 +802,9 @@ class _ConfigScreenState extends State<ConfigScreen> {
                                 label: Text(l10n.cloudBtnTestApi),
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: AppStyles.textSecondary,
-                                  side: const BorderSide(color: AppStyles.dividerColor),
+                                  side: const BorderSide(
+                                    color: AppStyles.dividerColor,
+                                  ),
                                   minimumSize: const Size(130, 36),
                                 ),
                                 onPressed: _checkCloudPing,
@@ -680,8 +815,13 @@ class _ConfigScreenState extends State<ConfigScreen> {
                       ),
 
                       const Padding(
-                        padding: EdgeInsets.symmetric(vertical: AppStyles.spaceSM),
-                        child: Divider(color: AppStyles.dividerColor, height: 1),
+                        padding: EdgeInsets.symmetric(
+                          vertical: AppStyles.spaceSM,
+                        ),
+                        child: Divider(
+                          color: AppStyles.dividerColor,
+                          height: 1,
+                        ),
                       ),
 
                       // Cloud API Key Row
@@ -690,19 +830,32 @@ class _ConfigScreenState extends State<ConfigScreen> {
                         children: [
                           const Padding(
                             padding: EdgeInsets.only(top: 4.0),
-                            child: Icon(Icons.key, color: AppStyles.textSecondary, size: 24),
+                            child: Icon(
+                              Icons.key,
+                              color: AppStyles.textSecondary,
+                              size: 24,
+                            ),
                           ),
                           const SizedBox(width: AppStyles.spaceSM),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('Cloud API Key', style: AppStyles.bodyText.copyWith(fontWeight: FontWeight.bold)),
+                                Text(
+                                  'Cloud API Key',
+                                  style: AppStyles.bodyText.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                                 const SizedBox(height: AppStyles.spaceXS),
                                 Text(
-                                  _cloudApiKey.isEmpty ? 'Not Configured' : '••••••••••••••••', 
+                                  _cloudApiKey.isEmpty
+                                      ? 'Not Configured'
+                                      : '••••••••••••••••',
                                   style: AppStyles.consoleBody.copyWith(
-                                    color: _cloudApiKey.isEmpty ? AppStyles.warningAccent : AppStyles.successAccent,
+                                    color: _cloudApiKey.isEmpty
+                                        ? AppStyles.warningAccent
+                                        : AppStyles.successAccent,
                                   ),
                                 ),
                               ],
@@ -714,14 +867,15 @@ class _ConfigScreenState extends State<ConfigScreen> {
                             label: Text(l10n.cfgBtnUpdate),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: AppStyles.waterActionAccent,
-                              side: const BorderSide(color: AppStyles.waterActionAccent),
+                              side: const BorderSide(
+                                color: AppStyles.waterActionAccent,
+                              ),
                               minimumSize: const Size(130, 36),
                             ),
                             onPressed: _editApiKeyDialog,
                           ),
                         ],
                       ),
-
                     ],
                   ),
                 ),
@@ -734,15 +888,29 @@ class _ConfigScreenState extends State<ConfigScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(l10n.cfgAgroSection, style: AppStyles.captionStatus.copyWith(fontWeight: FontWeight.bold)),
+                      Text(
+                        l10n.cfgAgroSection,
+                        style: AppStyles.captionStatus.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       const Divider(color: AppStyles.dividerColor),
-                      
+
                       // Irrigation Period Row
                       Container(
-                        padding: const EdgeInsets.symmetric(vertical: AppStyles.spaceSM, horizontal: AppStyles.spaceMD),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppStyles.spaceSM,
+                          horizontal: AppStyles.spaceMD,
+                        ),
                         decoration: BoxDecoration(
-                          color: AppStyles.techSecondaryAccent.withValues(alpha: 0.1),
-                          border: Border.all(color: AppStyles.techSecondaryAccent.withValues(alpha: 0.3)),
+                          color: AppStyles.techSecondaryAccent.withValues(
+                            alpha: 0.1,
+                          ),
+                          border: Border.all(
+                            color: AppStyles.techSecondaryAccent.withValues(
+                              alpha: 0.3,
+                            ),
+                          ),
                           borderRadius: BorderRadius.circular(8.0),
                         ),
                         child: Row(
@@ -751,17 +919,42 @@ class _ConfigScreenState extends State<ConfigScreen> {
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(l10n.cfgIrrPeriod, style: AppStyles.bodyText.copyWith(color: AppStyles.techSecondaryAccent, fontWeight: FontWeight.bold)),
-                                Text(l10n.cfgPeriodRange(irrStart.toString().padLeft(2, '0'), irrEnd.toString().padLeft(2, '0')), style: AppStyles.consoleBody),
+                                Text(
+                                  l10n.cfgIrrPeriod,
+                                  style: AppStyles.bodyText.copyWith(
+                                    color: AppStyles.techSecondaryAccent,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  l10n.cfgPeriodRange(
+                                    irrStart.toString().padLeft(2, '0'),
+                                    irrEnd.toString().padLeft(2, '0'),
+                                  ),
+                                  style: AppStyles.consoleBody,
+                                ),
                               ],
                             ),
                             Row(
                               children: [
-                                IconButton(icon: const Icon(Icons.remove_circle_outline), onPressed: () => _adjustDayEnd(-1), color: AppStyles.techSecondaryAccent),
-                                Text(l10n.cfgShiftBtn, style: AppStyles.captionStatus.copyWith(color: AppStyles.techSecondaryAccent)),
-                                IconButton(icon: const Icon(Icons.add_circle_outline), onPressed: () => _adjustDayEnd(1), color: AppStyles.techSecondaryAccent),
+                                IconButton(
+                                  icon: const Icon(Icons.remove_circle_outline),
+                                  onPressed: () => _adjustDayEnd(-1),
+                                  color: AppStyles.techSecondaryAccent,
+                                ),
+                                Text(
+                                  l10n.cfgShiftBtn,
+                                  style: AppStyles.captionStatus.copyWith(
+                                    color: AppStyles.techSecondaryAccent,
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.add_circle_outline),
+                                  onPressed: () => _adjustDayEnd(1),
+                                  color: AppStyles.techSecondaryAccent,
+                                ),
                               ],
-                            )
+                            ),
                           ],
                         ),
                       ),
@@ -769,10 +962,17 @@ class _ConfigScreenState extends State<ConfigScreen> {
 
                       // Prediction Period Row
                       Container(
-                        padding: const EdgeInsets.symmetric(vertical: AppStyles.spaceSM, horizontal: AppStyles.spaceMD),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppStyles.spaceSM,
+                          horizontal: AppStyles.spaceMD,
+                        ),
                         decoration: BoxDecoration(
                           color: AppStyles.warningAccent.withValues(alpha: 0.1),
-                          border: Border.all(color: AppStyles.warningAccent.withValues(alpha: 0.3)),
+                          border: Border.all(
+                            color: AppStyles.warningAccent.withValues(
+                              alpha: 0.3,
+                            ),
+                          ),
                           borderRadius: BorderRadius.circular(8.0),
                         ),
                         child: Row(
@@ -781,32 +981,66 @@ class _ConfigScreenState extends State<ConfigScreen> {
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(l10n.cfgPredPeriod, style: AppStyles.bodyText.copyWith(color: AppStyles.warningAccent, fontWeight: FontWeight.bold)),
-                                Text(l10n.cfgPeriodRange(predStart.toString().padLeft(2, '0'), predEnd.toString().padLeft(2, '0')), style: AppStyles.consoleBody),
+                                Text(
+                                  l10n.cfgPredPeriod,
+                                  style: AppStyles.bodyText.copyWith(
+                                    color: AppStyles.warningAccent,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  l10n.cfgPeriodRange(
+                                    predStart.toString().padLeft(2, '0'),
+                                    predEnd.toString().padLeft(2, '0'),
+                                  ),
+                                  style: AppStyles.consoleBody,
+                                ),
                               ],
                             ),
                             Row(
                               children: [
-                                IconButton(icon: const Icon(Icons.remove_circle_outline), onPressed: () => _adjustDayStart(-1), color: AppStyles.warningAccent),
-                                Text(l10n.cfgShiftBtn, style: AppStyles.captionStatus.copyWith(color: AppStyles.warningAccent)),
-                                IconButton(icon: const Icon(Icons.add_circle_outline), onPressed: () => _adjustDayStart(1), color: AppStyles.warningAccent),
+                                IconButton(
+                                  icon: const Icon(Icons.remove_circle_outline),
+                                  onPressed: () => _adjustDayStart(-1),
+                                  color: AppStyles.warningAccent,
+                                ),
+                                Text(
+                                  l10n.cfgShiftBtn,
+                                  style: AppStyles.captionStatus.copyWith(
+                                    color: AppStyles.warningAccent,
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.add_circle_outline),
+                                  onPressed: () => _adjustDayStart(1),
+                                  color: AppStyles.warningAccent,
+                                ),
                               ],
-                            )
+                            ),
                           ],
                         ),
                       ),
-                      
-                      if (_scheduleWarning != null && _scheduleWarning!.isNotEmpty)
+
+                      if (_scheduleWarning != null &&
+                          _scheduleWarning!.isNotEmpty)
                         Padding(
-                          padding: const EdgeInsets.only(top: AppStyles.spaceSM),
+                          padding: const EdgeInsets.only(
+                            top: AppStyles.spaceSM,
+                          ),
                           child: Row(
                             children: [
-                              const Icon(Icons.warning_amber_rounded, color: AppStyles.warningAccent, size: 16),
+                              const Icon(
+                                Icons.warning_amber_rounded,
+                                color: AppStyles.warningAccent,
+                                size: 16,
+                              ),
                               const SizedBox(width: AppStyles.spaceSM),
                               Expanded(
                                 child: Text(
                                   _scheduleWarning!,
-                                  style: AppStyles.captionStatus.copyWith(color: AppStyles.warningAccent),
+                                  style: AppStyles.captionStatus.copyWith(
+                                    color: AppStyles.warningAccent,
+                                  ),
                                 ),
                               ),
                             ],
@@ -826,16 +1060,22 @@ class _ConfigScreenState extends State<ConfigScreen> {
                     children: [
                       Text(
                         'MACHINE LEARNING MODELS (RANDOM FOREST)',
-                        style: AppStyles.captionStatus.copyWith(fontWeight: FontWeight.bold),
+                        style: AppStyles.captionStatus.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       const Divider(color: AppStyles.dividerColor),
-                      
+
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Padding(
                             padding: EdgeInsets.only(top: 4.0),
-                            child: Icon(Icons.psychology, color: AppStyles.techSecondaryAccent, size: 28),
+                            child: Icon(
+                              Icons.psychology,
+                              color: AppStyles.techSecondaryAccent,
+                              size: 28,
+                            ),
                           ),
                           const SizedBox(width: AppStyles.spaceSM),
                           Expanded(
@@ -848,20 +1088,26 @@ class _ConfigScreenState extends State<ConfigScreen> {
                                       : 'Active: Default Embedded Model',
                                   style: AppStyles.bodyText.copyWith(
                                     fontWeight: FontWeight.bold,
-                                    color: activeModel != null ? AppStyles.successAccent : Colors.white,
+                                    color: activeModel != null
+                                        ? AppStyles.successAccent
+                                        : Colors.white,
                                   ),
                                 ),
                                 const SizedBox(height: AppStyles.spaceXS),
                                 Text(
                                   activeModel != null
-                                      ? (activeModel.description.isNotEmpty ? activeModel.description : 'Custom downloaded Random Forest Classifier')
-                                      : 'Built-in 2-feature Random Forest classifier (Solar Radiation + Soil Moisture)',
+                                      ? (activeModel.description.isNotEmpty
+                                            ? activeModel.description
+                                            : l10n.mlActiveCustomDesc)
+                                      : l10n.mlActiveBuiltInDesc,
                                   style: AppStyles.captionStatus,
                                 ),
                                 const SizedBox(height: AppStyles.spaceXS),
                                 Text(
-                                  '${savedModels.length} custom model(s) stored on device',
-                                  style: AppStyles.consoleBody.copyWith(color: AppStyles.textSecondary),
+                                  l10n.mlStoredModelsCount(savedModels.length),
+                                  style: AppStyles.consoleBody.copyWith(
+                                    color: AppStyles.textSecondary,
+                                  ),
                                 ),
                               ],
                             ),
@@ -869,10 +1115,12 @@ class _ConfigScreenState extends State<ConfigScreen> {
                           const SizedBox(width: AppStyles.spaceSM),
                           OutlinedButton.icon(
                             icon: const Icon(Icons.model_training, size: 16),
-                            label: const Text('Manage Catalog'),
+                            label: Text(l10n.cfgBtnManageCatalog),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: AppStyles.techSecondaryAccent,
-                              side: const BorderSide(color: AppStyles.techSecondaryAccent),
+                              side: const BorderSide(
+                                color: AppStyles.techSecondaryAccent,
+                              ),
                               minimumSize: const Size(130, 36),
                             ),
                             onPressed: _showMlModelManager,
@@ -917,27 +1165,47 @@ class _MlModelManagerSheetState extends State<MlModelManagerSheet> {
       _isLoading = true;
       _errorMsg = null;
     });
+    // ponytail: Offline mode falls back to saved local Isar DB models without caching cloud catalog list offline. Upgrade path: add persistent offline cache for cloud metadata.
     try {
       final cloudRes = await widget.routines.getAvailableRfModels();
       final localRes = widget.routines.getSavedRfModels();
+      final localIds = localRes.map((m) => m.modelId).toSet();
+      final localMaps = localRes.map((m) => {
+        'model_id': m.modelId,
+        'crop_name': m.cropName,
+        'version': m.version,
+        'description': m.description,
+      });
+      final extraCloud = cloudRes.where((m) => !localIds.contains(m['model_id']));
       if (mounted) {
         setState(() {
-          _cloudModels = cloudRes;
+          _cloudModels = [...localMaps, ...extraCloud];
           _localModels = localRes;
           _isLoading = false;
         });
       }
     } catch (e) {
+      final localRes = widget.routines.getSavedRfModels();
       if (mounted) {
         setState(() {
-          _errorMsg = e.toString();
+          _localModels = localRes;
+          _cloudModels = localRes
+              .map((m) => {
+                    'model_id': m.modelId,
+                    'crop_name': m.cropName,
+                    'version': m.version,
+                    'description': m.description,
+                  })
+              .toList();
           _isLoading = false;
+          _errorMsg = localRes.isEmpty ? e.toString() : null;
         });
       }
     }
   }
 
   Future<void> _handleDownload(Map<String, dynamic> metadata) async {
+    final l10n = AppLocalizations.of(context)!;
     final mId = metadata['model_id'];
     setState(() => _processingIds.add(mId));
     try {
@@ -946,14 +1214,16 @@ class _MlModelManagerSheetState extends State<MlModelManagerSheet> {
       _localModels = widget.routines.getSavedRfModels();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Downloaded ${metadata['crop_name']}')),
+          SnackBar(
+            content: Text(l10n.mlDownloadedSnack(metadata['crop_name'] ?? mId)),
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Download failed: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.mlDownloadFailedSnack(e.toString()))),
+        );
       }
     } finally {
       if (mounted) setState(() => _processingIds.remove(mId));
@@ -968,17 +1238,20 @@ class _MlModelManagerSheetState extends State<MlModelManagerSheet> {
   }
 
   void _handleDelete(String modelId, String name) {
+    final l10n = AppLocalizations.of(context)!;
     widget.routines.deleteRfModel(modelId);
     setState(() {
       _localModels = widget.routines.getSavedRfModels();
     });
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text('Deleted $name from device.')));
+    ).showSnackBar(SnackBar(content: Text(l10n.mlDeletedSnack(name))));
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.6,
@@ -994,7 +1267,7 @@ class _MlModelManagerSheetState extends State<MlModelManagerSheet> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'ML Models Catalog',
+                    l10n.mlCatalogTitle,
                     style: AppStyles.displayHeader.copyWith(
                       color: AppStyles.techSecondaryAccent,
                     ),
@@ -1007,7 +1280,7 @@ class _MlModelManagerSheetState extends State<MlModelManagerSheet> {
               ),
               const SizedBox(height: AppStyles.spaceSM),
               Text(
-                'Download crop-specific Random Forest classifiers from the server to use for local & cloud inference.',
+                l10n.mlCatalogDesc,
                 style: AppStyles.bodyText.copyWith(
                   color: AppStyles.textSecondary,
                 ),
@@ -1082,13 +1355,19 @@ class _MlModelManagerSheetState extends State<MlModelManagerSheet> {
                               children: [
                                 if (isDownloaded && !isActive)
                                   IconButton(
-                                    icon: const Icon(Icons.delete_outline, color: AppStyles.errorAccent),
-                                    tooltip: 'Delete Model',
-                                    onPressed: () => _handleDelete(mId, meta['crop_name'] ?? mId),
+                                    icon: const Icon(
+                                      Icons.delete_outline,
+                                      color: AppStyles.errorAccent,
+                                    ),
+                                    tooltip: l10n.mlDeleteTooltip,
+                                    onPressed: () => _handleDelete(
+                                      mId,
+                                      meta['crop_name'] ?? mId,
+                                    ),
                                   ),
                                 if (isDownloaded && !isActive)
                                   const SizedBox(width: AppStyles.spaceSM),
-                                
+
                                 if (isProcessing)
                                   const SizedBox(
                                     width: 24,
@@ -1099,23 +1378,25 @@ class _MlModelManagerSheetState extends State<MlModelManagerSheet> {
                                   )
                                 else if (isDownloaded)
                                   (isActive
-                                      ? const Chip(
-                                          label: Text('ACTIVE'),
-                                          backgroundColor: AppStyles.successAccent,
-                                          labelStyle: TextStyle(
+                                      ? Chip(
+                                          label: Text(l10n.badgeActive),
+                                          backgroundColor:
+                                              AppStyles.successAccent,
+                                          labelStyle: const TextStyle(
                                             color: Colors.black,
                                             fontWeight: FontWeight.bold,
                                             fontSize: 10,
                                           ),
                                         )
                                       : OutlinedButton(
-                                          onPressed: () => _handleSetActive(mId),
-                                          child: const Text('Set Active'),
+                                          onPressed: () =>
+                                              _handleSetActive(mId),
+                                          child: Text(l10n.btnSetActive),
                                         ))
                                 else
                                   ElevatedButton.icon(
                                     icon: const Icon(Icons.download, size: 16),
-                                    label: const Text('Download'),
+                                    label: Text(l10n.btnDownload),
                                     onPressed: () => _handleDownload(meta),
                                   ),
                               ],

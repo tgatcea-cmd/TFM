@@ -5,8 +5,8 @@ import 'package:tfm_app/features/ble/ble_service.dart';
 import 'random_forest.dart' as rf;
 import 'package:tfm_app/core/database/app_database.dart';
 import 'package:tfm_app/core/models/device.dart';
-import 'package:tfm_app/features/weather/open_meteo_api.dart';
-import 'package:tfm_app/features/weather/weather_data.dart';
+import 'package:tfm_app/core/network/open_meteo_api.dart';
+import 'package:tfm_app/core/models/weather_data.dart';
 import 'lstm_inference.dart';
 import 'dart:convert';
 import 'package:tfm_app/features/ml_inference/dynamic_random_forest.dart';
@@ -36,7 +36,7 @@ class InferenceBridge {
   InferenceBridge(this._db, {this.onDbUpdated});
 
   /// Executes the Savia Off-Device/App-side 24-hour LSTM Soil Moisture Inference procedure
-  Future<Map<String, dynamic>> runLocalLstmInference([String? deviceId]) async {
+  Future<Map<String, dynamic>> runLocalLstmInference([String? deviceId, WeatherData? preloadedWeatherData]) async {
     isRunning = true;
     progress = 0.1;
     status = "Running Savia Off-Device LSTM Inference...";
@@ -50,7 +50,7 @@ class InferenceBridge {
     }
 
     final lstmEngine = SaviaLstmInferenceEngine(_db);
-    final res = await lstmEngine.runDailyInference(device.deviceIdentifier);  
+    final res = await lstmEngine.runDailyInference(device.deviceIdentifier, preloadedWeatherData: preloadedWeatherData);  
   
     progress = 1.0;
     status = "LSTM Inference: ${res['message']}";
@@ -79,10 +79,24 @@ class InferenceBridge {
 
     final Device? device = _db.findDevice(deviceId);
 
-    if (device == null || (device.newPredictions.isEmpty && !injectLowMoisture)) {
-      status = "Error: No Prediction Found for device";
+    if (device == null) {
+      status = "Error: No Device Found for device";
       isRunning = false;
       return {'code': -3, 'message': 'No device found'};
+    }
+
+    // ponytail: Skip 24h LSTM forecast when stored newPredictions exist. If missing, auto-fallback to LSTM using saved telemetry history.
+    if (device.newPredictions.isEmpty && !injectLowMoisture) {
+      print('[LocalDB Inference Verbose] No stored 24h predictions found. Running local 24h LSTM forecast from telemetry history...');
+      final lstmEngine = SaviaLstmInferenceEngine(_db);
+      final lstmRes = await lstmEngine.runDailyInference(device.deviceIdentifier, preloadedWeatherData: preloadedWeatherData);
+      if (lstmRes['code'] != SaviaLstmErrorCode.success) {
+        status = "Error: ${lstmRes['message'] ?? 'No prediction found'}";
+        isRunning = false;
+        return {'code': -3, 'message': lstmRes['message'] ?? 'No prediction found'};
+      }
+    } else {
+      print('[LocalDB Inference Verbose] Found stored 24h predictions (${device.newPredictions.length} samples). Skipping LSTM calculation.');
     }
 
     // ponytail: using last predicted value (T_24) as predHum because current LSTM models soil moisture evaporation
@@ -137,35 +151,21 @@ class InferenceBridge {
       print('[LocalDB Inference Verbose] Reusing preloaded weather forecast context (Zero network call)...');
       radSum = preloadedWeatherData.shortwaveRadiation.reduce((a, b) => a + b);
     } else {
-      try {
-        print(
-          '[LocalDB Inference Verbose] Fetching 48h weather forecast from Open-Meteo for ($lat, $lon) relative to $refDate...',
-        );
-        final weatherClient = OpenMeteoClient(latitude: lat, longitude: lon);
-        final weatherData = await weatherClient.fetchForecast(
-          referenceDate: refDate,
-        );
-        _db.saveWeatherForecast(device.deviceIdentifier, weatherData);
-        radSum = weatherData.shortwaveRadiation.isNotEmpty
-            ? weatherData.shortwaveRadiation.reduce((a, b) => a + b)
-            : 0.0;
-      } catch (e) {
-        print('[LocalDB Inference Verbose] Network call failed ($e). Attempting offline weather fallback...');
-        // Offline Fallback 1: Query database for cached radiation telemetry in [refDate - 48h, refDate]
-        final startMs = refDate.subtract(const Duration(hours: 48)).millisecondsSinceEpoch;
-        final refMs = refDate.millisecondsSinceEpoch;
-        final cachedRadReadings = device.historicValues.where(
-          (h) => h.tsMs != null && h.tsMs! >= startMs && h.tsMs! <= refMs && h.kind == 'radiation'
-        ).toList();
+      print('[LocalDB Inference Verbose] Missing preloaded weather data. Attempting offline weather fallback...');
+      // Offline Fallback 1: Query database for cached radiation telemetry in [refDate - 48h, refDate]
+      final startMs = refDate.subtract(const Duration(hours: 48)).millisecondsSinceEpoch;
+      final refMs = refDate.millisecondsSinceEpoch;
+      final cachedRadReadings = device.historicValues.where(
+        (h) => h.tsMs != null && h.tsMs! >= startMs && h.tsMs! <= refMs && h.kind == 'radiation'
+      ).toList();
 
-        if (cachedRadReadings.isNotEmpty) {
-          radSum = cachedRadReadings.fold(0.0, (sum, r) => sum + (r.value ?? 0.0));
-          print('[LocalDB Inference Verbose] Computed radSum from local DB cached radiation telemetry: $radSum W/m²');
-        } else {
-          // Offline Fallback 2: Seasonal solar irradiance estimate
-          radSum = HistoricalSolarModel.estimateRadSum(lat: lat, date: refDate);
-          print('[LocalDB Inference Verbose] Computed radSum using HistoricalSolarModel seasonal estimate: $radSum W/m²');
-        }
+      if (cachedRadReadings.isNotEmpty) {
+        radSum = cachedRadReadings.fold(0.0, (sum, r) => sum + (r.value ?? 0.0));
+        print('[LocalDB Inference Verbose] Computed radSum from local DB cached radiation telemetry: $radSum W/m²');
+      } else {
+        // Offline Fallback 2: Seasonal solar irradiance estimate
+        radSum = HistoricalSolarModel.estimateRadSum(lat: lat, date: refDate);
+        print('[LocalDB Inference Verbose] Computed radSum using HistoricalSolarModel seasonal estimate: $radSum W/m²');
       }
     }
 
@@ -220,6 +220,9 @@ class InferenceBridge {
       'radSum': radSum,
       'modelIdentifier': modelIdentifier,
       'isEmulated': result['isEmulated'],
+      'isUnrecommended': result['isUnrecommended'],
+      'agronomicStart': result['agronomicStart'],
+      'agronomicEnd': result['agronomicEnd'],
     };
   }
 
@@ -243,10 +246,11 @@ class InferenceBridge {
     final double normalizedPredHum = rawHum > 1.0 ? rawHum / 100.0 : rawHum;
     final double scaledPredHum = SaviaLstmScaler.scaleHs30(normalizedPredHum);
 
-    // Scale raw solar radiation (W/m²) to normalized feature space expected by RF tree splits [0.0, 3.0]
+    // ponytail: Scale raw solar radiation (W/m²) to normalized feature space [-2.0, 3.0] expected by RF tree splits.
+    // Upgrade path: derive radMean & radStd directly from training dataset scaler_params.json.
     double normalizedRad = radSum;
     if (normalizedRad > 10.0) {
-      normalizedRad = 0.27;
+      normalizedRad = (radSum - 3500.0) / 1800.0;
     }
     if (injectLowMoisture) {
       normalizedRad = 0.27;

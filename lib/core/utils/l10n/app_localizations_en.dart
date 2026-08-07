@@ -802,4 +802,117 @@ class AppLocalizationsEn extends AppLocalizations {
   String inferenceInfoSource(String source) {
     return 'Source: $source';
   }
+
+  @override
+  String get debugInjectLowMoistureOn => 'Low Moisture: ON (15%)';
+
+  @override
+  String get debugInjectLowMoistureOff => 'Inject Low Moisture';
+
+  @override
+  String get dialogRunLocalPredTitle => 'Run Local Prediction?';
+
+  @override
+  String dialogRunLocalPredDesc(String name) {
+    return 'Station \"$name\" has sensor telemetry available, but no predictions have been generated yet.\n\nWould you like to run full LSTM & Random Forest inference now?';
+  }
+
+  @override
+  String get dialogBtnSkip => 'Skip';
+
+  @override
+  String get dialogBtnRunFullInference => 'Run Full Inference';
+
+  @override
+  String get dialogNewTelemetryTitle => 'New Telemetry Detected';
+
+  @override
+  String dialogNewTelemetryDesc(String name) {
+    return 'Newer sensor telemetry data has arrived for \"$name\" since the last prediction was generated.\n\nWould you like to use the existing prediction or re-run full prediction with the latest telemetry?';
+  }
+
+  @override
+  String get dialogBtnUseExisting => 'Use Existing Prediction';
+
+  @override
+  String get dialogBtnRerun => 'Re-run Full Prediction';
+
+  @override
+  String get dbDashboardTitle => 'Unified Status & Sync';
+
+  @override
+  String dbUnsyncedLocals(int count) {
+    return ' | Unsynced Locals: $count';
+  }
+
+  @override
+  String get dbNoStationsFound =>
+      'No stations found locally or in the cloud.\nConnect a hardware module or Sync with Cloud.';
+
+  @override
+  String get badgeLocalDb => 'LOCAL DB';
+
+  @override
+  String get badgeCloudDb => 'CLOUD';
+
+  @override
+  String get btnRunLocalDbInference => 'Run Local DB Inference';
+
+  @override
+  String get btnRunCloudEmulation => 'Run Cloud Emulation';
+
+  @override
+  String get btnLocateOnMap => 'Locate on Map';
+
+  @override
+  String get mapDialogTitle => 'Location';
+
+  @override
+  String get mlActiveCustomDesc => 'Custom downloaded Random Forest Classifier';
+
+  @override
+  String get mlActiveBuiltInDesc =>
+      'Built-in 2-feature Random Forest classifier (Solar Radiation + Soil Moisture)';
+
+  @override
+  String mlStoredModelsCount(int count) {
+    return '$count custom model(s) stored on device';
+  }
+
+  @override
+  String get cfgBtnManageCatalog => 'Manage Catalog';
+
+  @override
+  String mlDownloadedSnack(String cropName) {
+    return 'Downloaded $cropName';
+  }
+
+  @override
+  String mlDownloadFailedSnack(String error) {
+    return 'Download failed: $error';
+  }
+
+  @override
+  String mlDeletedSnack(String name) {
+    return 'Deleted $name from device.';
+  }
+
+  @override
+  String get mlCatalogTitle => 'ML Models Catalog';
+
+  @override
+  String get mlCatalogDesc =>
+      'Download crop-specific Random Forest classifiers from the server to use for local & cloud inference.';
+
+  @override
+  String get mlDeleteTooltip => 'Delete Model';
+
+  @override
+  String get badgeActive => 'ACTIVE';
+
+  @override
+  String get btnSetActive => 'Set Active';
+
+  @override
+  String get btnDownload => 'Download';
 }

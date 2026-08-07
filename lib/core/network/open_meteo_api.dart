@@ -1,7 +1,7 @@
 import "dart:async";
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:tfm_app/features/weather/weather_data.dart';
+import 'package:tfm_app/core/models/weather_data.dart';
 
 class OpenMeteoClient {
   static const String _baseUrl = 'https://api.open-meteo.com/v1/forecast';
@@ -10,8 +10,6 @@ class OpenMeteoClient {
   final double longitude;
 
   OpenMeteoClient({required this.latitude, required this.longitude});
-
-
 
   /// Fetches forecast data relative to referenceDate (or current date if null).
   /// Slices 48 hours past and 24-48 hours future relative to the referenceDate.
@@ -46,4 +44,3 @@ class OpenMeteoClient {
     }
   }
 }
-

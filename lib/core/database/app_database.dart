@@ -3,8 +3,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:tfm_app/core/models/device.dart';
 import 'package:tfm_app/core/models/app_settings.dart';
-import 'package:tfm_app/features/location/location_settings.dart';
-import 'package:tfm_app/features/weather/weather_data.dart';
+import 'package:tfm_app/core/models/location_settings.dart';
+import 'package:tfm_app/core/models/weather_data.dart';
 import 'package:tfm_app/core/models/app_rf_model.dart';
 
 class DatabaseService {
@@ -50,7 +50,9 @@ class DatabaseService {
     device.isSynced = false;
 
     if (kIsWeb) {
-      final idx = _webDevices.indexWhere((d) => d.deviceIdentifier == device.deviceIdentifier);
+      final idx = _webDevices.indexWhere(
+        (d) => d.deviceIdentifier == device.deviceIdentifier,
+      );
       if (idx != -1) {
         _webDevices[idx] = device;
       } else {
@@ -77,7 +79,9 @@ class DatabaseService {
     bool isFromCloud = false,
   }) {
     if (kIsWeb) {
-      final existingIdx = _webDevices.indexWhere((d) => d.deviceIdentifier == id);
+      final existingIdx = _webDevices.indexWhere(
+        (d) => d.deviceIdentifier == id,
+      );
       if (existingIdx != -1) {
         final existing = _webDevices[existingIdx];
         final isGenericExisting =
@@ -295,7 +299,9 @@ class DatabaseService {
   }) {
     if (kIsWeb) {
       bool hasChanges = false;
-      final devIdx = _webDevices.indexWhere((d) => d.deviceIdentifier == deviceId);
+      final devIdx = _webDevices.indexWhere(
+        (d) => d.deviceIdentifier == deviceId,
+      );
       Device dev;
       if (devIdx == -1) {
         dev = Device()
@@ -413,13 +419,16 @@ class DatabaseService {
     int? sinceMs,
   }) {
     if (kIsWeb) {
-      final devIdx = _webDevices.indexWhere((d) => d.deviceIdentifier == deviceId);
+      final devIdx = _webDevices.indexWhere(
+        (d) => d.deviceIdentifier == deviceId,
+      );
       if (devIdx == -1) return [];
       final dev = _webDevices[devIdx];
       return dev.historicValues.where((v) {
         if (kind != null && v.kind != kind) return false;
         if (depthCm != null && v.depthCm != depthCm) return false;
-        if (sinceMs != null && v.tsMs != null && v.tsMs! < sinceMs) return false;
+        if (sinceMs != null && v.tsMs != null && v.tsMs! < sinceMs)
+          return false;
         return true;
       }).toList();
     }
@@ -439,51 +448,28 @@ class DatabaseService {
     }).toList();
   }
 
-  /// Calculates the valid reference timestamp of local device information.
-  /// Ignores corrupted/future timestamps (> DateTime.now()).
-  /// Uses the latest valid past telemetry timestamp from historicValues <= now,
-  /// falling back to live time if connected or recently synced.
+  /// Calculates the valid reference timestamp of local device information based on strict hour rules.
   DateTime getReferenceTime(String deviceId, {bool isConnected = false}) {
+    // 1. Fetch device based on platform
+    Device? dev;
     if (kIsWeb) {
-      final devIdx = _webDevices.indexWhere((d) => d.deviceIdentifier == deviceId);
+      final devIdx = _webDevices.indexWhere(
+        (d) => d.deviceIdentifier == deviceId,
+      );
       if (devIdx == -1) return DateTime.now();
-      final dev = _webDevices[devIdx];
-      final nowMs = DateTime.now().millisecondsSinceEpoch;
-
-      int? maxValidPastTs;
-      for (var h in dev.historicValues) {
-        if (h.tsMs != null && h.tsMs! <= nowMs) {
-          if (maxValidPastTs == null || h.tsMs! > maxValidPastTs) {
-            maxValidPastTs = h.tsMs!;
-          }
-        }
-      }
-
-      if (maxValidPastTs != null) {
-        return DateTime.fromMillisecondsSinceEpoch(maxValidPastTs);
-      }
-
-      if (isConnected ||
-          (dev.latestSynchronizedTime != null &&
-              DateTime.now().difference(dev.latestSynchronizedTime!).inHours <
-                  2)) {
-        return DateTime.now();
-      }
-
-      return dev.latestSynchronizedTime ?? dev.updatedAt;
+      dev = _webDevices[devIdx];
+    } else {
+      dev = isar.devices
+          .where()
+          .deviceIdentifierEqualTo(deviceId)
+          .findFirstSync();
+      if (dev == null) return DateTime.now();
     }
 
-    final dev = isar.devices
-        .where()
-        .deviceIdentifierEqualTo(deviceId)
-        .findFirstSync();
-    if (dev == null) {
-      return DateTime.now();
-    }
+    final now = DateTime.now();
+    final nowMs = now.millisecondsSinceEpoch;
 
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
-
-    // Filter out corrupted future timestamps (> now)
+    // 2. Find the latest valid telemetry timestamp (ignoring future/corrupted data)
     int? maxValidPastTs;
     for (var h in dev.historicValues) {
       if (h.tsMs != null && h.tsMs! <= nowMs) {
@@ -493,25 +479,44 @@ class DatabaseService {
       }
     }
 
-    if (maxValidPastTs != null) {
-      return DateTime.fromMillisecondsSinceEpoch(maxValidPastTs);
+    // Edge case: No historical data exists at all
+    if (maxValidPastTs == null) {
+      return isConnected ? now : (dev.updatedAt);
     }
 
-    // If connected or recently synced, fall back to live time
-    if (isConnected ||
-        (dev.latestSynchronizedTime != null &&
-            DateTime.now().difference(dev.latestSynchronizedTime!).inHours <
-                2)) {
-      return DateTime.now();
+    final storedDate = DateTime.fromMillisecondsSinceEpoch(maxValidPastTs);
+
+    // 3. Strict Hour-Level Evaluation
+    final isSameDateAndHour =
+        storedDate.year == now.year &&
+        storedDate.month == now.month &&
+        storedDate.day == now.day &&
+        storedDate.hour == now.hour;
+
+    if (isSameDateAndHour) {
+      // Condition 1: Stored telemetry is in the current hour of the current day.
+      // Use the stored telemetry data time.
+      return storedDate;
     }
 
-    return dev.latestSynchronizedTime ?? dev.updatedAt;
+    // Condition 2 & 3: Stored telemetry is older than the current hour.
+    if (isConnected) {
+      // Condition 2: Connected but old data.
+      // Returning `now` signals to the calling routine that a sync/update must occur.
+      return now;
+    } else {
+      // Condition 3: Not connected and old data.
+      // Accept the older stored data.
+      return storedDate;
+    }
   }
 
   /// Automatically prunes any corrupted future telemetry entries (> DateTime.now())
   void sanitizeCorruptedFutureData(String deviceId) {
     if (kIsWeb) {
-      final devIdx = _webDevices.indexWhere((d) => d.deviceIdentifier == deviceId);
+      final devIdx = _webDevices.indexWhere(
+        (d) => d.deviceIdentifier == deviceId,
+      );
       if (devIdx != -1) {
         final dev = _webDevices[devIdx];
         final nowMs = DateTime.now().millisecondsSinceEpoch;
@@ -551,7 +556,9 @@ class DatabaseService {
 
   void markDeviceSynced(String deviceId) {
     if (kIsWeb) {
-      final devIdx = _webDevices.indexWhere((d) => d.deviceIdentifier == deviceId);
+      final devIdx = _webDevices.indexWhere(
+        (d) => d.deviceIdentifier == deviceId,
+      );
       Device dev;
       if (devIdx == -1) {
         dev = Device()
@@ -590,7 +597,9 @@ class DatabaseService {
     bool isFromCloud = false,
   }) {
     if (kIsWeb) {
-      final devIdx = _webDevices.indexWhere((d) => d.deviceIdentifier == deviceId);
+      final devIdx = _webDevices.indexWhere(
+        (d) => d.deviceIdentifier == deviceId,
+      );
       Device dev;
       if (devIdx == -1) {
         dev = Device()
@@ -639,7 +648,9 @@ class DatabaseService {
 
   void updateDeviceConfig(String deviceId, Map<String, dynamic> config) {
     if (kIsWeb) {
-      final devIdx = _webDevices.indexWhere((d) => d.deviceIdentifier == deviceId);
+      final devIdx = _webDevices.indexWhere(
+        (d) => d.deviceIdentifier == deviceId,
+      );
       Device dev;
       if (devIdx == -1) {
         dev = Device()
@@ -686,7 +697,9 @@ class DatabaseService {
     bool isFromCloud = false,
   }) {
     if (kIsWeb) {
-      final devIdx = _webDevices.indexWhere((d) => d.deviceIdentifier == deviceId);
+      final devIdx = _webDevices.indexWhere(
+        (d) => d.deviceIdentifier == deviceId,
+      );
       Device dev;
       if (devIdx == -1) {
         dev = Device()
@@ -858,14 +871,19 @@ class DatabaseService {
       return _webDevices.isNotEmpty ? _webDevices.first : null;
     }
     if (deviceId != null) {
-      return isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
+      return isar.devices
+          .where()
+          .deviceIdentifierEqualTo(deviceId)
+          .findFirstSync();
     }
     return isar.devices.where().findFirstSync();
   }
 
   void updateDeviceSync(Device device) {
     if (kIsWeb) {
-      final idx = _webDevices.indexWhere((d) => d.deviceIdentifier == device.deviceIdentifier);
+      final idx = _webDevices.indexWhere(
+        (d) => d.deviceIdentifier == device.deviceIdentifier,
+      );
       if (idx != -1) {
         _webDevices[idx] = device;
       } else {
@@ -888,7 +906,9 @@ class DatabaseService {
   Future<void> saveDevices(List<Device> devices) async {
     if (kIsWeb) {
       for (var device in devices) {
-        final idx = _webDevices.indexWhere((d) => d.deviceIdentifier == device.deviceIdentifier);
+        final idx = _webDevices.indexWhere(
+          (d) => d.deviceIdentifier == device.deviceIdentifier,
+        );
         if (idx != -1) {
           _webDevices[idx] = device;
         } else {

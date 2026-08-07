@@ -1369,6 +1369,198 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Source: {source}'**
   String inferenceInfoSource(String source);
+
+  /// No description provided for @debugInjectLowMoistureOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Low Moisture: ON (15%)'**
+  String get debugInjectLowMoistureOn;
+
+  /// No description provided for @debugInjectLowMoistureOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Inject Low Moisture'**
+  String get debugInjectLowMoistureOff;
+
+  /// No description provided for @dialogRunLocalPredTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Run Local Prediction?'**
+  String get dialogRunLocalPredTitle;
+
+  /// No description provided for @dialogRunLocalPredDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Station \"{name}\" has sensor telemetry available, but no predictions have been generated yet.\n\nWould you like to run full LSTM & Random Forest inference now?'**
+  String dialogRunLocalPredDesc(String name);
+
+  /// No description provided for @dialogBtnSkip.
+  ///
+  /// In en, this message translates to:
+  /// **'Skip'**
+  String get dialogBtnSkip;
+
+  /// No description provided for @dialogBtnRunFullInference.
+  ///
+  /// In en, this message translates to:
+  /// **'Run Full Inference'**
+  String get dialogBtnRunFullInference;
+
+  /// No description provided for @dialogNewTelemetryTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'New Telemetry Detected'**
+  String get dialogNewTelemetryTitle;
+
+  /// No description provided for @dialogNewTelemetryDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Newer sensor telemetry data has arrived for \"{name}\" since the last prediction was generated.\n\nWould you like to use the existing prediction or re-run full prediction with the latest telemetry?'**
+  String dialogNewTelemetryDesc(String name);
+
+  /// No description provided for @dialogBtnUseExisting.
+  ///
+  /// In en, this message translates to:
+  /// **'Use Existing Prediction'**
+  String get dialogBtnUseExisting;
+
+  /// No description provided for @dialogBtnRerun.
+  ///
+  /// In en, this message translates to:
+  /// **'Re-run Full Prediction'**
+  String get dialogBtnRerun;
+
+  /// No description provided for @dbDashboardTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Unified Status & Sync'**
+  String get dbDashboardTitle;
+
+  /// No description provided for @dbUnsyncedLocals.
+  ///
+  /// In en, this message translates to:
+  /// **' | Unsynced Locals: {count}'**
+  String dbUnsyncedLocals(int count);
+
+  /// No description provided for @dbNoStationsFound.
+  ///
+  /// In en, this message translates to:
+  /// **'No stations found locally or in the cloud.\nConnect a hardware module or Sync with Cloud.'**
+  String get dbNoStationsFound;
+
+  /// No description provided for @badgeLocalDb.
+  ///
+  /// In en, this message translates to:
+  /// **'LOCAL DB'**
+  String get badgeLocalDb;
+
+  /// No description provided for @badgeCloudDb.
+  ///
+  /// In en, this message translates to:
+  /// **'CLOUD'**
+  String get badgeCloudDb;
+
+  /// No description provided for @btnRunLocalDbInference.
+  ///
+  /// In en, this message translates to:
+  /// **'Run Local DB Inference'**
+  String get btnRunLocalDbInference;
+
+  /// No description provided for @btnRunCloudEmulation.
+  ///
+  /// In en, this message translates to:
+  /// **'Run Cloud Emulation'**
+  String get btnRunCloudEmulation;
+
+  /// No description provided for @btnLocateOnMap.
+  ///
+  /// In en, this message translates to:
+  /// **'Locate on Map'**
+  String get btnLocateOnMap;
+
+  /// No description provided for @mapDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Location'**
+  String get mapDialogTitle;
+
+  /// No description provided for @mlActiveCustomDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom downloaded Random Forest Classifier'**
+  String get mlActiveCustomDesc;
+
+  /// No description provided for @mlActiveBuiltInDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Built-in 2-feature Random Forest classifier (Solar Radiation + Soil Moisture)'**
+  String get mlActiveBuiltInDesc;
+
+  /// No description provided for @mlStoredModelsCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} custom model(s) stored on device'**
+  String mlStoredModelsCount(int count);
+
+  /// No description provided for @cfgBtnManageCatalog.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage Catalog'**
+  String get cfgBtnManageCatalog;
+
+  /// No description provided for @mlDownloadedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloaded {cropName}'**
+  String mlDownloadedSnack(String cropName);
+
+  /// No description provided for @mlDownloadFailedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Download failed: {error}'**
+  String mlDownloadFailedSnack(String error);
+
+  /// No description provided for @mlDeletedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Deleted {name} from device.'**
+  String mlDeletedSnack(String name);
+
+  /// No description provided for @mlCatalogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'ML Models Catalog'**
+  String get mlCatalogTitle;
+
+  /// No description provided for @mlCatalogDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Download crop-specific Random Forest classifiers from the server to use for local & cloud inference.'**
+  String get mlCatalogDesc;
+
+  /// No description provided for @mlDeleteTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete Model'**
+  String get mlDeleteTooltip;
+
+  /// No description provided for @badgeActive.
+  ///
+  /// In en, this message translates to:
+  /// **'ACTIVE'**
+  String get badgeActive;
+
+  /// No description provided for @btnSetActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Set Active'**
+  String get btnSetActive;
+
+  /// No description provided for @btnDownload.
+  ///
+  /// In en, this message translates to:
+  /// **'Download'**
+  String get btnDownload;
 }
 
 class _AppLocalizationsDelegate
