@@ -13,9 +13,9 @@ extension GetDeviceCollection on Isar {
   IsarCollection<Device> get devices => this.collection();
 }
 
-const DeviceSchema = CollectionSchema(
+final DeviceSchema = CollectionSchema(
   name: r'Device',
-  id: 3491430514663294648,
+  id: int.parse('3491430514663294648'),
   properties: {
     r'deviceIdentifier': PropertySchema(
       id: 0,
@@ -94,7 +94,7 @@ const DeviceSchema = CollectionSchema(
   idName: r'id',
   indexes: {
     r'deviceIdentifier': IndexSchema(
-      id: 8570335694319598033,
+      id: int.parse('8570335694319598033'),
       name: r'deviceIdentifier',
       unique: true,
       replace: false,
@@ -2115,9 +2115,9 @@ extension DeviceQueryProperty on QueryBuilder<Device, Device, QQueryProperty> {
 // coverage:ignore-file
 // ignore_for_file: duplicate_ignore, non_constant_identifier_names, constant_identifier_names, invalid_use_of_protected_member, unnecessary_cast, prefer_const_constructors, lines_longer_than_80_chars, require_trailing_commas, inference_failure_on_function_invocation, unnecessary_parenthesis, unnecessary_raw_strings, unnecessary_null_checks, join_return_with_assignment, prefer_final_locals, avoid_js_rounded_ints, avoid_positional_boolean_parameters, always_specify_types
 
-const HistoricValueSchema = Schema(
+final HistoricValueSchema = Schema(
   name: r'HistoricValue',
-  id: 3448619404271591874,
+  id: int.parse('3448619404271591874'),
   properties: {
     r'depthCm': PropertySchema(id: 0, name: r'depthCm', type: IsarType.double),
     r'kind': PropertySchema(id: 1, name: r'kind', type: IsarType.string),
@@ -2700,9 +2700,9 @@ extension HistoricValueQueryObject
 // coverage:ignore-file
 // ignore_for_file: duplicate_ignore, non_constant_identifier_names, constant_identifier_names, invalid_use_of_protected_member, unnecessary_cast, prefer_const_constructors, lines_longer_than_80_chars, require_trailing_commas, inference_failure_on_function_invocation, unnecessary_parenthesis, unnecessary_raw_strings, unnecessary_null_checks, join_return_with_assignment, prefer_final_locals, avoid_js_rounded_ints, avoid_positional_boolean_parameters, always_specify_types
 
-const PredictionSchema = Schema(
+final PredictionSchema = Schema(
   name: r'Prediction',
-  id: 2351554733480628633,
+  id: int.parse('2351554733480628633'),
   properties: {
     r'confidence': PropertySchema(
       id: 0,

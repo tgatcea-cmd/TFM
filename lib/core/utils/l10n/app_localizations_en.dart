@@ -4,242 +4,228 @@ import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
 
-/// The translations for Spanish Castilian (`es`).
-class AppLocalizationsEs extends AppLocalizations {
-  AppLocalizationsEs([String locale = 'es']) : super(locale);
+/// The translations for English (`en`).
+class AppLocalizationsEn extends AppLocalizations {
+  AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
-  String get appTitle => 'Panel Predictivo Savia';
+  String get appTitle => 'Terralink Dashboard';
 
   @override
-  String get hide => 'Ocultar';
+  String get hide => 'Hide';
 
   @override
-  String get status => 'Estado';
+  String get status => 'Status';
 
   @override
-  String get cancel => 'Cancelar';
+  String get cancel => 'Cancel';
 
   @override
   String statusLabel(String msg) {
-    return 'ESTADO: $msg';
+    return 'STATUS: $msg';
   }
 
   @override
-  String get verdictLstmIrrigate => 'REGAR: Caída de humedad prevista';
+  String get verdictAvoidable => 'IRRIGATION AVOIDABLE: Soil moisture stable.';
 
   @override
-  String get verdictLstmHealthy => 'SALUDABLE: Nivel de humedad suficiente';
+  String get verdictNeeded =>
+      'IRRIGATION NEEDED: Soil moisture low. IRRIGATE to restore.';
 
   @override
-  String get verdictRfAvoidable => 'RIEGO EVITABLE: Humedad del suelo estable.';
+  String get mainScreenError => 'Unknown Screen';
 
   @override
-  String get verdictRfNeeded =>
-      'RIEGO NECESARIO: Humedad del suelo baja. REGAR para restaurar.';
+  String get mainStatusReady => 'Ready';
 
   @override
-  String get verdictEmuAvoidable => 'Riego Evitable';
+  String get mainStatusBleConnected => 'Connected to Savia station';
 
   @override
-  String get verdictEmuNeeded => 'Riego Necesario';
+  String get mainStatusBleDisconnected => 'Disconnected from Savia station';
 
   @override
-  String get mainScreenError => 'Menú Desconocido';
+  String get homeTab => 'Home';
 
   @override
-  String get mainStatusReady => 'Listo';
+  String get nearbyTab => 'Nearby';
 
   @override
-  String get mainStatusBleConnected => 'Conectado a la estación Savia';
+  String get localDbTab => 'Local DB';
 
   @override
-  String get mainStatusBleDisconnected => 'Desconectado de la estación Savia';
+  String get cloudTab => 'Cloud';
 
   @override
-  String get homeTab => 'Inicio';
+  String get configTab => 'Config';
 
   @override
-  String get nearbyTab => 'Cercanos';
+  String get homeConsoleInit => 'Console initialized. Awaiting commands...';
 
   @override
-  String get localDbTab => 'BD Local';
+  String get homeConsoleCopiedSnack => 'Console output copied to clipboard!';
 
   @override
-  String get cloudTab => 'Nube';
-
-  @override
-  String get configTab => 'Configuración';
-
-  @override
-  String get homeConsoleInit =>
-      'Consola Inicializada. Los resultados de los comandos aparecerán aquí...';
-
-  @override
-  String get homeConsoleCopiedSnack => '¡Copiado al portapapeles!';
-
-  @override
-  String get homeConsoleCopiedStatus => 'Consola copiada al portapapeles';
+  String get homeConsoleCopiedStatus => 'Console output copied to clipboard.';
 
   @override
   String homeExportJsonSnack(String fileName) {
-    return 'JSON de consola exportado $fileName';
+    return 'Exported JSON: $fileName';
   }
 
   @override
   String homeExportJsonStatus(String path) {
-    return ' JSON de consola exportado: $path';
+    return 'Console output saved to JSON: $path';
   }
 
   @override
   String homeExportJsonFailed(String error) {
-    return 'Error al exportar JSON: $error';
+    return 'Failed to export JSON: $error';
   }
 
   @override
   String homeBleAsyncData(String data) {
-    return 'Recibida telemetría de la estación de forma asíncrona:\n$data';
+    return 'Received Async BLE Data:\n$data';
   }
 
   @override
   String homeGapYears(String years) {
-    return '$years año(s)';
+    return '$years year(s)';
   }
 
   @override
   String homeGapDays(String days) {
-    return '$days día(s)';
+    return '$days day(s)';
   }
 
   @override
   String homeGapHours(String hours) {
-    return '$hours hora(s)';
+    return '$hours hour(s)';
   }
 
   @override
   String homeGapMins(String mins) {
-    return '$mins min';
+    return '$mins min(s)';
   }
 
   @override
   String homeGapSecs(String secs) {
-    return '$secs seg';
+    return '$secs sec';
   }
 
   @override
-  String get homeExecutingSync => 'Sincronizando el reloj de la estación...';
+  String get homeExecutingSync => 'Executing Sync Time...';
 
   @override
   String homeSyncSuccess(String date) {
-    return 'Sincronización del reloj completada. La nueva fecha es: $date';
+    return 'Time Synced. New internal clock: $date';
   }
 
   @override
-  String get homeSyncCompleted => 'Sincronización del reloj completada.';
+  String get homeSyncCompleted => 'Sync Time Completed.';
 
   @override
   String homeSyncErrorConsole(String error) {
-    return 'Error al sincronizar reloj de la estación:\n$error';
+    return 'Error during Sync Time:\n$error';
   }
 
   @override
-  String get homeSyncFailedStatus =>
-      'Fallo al sincronizar reloj de la estación.';
+  String get homeSyncFailedStatus => 'Sync Time Failed.';
 
   @override
-  String get homeVoidOutput => 'Éxito (Sin más información)';
+  String get homeVoidOutput => 'Success (Void/No Output)';
 
   @override
   String homeExecutingAction(String name) {
-    return 'Ejecutando $name...';
+    return 'Executing $name...';
   }
 
   @override
   String homeActionRes(String name, String res) {
-    return 'Resultado de $name:\n$res';
+    return 'Result for $name:\n$res';
   }
 
   @override
   String homeActionCompleted(String name) {
-    return '$name Completado.';
+    return '$name Completed.';
   }
 
   @override
   String homeActionError(String name, String error) {
-    return 'Error durante $name:\n$error';
+    return 'Error during $name:\n$error';
   }
 
   @override
   String homeActionFailed(String name) {
-    return 'Fallo durante $name.';
+    return '$name Failed.';
   }
 
   @override
-  String get homeDebugTitle => 'DEBUG ONLY';
+  String get homeDebugTitle => 'DANGER ZONE: DEBUG ONLY (REMOVE BEFORE PROD)';
 
   @override
-  String get homeBtnMock => 'Forzar rellenado de datos';
+  String get homeBtnMock => 'Force Mock 72h';
 
   @override
-  String get homeBtnClearStorage => 'Limpiar almacenamiento de la estación';
+  String get homeBtnClearStorage => 'Clear Station Storage';
 
   @override
-  String get homeAiTitleYellow => 'RECOMENDACIÓN DEL SISTEMA | Precaución';
+  String get homeAiTitleYellow => 'AI RECOMMENDATION (YELLOW ZONE)';
 
   @override
-  String get homeAiTitle => 'RECOMENDACIÓN DEL SISTEMA';
+  String get homeAiTitle => 'AI RECOMMENDATION';
 
   @override
   String homeAiYellowWarning(int endH, int startH) {
-    return 'FASE DE RECOGIDA DE DATOS ($endH:00 - $startH:00). La predicción óptima es en el periodo de Predicción.';
+    return '[DATA GATHERING PHASE] System gathering telemetry ($endH:00 - $startH:00). Prediction is not in optimal 19:00+ window.';
   }
 
   @override
   String homeAiMinHum(String humidity, String date) {
-    return 'Humedad mínima predicha: $humidity%\nEsperado para el: $date';
+    return 'Minimum predicted humidity: $humidity%\nExpected at: $date';
   }
 
   @override
   String get homeAiNoData =>
-      'No se han encontrado datos para la predicción en la base de datos.';
+      'No valid prediction time-series found in database.';
 
   @override
   String get homeNoBleConnected =>
-      'No estás conectado a una estación.\nUsa el menú de \'Cercanía\' para conectarte a una estación válida.';
+      'No BLE station connected.\nUse the \'Nearby\' tab to pair a Pico device.';
 
   @override
   String homeConnectedTitle(String devName) {
-    return 'Conectado: $devName';
+    return 'Connected: $devName';
   }
 
   @override
-  String get homeClockUnknown => 'Estado del reloj desconocido.';
+  String get homeClockUnknown => 'Clock status unknown';
 
   @override
-  String get homeTooltipSync => 'Sincronizar Reloj';
+  String get homeTooltipSync => 'Sync Time';
 
   @override
   String homeGapLabel(String gap) {
-    return 'Hueco $gap';
+    return '$gap gap';
   }
 
   @override
-  String get homeBtnReadStatus => 'Obtener Estado';
+  String get homeBtnReadStatus => 'Read Status';
 
   @override
-  String get homeBtnRequestData => 'Obtener Telemetría';
+  String get homeBtnRequestData => 'Request Data';
 
   @override
-  String get homeBtnTriggerInference => 'Lanzar Predicción';
+  String get homeBtnTriggerInference => 'Run Inference';
 
   @override
-  String get homeConsoleTitle => 'Salida de Consola:';
+  String get homeConsoleTitle => 'Console Output:';
 
   @override
-  String get homeTooltipCopy => 'Copiar al Portapapeles';
+  String get homeTooltipCopy => 'Copy to Clipboard';
 
   @override
-  String get homeTooltipDownload => 'Descargar JSON';
+  String get homeTooltipDownload => 'Download JSON';
 
   @override
   String get dbSyncingCloud => 'Syncing with Cloud API...';
@@ -337,7 +323,7 @@ class AppLocalizationsEs extends AppLocalizations {
   }
 
   @override
-  String get dbBtnRunInference => 'Run RF Inference';
+  String get dbBtnRunInference => 'Run Inference';
 
   @override
   String nbFoundDevices(int count) {
@@ -492,7 +478,7 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String cfgPredLimit(int base) {
-    return 'Limit reached: Prediction start can only be adjusted ±3h from base ($base:00).';
+    return 'Limit reached: Prediction start can only be adjusted  3h from base ($base:00).';
   }
 
   @override
@@ -502,7 +488,7 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String cfgIrrLimit(int base) {
-    return 'Limit reached: Irrigation end can only be adjusted ±3h from base ($base:00).';
+    return 'Limit reached: Irrigation end can only be adjusted  3h from base ($base:00).';
   }
 
   @override
@@ -632,14 +618,14 @@ class AppLocalizationsEs extends AppLocalizations {
   }
 
   @override
-  String get cloudSyncInitiating => 'Initiating Cloud Synchronization...';
+  String get cloudSyncInitiating => 'Syncing with Cloud API...';
 
   @override
-  String get cloudSyncFinished => 'Cloud sync finished.';
+  String get cloudSyncFinished => 'Cloud sync completed.';
 
   @override
   String cloudSyncError(String error) {
-    return 'Cloud sync error: $error';
+    return 'Cloud Sync Error: Connection unavailable or failed ($error)';
   }
 
   @override
@@ -652,17 +638,17 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String cloudEmulationExecuting(String name, String id) {
-    return 'Executing Local RF Recommendation in RAM for [$name] ($id)...';
+    return 'Running Random Forest Inference for $name ($id)...';
   }
 
   @override
   String cloudEmulationFinished(String verdict) {
-    return 'In-Memory Cloud Emulation Finished: $verdict';
+    return 'RF Inference Finished: $verdict';
   }
 
   @override
   String cloudEmulationError(String error) {
-    return 'In-Memory Cloud Emulation Error: $error';
+    return 'Inference Failed: $error';
   }
 
   @override
@@ -751,41 +737,69 @@ class AppLocalizationsEs extends AppLocalizations {
   }
 
   @override
-  String get cloudBtnEmulateStation => 'Emulate Cloud Station';
+  String get cloudBtnEmulateStation => 'Run Inference';
 
   @override
   String get cloudValNA => 'N/A';
 
   @override
+  String get cloudEmuNoData => 'No emulation performed yet.';
+
+  @override
   String get cloudValUnknown => 'UNKNOWN';
 
   @override
-  String get nbWarningBtOff => 'Bluetooth Desactivado';
+  String get nbWarningBtOff => 'Bluetooth is Disabled';
 
   @override
   String get nbWarningBtOffDesc =>
-      'El Bluetooth debe estar activado para escanear y conectar con el hardware Savia.';
+      'Bluetooth must be enabled to scan for and connect to nearby Savia hardware.';
 
   @override
-  String get nbBtnTurnOnBt => 'Activar Bluetooth';
+  String get nbBtnTurnOnBt => 'Turn On Bluetooth';
 
   @override
-  String get nbWarningLocOff => 'Ubicación Desactivada';
+  String get nbWarningLocOff => 'Location Services Disabled';
 
   @override
   String get nbWarningLocOffDesc =>
-      'Los servicios de ubicación deben estar activados para escanear dispositivos BLE en este sistema operativo.';
+      'Location services must be enabled to scan for BLE devices on this operating system.';
 
   @override
-  String get nbBtnTurnOnLoc => 'Activar Ubicación';
+  String get nbBtnTurnOnLoc => 'Enable Location';
 
   @override
-  String get nbWarningPerms => 'Permisos Requeridos';
+  String get nbWarningPerms => 'Permissions Required';
 
   @override
   String get nbWarningPermsDesc =>
-      'Por favor, concede los permisos de Bluetooth y Ubicación necesarios para comunicarse con el hardware.';
+      'Please grant the necessary Bluetooth and Location permissions to communicate with the hardware.';
 
   @override
-  String get nbBtnGrantPerms => 'Conceder Permisos';
+  String get nbBtnGrantPerms => 'Grant Permissions';
+
+  @override
+  String get inferenceRestrictedTitle => 'INFERENCE RESTRICTED (YELLOW ZONE)';
+
+  @override
+  String inferenceRestrictedDesc(int startI, int endI, int startH, int endH) {
+    return 'Inference is restricted: current device data is in the gathering phase ($startI:00 - $endI:00). AI recommendations are only performed during the optimal prediction window ($startH:00 - $endH:00).';
+  }
+
+  @override
+  String get inferenceUnrecommendedTitle =>
+      'UNRECOMMENDED OUTPUT (OUTSIDE PREDICTION WINDOW)';
+
+  @override
+  String inferenceUnrecommendedWarning(int startH, int endH) {
+    return 'Warning | Data outside the optimal prediction window: $startH:00 - $endH:00. Output is for observation/debugging only.';
+  }
+
+  @override
+  String get inferenceRecommendedTitle => 'RECOMMENDED AI OUTPUT';
+
+  @override
+  String inferenceInfoSource(String source) {
+    return 'Source: $source';
+  }
 }

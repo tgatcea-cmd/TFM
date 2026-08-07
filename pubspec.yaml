@@ -15,12 +15,14 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
+  
+  cupertino_icons: ^1.0.8           # Icons font. Use with the CupertinoIcons class for iOS style icons.
 
-  ### BLE API and OPEN-METEO ###
+  ### BLE API, CLOUD and OPEN-METEO ###
   cbor: ^6.5.1                      # CBOR encoding/decoding.
   crypto: ^3.0.3                    # HMAC-SHA256 cryptography.
   flutter_blue_plus: ^2.3.1         # BLE interfacing.
-  flutter_blue_plus_linux: ^9.0.0   # Explicitly add linux support.
+  # flutter_blue_plus_linux: ^9.0.0   # Explicitly add linux support.
   http: ^1.6.0                      # HTTP interface. Useful for Open-meteo API transactions.
   ##############################
 
@@ -29,23 +31,22 @@ dependencies:
   isar_community_flutter_libs: ^3.3.2 # <-- Changed name & version
   path_provider: ^2.1.2
   flutter_secure_storage: ^10.3.1
-  ################
-
-  cupertino_icons: ^1.0.8           # Icons font. Use with the CupertinoIcons class for iOS style icons.
-  flutter_litert: ^3.1.1           # Tensorflow for mobile and native flutter execution.
-  flutter_riverpod: ^2.6.1          # State manager.
-  signals: ^7.1.0                   # Reactive signals.
-  fl_chart: ^1.2.0                 # Powerful charting library.
-  geolocator: ^14.0.3               # Location services.
-  tflite_web: ^0.4.0
   path: ^1.9.0
-  flutter_map: ^8.3.1
-  latlong2: ^0.10.1
+  ################
+  
+  ### ML ###
+  tflite_web: ^0.4.0
+  flutter_litert: ^3.1.1           # Tensorflow for mobile and native flutter execution.
+  ##########
+
+  ### MISC ###
   intl: 0.20.2
   flutter_gen: ^5.15.0
-
-
-
+  latlong2: ^0.10.1
+  flutter_map: ^8.3.1
+  geolocator: ^14.0.3               # Location services.
+  fl_chart: ^1.2.0                 # Powerful charting library.
+  ############
 
 dev_dependencies:
   build_runner: ^2.4.9
@@ -55,11 +56,6 @@ dev_dependencies:
     sdk: flutter
   auto_translator: ^2.3.2
 
-
-
-
-
-
 # The following section is specific to Flutter packages.
 flutter:
   generate: true
@@ -68,7 +64,7 @@ flutter:
   assets:
     - assets/models/lstm_hs30_int8.tflite
 
-dependency_overrides:
-  flutter_blue_plus_linux:
-    path: ./packages/flutter_blue_plus_linux
+# dependency_overrides:
+#   flutter_blue_plus_linux:
+#     path: ./packages/flutter_blue_plus_linux
     

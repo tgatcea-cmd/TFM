@@ -25,7 +25,7 @@ class AppSettings {
 
   // Agronomic configuration
   int agronomicDayStart = 19; // Default 19hrs
-  int agronomicDayEnd = 9; // Default 9hrs
+  int agronomicDayEnd = 10; // Default 10hrs
   double minHumidity = 60.0;
 
   // Location settings (Manual)

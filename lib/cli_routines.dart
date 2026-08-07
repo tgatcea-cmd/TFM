@@ -6,8 +6,16 @@ import 'package:tfm_app/features/ble/ble_controller.dart';
 import 'package:tfm_app/features/ml_inference/inference_engine.dart';
 import 'package:tfm_app/features/ml_inference/lstm_inference.dart';
 import 'package:tfm_app/features/weather/open_meteo_api.dart';
+import 'package:tfm_app/features/weather/weather_data.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:geolocator/geolocator.dart' hide LocationSettings;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:tfm_app/core/database/db_sync.dart';
+import 'package:tfm_app/core/models/app_settings.dart';
+import 'package:tfm_app/core/models/app_rf_model.dart';
+import 'package:tfm_app/features/location/location_settings.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 /// Central facade that initializes all architectural modules.
 /// Ready to be consumed by a CLI interface or a UI.
@@ -97,10 +105,50 @@ class CliRoutines {
   }
 
   /// Routine: Run local machine learning inference
-  Future<void> runLocalInference(String deviceId) async {
+  Future<Map<String, dynamic>> runLocalInference(
+    String deviceId, {
+    bool forceAllow = false,
+    WeatherData? preloadedWeatherData,
+    bool persistResults = true,
+  }) async {
     print('Starting ML Inference for $deviceId...');
-    await inferenceBridge.runIrrigationRecommendation(deviceId);
-    print('Inference finished. Verdict: ${inferenceBridge.status.value}');
+
+    // --- AGRONOMIC SCHEDULE CHECK (Elevated from Inference Engine) ---
+    final settings = db.getAppSettings();
+    final now = DateTime.now();
+    final h = now.hour;
+    final startH = settings.agronomicDayStart;
+    final endH = settings.agronomicDayEnd;
+
+    final bool isYellowZone = (endH < startH)
+        ? (h >= endH && h < startH)
+        : (h >= endH || h < startH);
+
+    if (isYellowZone && !settings.alwaysForceInference && !forceAllow) {
+      final msg =
+          "Restricted: Yellow Zone (Gathering). Inference allowed only in Green Zone ($startH:00 - $endH:00).";
+      print(msg);
+      inferenceBridge.status = msg;
+      return {
+        'isRestricted': true,
+        'isYellowZone': true,
+        'agronomicStart': startH,
+        'agronomicEnd': endH,
+        'message': msg,
+        'verdict': msg,
+        'minHumidity': null,
+        'minDateMs': null,
+      };
+    }
+    // -----------------------------------------------------------------
+
+    final res = await inferenceBridge.runIrrigationRecommendation(
+      deviceId: deviceId,
+      preloadedWeatherData: preloadedWeatherData,
+      persistResults: persistResults,
+    );
+    print('Inference finished. Verdict: ${inferenceBridge.status}');
+    return res;
   }
 
   void searchNearbyDevices() {
@@ -333,6 +381,36 @@ class CliRoutines {
     final devId = bleService.connectedDevice?.remoteId.str;
     if (devId == null) throw Exception('Device ID is null.');
 
+    // --- AGRONOMIC SCHEDULE CHECK (Protecting BLE Bandwidth) ---
+    final settings = db.getAppSettings();
+    final now = DateTime.now();
+    final h = now.hour;
+    final startH = settings.agronomicDayStart;
+    final endH = settings.agronomicDayEnd;
+
+    final bool isYellowZone = (endH < startH)
+        ? (h >= endH && h < startH)
+        : (h >= endH || h < startH);
+
+    if (isYellowZone && !settings.alwaysForceInference) {
+      final msg =
+          "Restricted: Yellow Zone (Gathering). Inference allowed only in Green Zone ($startH:00 - $endH:00).";
+      print(msg);
+      inferenceBridge.status = msg;
+      return {
+        'isRestricted': true,
+        'isYellowZone': true,
+        'agronomicStart': startH,
+        'agronomicEnd': endH,
+        'message': msg,
+        'raw': null,
+        'verdict': msg,
+        'minHumidity': null,
+        'minDateMs': null,
+      };
+    }
+    // -----------------------------------------------------------
+
     print('Step 1: Reading station status to determine inference mode...');
     final status = await readStationStatus();
     final mode = status?['mode'] as String? ?? 'local';
@@ -340,6 +418,7 @@ class CliRoutines {
 
     String modeMessage = "";
     Object? rawPayload;
+    WeatherData? preloadedWeather;
 
     if (mode == 'forward') {
       // --- FORWARD MODE ---
@@ -352,9 +431,8 @@ class CliRoutines {
         longitude: loc.longitude,
       );
       final refDate = db.getReferenceTime(devId);
-      final weatherData = await client.fetchForecast(
-        referenceDate: refDate,
-      );
+      final weatherData = await client.fetchForecast(referenceDate: refDate);
+      preloadedWeather = weatherData;
 
       db.saveWeatherForecast(devId, weatherData);
 
@@ -431,11 +509,13 @@ class CliRoutines {
     print('Step: Running Random Forest Inference...');
     await runLocalInference(
       devId,
-    ); // Executes inferenceBridge.runIrrigationRecommendation[cite: 7]
-    final verdict = inferenceBridge.status.value;
+      preloadedWeatherData: preloadedWeather,
+      persistResults: true,
+    );
+    final verdict = inferenceBridge.status;
 
     print('Step: Extracting minimum predicted humidity from Local DB...');
-    // Fetch the device directly to iterate over its predictions[cite: 5]
+    // Fetch the device directly to iterate over its predictions
     final savedDevices = db.getSavedDevices();
     final dev = savedDevices.firstWhere(
       (d) => d.deviceIdentifier == devId,
@@ -493,7 +573,29 @@ class CliRoutines {
 
     // 2. Determine telemetry reference timestamp T_ref (end of 48h telemetry window)
     DateTime refDate = db.getReferenceTime(deviceId);
-    double predHum = 0.30;
+
+    // If local DB is empty/cleared, pull cloud telemetry to resolve actual last_telemetry_data timestamp
+    try {
+      final cloudTelemetry = await cloudApi.syncTelemetryPull(deviceId, 0);
+      if (cloudTelemetry.isNotEmpty) {
+        final lastTel = cloudTelemetry.last;
+        if (lastTel is Map) {
+          final ts = (lastTel['tsMs'] ?? lastTel['ts_ms'] ?? lastTel['timestamp']) as int?;
+          if (ts != null) {
+            refDate = DateTime.fromMillisecondsSinceEpoch(ts);
+            print(
+              '[Cloud Emulation RAM Verbose] Resolved T_ref from latest Cloud telemetry record: $refDate',
+            );
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Initialize baseline predHum from saved Local DB predictions if available
+    final localDev = db.findDevice(deviceId);
+    double predHum = (localDev != null && localDev.newPredictions.isNotEmpty)
+        ? (localDev.newPredictions.last.value ?? 0.30)
+        : 0.30;
     bool usedCloudPredictions = false;
 
     // Check Cloud API for existing predictions
@@ -506,21 +608,22 @@ class CliRoutines {
         final lastPred = cloudPreds.last;
         if (lastPred is Map) {
           final val = (lastPred['value'] as num?)?.toDouble();
-          final predTsMs = lastPred['tsMs'] as int?;
+          final predTsMs = (lastPred['tsMs'] ?? lastPred['ts_ms']) as int?;
 
           if (val != null && predTsMs != null) {
-            final predTargetDate = DateTime.fromMillisecondsSinceEpoch(predTsMs);
-            final predRefDate = predTargetDate.subtract(const Duration(hours: 24));
+            final predTargetDate = DateTime.fromMillisecondsSinceEpoch(
+              predTsMs,
+            );
+            final predRefDate = predTargetDate.subtract(
+              const Duration(hours: 24),
+            );
 
-            // Use existing cloud prediction if its refDate is newer than or equal to telemetry refDate
-            if (predRefDate.isAfter(refDate) || predRefDate.isAtSameMomentAs(refDate)) {
-              predHum = val;
-              refDate = predRefDate;
-              usedCloudPredictions = true;
-              print(
-                '[Cloud Emulation RAM Verbose] Using existing newer cloud prediction vector. RefDate=$refDate, TargetDate=$predTargetDate, predHum=$predHum',
-              );
-            }
+            predHum = val;
+            refDate = predRefDate;
+            usedCloudPredictions = true;
+            print(
+              '[Cloud Emulation RAM Verbose] Adopted Cloud prediction vector. RefDate=$refDate, TargetDate=$predTargetDate, predHum=$predHum',
+            );
           }
         }
       }
@@ -548,10 +651,14 @@ class CliRoutines {
               '[Cloud Emulation RAM Verbose] LSTM forecast succeeded in RAM. T_24 predHum=$predHum',
             );
           }
+        } else {
+          print(
+            '[Cloud Emulation RAM Verbose] LSTM forecast could not compute new curve (${lstmRes['message']}). Preserving baseline predHum=$predHum',
+          );
         }
       } catch (e) {
         print(
-          '[Cloud Emulation RAM Verbose] LSTM local forecast execution notice: $e',
+          '[Cloud Emulation RAM Verbose] LSTM local forecast execution notice: $e. Preserving baseline predHum=$predHum',
         );
       }
     }
@@ -615,5 +722,196 @@ class CliRoutines {
   void close() {
     db.close();
     bleService.dispose();
+  }
+
+  // --- FACADE METHODS FOR SCREENS ---
+
+  // App Settings
+  AppSettings getAppSettings() => db.getAppSettings();
+  void saveAppSettings({
+    String? tfmServerScheme,
+    String? tfmServerUrl,
+    int? tfmServerPort,
+    String? tfmServerApiKey,
+    int? agronomicDayStart,
+    int? agronomicDayEnd,
+  }) {
+    db.saveAppSettings(
+      tfmServerScheme: tfmServerScheme,
+      tfmServerUrl: tfmServerUrl,
+      tfmServerPort: tfmServerPort,
+      tfmServerApiKey: tfmServerApiKey,
+      agronomicDayStart: agronomicDayStart,
+      agronomicDayEnd: agronomicDayEnd,
+    );
+  }
+
+  // Location Settings
+  LocationSettings getLocationSettings() => db.getLocationSettings();
+  void saveLocationSettings(double lat, double lon, bool isGps) {
+    db.saveLocationSettings(lat, lon, isGps);
+  }
+
+  // RF Models
+  RfModel? getActiveRfModel() => db.getActiveRfModel();
+  List<RfModel> getSavedRfModels() => db.getSavedRfModels();
+  void setActiveRfModel(String modelId) => db.setActiveRfModel(modelId);
+  void deleteRfModel(String modelId) => db.deleteRfModel(modelId);
+  void saveRfModel(Map<String, dynamic> metadata, String jsonPayload) =>
+      db.saveRfModel(metadata, jsonPayload);
+
+  // Cloud API Methods
+  Future<List<Map<String, dynamic>>> getAvailableRfModels() =>
+      cloudApi.getAvailableRfModels();
+  Future<String> downloadRfModel(String mId) => cloudApi.downloadRfModel(mId);
+  Future<List<dynamic>> getRegisteredCloudDevices() =>
+      cloudApi.getRegisteredDevices();
+  void updateCloudEndpoint(String scheme, String url, int port) =>
+      cloudApi.updateEndpoint(scheme, url, port);
+  void setCloudApiKey(String key) => cloudApi.apiKey = key;
+  String get cloudBaseUrl => cloudApi.baseUrl;
+
+  // Sync Service
+  Future<void> syncCloudAndLocal() async {
+    final syncService = SyncService(db: db, api: cloudApi);
+    await syncService.syncDirtyDevices();
+    await syncService.discoverAndSyncCloudDevices();
+  }
+
+  Future<void> syncCloudTelemetry(String deviceIdentifier, int latestTs) async {
+    final syncService = SyncService(db: db, api: cloudApi);
+    await syncService.pullTelemetry(deviceIdentifier, latestTs);
+  }
+
+  // Network checks
+  Future<bool> testCloudConnection() async {
+    return await cloudApi.testConnection();
+  }
+
+  Future<Map<String, dynamic>> testCloudPing() async {
+    final settings = getAppSettings();
+    final sw = Stopwatch()..start();
+
+    for (final path in ['/health', '/api/ping']) {
+      try {
+        final res = await http
+            .get(
+              Uri.parse(
+                '${settings.tfmServerScheme}://${settings.tfmServerUrl}:${settings.tfmServerPort}$path',
+              ),
+              headers: {
+                if (settings.tfmServerApiKey.isNotEmpty)
+                  'Authorization': 'Bearer ${settings.tfmServerApiKey}',
+              },
+            )
+            .timeout(const Duration(seconds: 3));
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body);
+          return {
+            'success': true,
+            'status': data['status']?.toString().toUpperCase() ?? 'OK',
+            'ms': sw.elapsedMilliseconds,
+          };
+        }
+      } catch (_) {}
+    }
+    return {'success': false};
+  }
+
+  Future<Map<String, dynamic>> testWeatherConnection() async {
+    try {
+      final res = await http
+          .get(
+            Uri.parse(
+              'https://api.open-meteo.com/v1/forecast?latitude=40.4168&longitude=-3.7038&current_weather=true',
+            ),
+          )
+          .timeout(const Duration(seconds: 4));
+      return {'success': res.statusCode == 200, 'statusCode': res.statusCode};
+    } catch (_) {
+      return {'success': false, 'statusCode': 0};
+    }
+  }
+
+  // BLE Secure Storage
+  Future<String?> getBleSecret(String id) async {
+    return await const FlutterSecureStorage().read(key: 'ble_secret_$id');
+  }
+
+  Future<void> saveBleSecret(String id, String name, String secret) async {
+    saveDeviceBasic(id, name);
+    await const FlutterSecureStorage().write(
+      key: 'ble_secret_$id',
+      value: secret,
+    );
+  }
+
+  // BLE Service properties & methods
+  void stopBleScan() => bleService.stopScan();
+  void disconnectBle() => bleService.disconnect();
+  bool get isBleConnected => bleService.isConnected;
+  BluetoothDevice? get connectedBleDevice => bleService.connectedDevice;
+  Stream<List<ScanResult>> get bleScanResults => bleService.scanResults;
+  Stream<Object> get bleDataStream => bleService.dataStream;
+  Future<void> syncBleTime(int offset) => bleService.syncTime(offset);
+  void forceBleMock() => bleService.forceMock();
+  void clearBleStorage() => bleService.clearStorage();
+
+  // Database facade
+  void saveDeviceBasic(String id, String name) => db.saveDeviceBasic(id, name);
+  List<Device> getSavedDevices() => db.getSavedDevices();
+
+  // Inference facade
+  String get inferenceVerdict => inferenceBridge.status;
+
+  /// Routine: Push locally set coordinates to the Cloud API
+  Future<void> pushStationLocationToCloud(String deviceId, double lat, double lon) async {
+    final settings = db.getAppSettings();
+    
+    // Using the unified /api/devices/:id/location endpoint the backend team provided
+    final url = Uri.parse(
+      '${settings.tfmServerScheme}://${settings.tfmServerUrl}:${settings.tfmServerPort}/api/devices/$deviceId/location'
+    );
+
+    print('Pushing location update for $deviceId to Cloud...');
+
+    try {
+      final response = await http.put(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          if (settings.tfmServerApiKey.isNotEmpty)
+            'Authorization': 'Bearer ${settings.tfmServerApiKey}',
+        },
+        body: jsonEncode({
+          'lat': lat,
+          'lon': lon,
+        }),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        print('Successfully updated Cloud location for $deviceId.');
+        
+        // Update the local Isar database so it doesn't wait for the next sync
+        final devices = db.getSavedDevices();
+        final dev = devices.firstWhere(
+          (d) => d.deviceIdentifier == deviceId, 
+          orElse: () => Device()
+        );
+        
+        if (dev.deviceIdentifier.isNotEmpty) {
+           dev.latitude = lat;
+           dev.longitude = lon;
+           // Assuming you have a method to save/update the device in Isar:
+           // db.saveDevice(dev); 
+        }
+      } else {
+        print('Failed to update Cloud location. Status: ${response.statusCode} Body: ${response.body}');
+        throw Exception('Cloud location update rejected by server.');
+      }
+    } catch (e) {
+      print('Network error pushing location for $deviceId: $e');
+      rethrow;
+    }
   }
 }

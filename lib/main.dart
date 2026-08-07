@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:tfm_app/cli_routines.dart';
 import 'package:tfm_app/core/theme/app_styles.dart';
-import 'package:tfm_app/l10n/app_localizations.dart';
+import 'package:tfm_app/core/utils/l10n/app_localizations.dart';
 import 'package:tfm_app/screens/home_screen.dart';
 import 'package:tfm_app/screens/nearby_screen.dart';
 import 'package:tfm_app/screens/config_screen.dart';
-import 'package:tfm_app/screens/local_db_screen.dart';
-import 'package:tfm_app/screens/cloud_screen.dart';
+import 'package:tfm_app/screens/storage_screen.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 void main() async {
@@ -19,7 +19,7 @@ void main() async {
   runApp(
     MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: AppStyles.darkTheme, // Apply the centralized theme here
+      theme: AppStyles.darkTheme, 
       localizationsDelegates: const [
         AppLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
@@ -43,13 +43,11 @@ class DashboardShell extends StatefulWidget {
   State<DashboardShell> createState() => _DashboardShellState();
 }
 
-
 class _DashboardShellState extends State<DashboardShell> {
   int _selectedIndex = 0;
   late String _statusMsg = AppLocalizations.of(context)!.mainStatusReady;
   bool _isStatusVisible = true;
 
-  // Listeners for BLE state, just like your CLI
   StreamSubscription<bool>? _connSub;
 
   @override
@@ -58,7 +56,9 @@ class _DashboardShellState extends State<DashboardShell> {
     _connSub = widget.routines.bleService.connectionStateStream.listen((isConnected) {
       if (mounted) {
         setState(() {
-          _statusMsg = isConnected ? AppLocalizations.of(context)!.mainStatusBleConnected : AppLocalizations.of(context)!.mainStatusBleDisconnected;
+          _statusMsg = isConnected 
+              ? AppLocalizations.of(context)!.mainStatusBleConnected 
+              : AppLocalizations.of(context)!.mainStatusBleDisconnected;
         });
       }
     });
@@ -75,27 +75,28 @@ class _DashboardShellState extends State<DashboardShell> {
   }
 
   Widget _buildCurrentScreen() {
-    switch (_selectedIndex) {
-      case 0:
-        return HomeScreen(routines: widget.routines, onStatusChange: _setStatus);
-      case 1:
-        return NearbyScreen(routines: widget.routines, onStatusChange: _setStatus, onBack: () {  },);
-      case 2:
-        return LocalDbScreen(routines: widget.routines, onStatusChange: _setStatus, onBack: () {  },);
-      case 3:
-        return CloudScreen(routines: widget.routines, onStatusChange: _setStatus, onBack: () {  },);
-      case 4:
-        return ConfigScreen(routines: widget.routines, onStatusChange: _setStatus, onBack: () {  },);
-      default:
-        return Center(child: Text(AppLocalizations.of(context)!.mainScreenError));
+    final screens = kIsWeb
+        ? [
+            StorageScreen(routines: widget.routines, onStatusChange: _setStatus, onBack: () {}),
+            ConfigScreen(routines: widget.routines, onStatusChange: _setStatus, onBack: () {}),
+          ]
+        : [
+            HomeScreen(routines: widget.routines, onStatusChange: _setStatus),
+            NearbyScreen(routines: widget.routines, onStatusChange: _setStatus, onBack: () {}),
+            StorageScreen(routines: widget.routines, onStatusChange: _setStatus, onBack: () {}),
+            ConfigScreen(routines: widget.routines, onStatusChange: _setStatus, onBack: () {}),
+          ];
+
+    if (_selectedIndex >= screens.length) {
+      _selectedIndex = 0;
     }
+    return screens[_selectedIndex];
   }
 
   Widget _buildMainContent() {
     return Column(
       children: [
         Expanded(child: _buildCurrentScreen()),
-        // Togglable Global Status Bar
         if (_isStatusVisible)
           Container(
             width: double.infinity,
@@ -169,12 +170,12 @@ class _DashboardShellState extends State<DashboardShell> {
   Widget build(BuildContext context) {
     final isDesktop = MediaQuery.of(context).size.width >= 600;
 
+    // We reuse 'localDbTab' localization key for the unified storage view, or you can update app_en.arb later.
     return Scaffold(
       body: SafeArea(
         child: isDesktop
             ? Row(
                 children: [
-                  // The visual replacement for your Global Keystrokes
                   NavigationRail(
                     selectedIndex: _selectedIndex,
                     onDestinationSelected: (int index) {
@@ -183,16 +184,19 @@ class _DashboardShellState extends State<DashboardShell> {
                       });
                     },
                     labelType: NavigationRailLabelType.all,
-                    destinations: [
-                      NavigationRailDestination(icon: const Icon(Icons.dashboard), label: Text(AppLocalizations.of(context)?.homeTab ?? 'Home')),
-                      NavigationRailDestination(icon: const Icon(Icons.bluetooth_searching), label: Text(AppLocalizations.of(context)?.nearbyTab ?? 'Nearby')),
-                      NavigationRailDestination(icon: const Icon(Icons.storage), label: Text(AppLocalizations.of(context)?.localDbTab ?? 'Local DB')),
-                      NavigationRailDestination(icon: const Icon(Icons.cloud_sync), label: Text(AppLocalizations.of(context)?.cloudTab ?? 'Cloud')),
-                      NavigationRailDestination(icon: const Icon(Icons.settings), label: Text(AppLocalizations.of(context)?.configTab ?? 'Config')),
-                    ],
+                    destinations: kIsWeb
+                        ? [
+                            NavigationRailDestination(icon: const Icon(Icons.storage), label: Text(AppLocalizations.of(context)?.localDbTab ?? 'Storage')),
+                            NavigationRailDestination(icon: const Icon(Icons.settings), label: Text(AppLocalizations.of(context)?.configTab ?? 'Config')),
+                          ]
+                        : [
+                            NavigationRailDestination(icon: const Icon(Icons.dashboard), label: Text(AppLocalizations.of(context)?.homeTab ?? 'Home')),
+                            NavigationRailDestination(icon: const Icon(Icons.bluetooth_searching), label: Text(AppLocalizations.of(context)?.nearbyTab ?? 'Nearby')),
+                            NavigationRailDestination(icon: const Icon(Icons.storage), label: Text(AppLocalizations.of(context)?.localDbTab ?? 'Storage')),
+                            NavigationRailDestination(icon: const Icon(Icons.settings), label: Text(AppLocalizations.of(context)?.configTab ?? 'Config')),
+                          ],
                   ),
                   const VerticalDivider(thickness: 1, width: 1),
-                  // Main Content Area
                   Expanded(child: _buildMainContent()),
                 ],
               )
@@ -206,13 +210,17 @@ class _DashboardShellState extends State<DashboardShell> {
               backgroundColor: AppStyles.surfaceColor,
               selectedItemColor: AppStyles.successAccent,
               unselectedItemColor: AppStyles.textMuted,
-              items: [
-                BottomNavigationBarItem(icon: const Icon(Icons.dashboard), label: AppLocalizations.of(context)?.homeTab ?? 'Home'),
-                BottomNavigationBarItem(icon: const Icon(Icons.bluetooth_searching), label: AppLocalizations.of(context)?.nearbyTab ?? 'Nearby'),
-                BottomNavigationBarItem(icon: const Icon(Icons.storage), label: AppLocalizations.of(context)?.localDbTab ?? 'Local DB'),
-                BottomNavigationBarItem(icon: const Icon(Icons.cloud_sync), label: AppLocalizations.of(context)?.cloudTab ?? 'Cloud'),
-                BottomNavigationBarItem(icon: const Icon(Icons.settings), label: AppLocalizations.of(context)?.configTab ?? 'Config'),
-              ],
+              items: kIsWeb
+                  ? [
+                      BottomNavigationBarItem(icon: const Icon(Icons.storage), label: AppLocalizations.of(context)?.localDbTab ?? 'Storage'),
+                      BottomNavigationBarItem(icon: const Icon(Icons.settings), label: AppLocalizations.of(context)?.configTab ?? 'Config'),
+                    ]
+                  : [
+                      BottomNavigationBarItem(icon: const Icon(Icons.dashboard), label: AppLocalizations.of(context)?.homeTab ?? 'Home'),
+                      BottomNavigationBarItem(icon: const Icon(Icons.bluetooth_searching), label: AppLocalizations.of(context)?.nearbyTab ?? 'Nearby'),
+                      BottomNavigationBarItem(icon: const Icon(Icons.storage), label: AppLocalizations.of(context)?.localDbTab ?? 'Storage'),
+                      BottomNavigationBarItem(icon: const Icon(Icons.settings), label: AppLocalizations.of(context)?.configTab ?? 'Config'),
+                    ],
             )
           : null,
     );

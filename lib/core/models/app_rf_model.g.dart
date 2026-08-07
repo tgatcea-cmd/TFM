@@ -13,9 +13,9 @@ extension GetRfModelCollection on Isar {
   IsarCollection<RfModel> get rfModels => this.collection();
 }
 
-const RfModelSchema = CollectionSchema(
+final RfModelSchema = CollectionSchema(
   name: r'RfModel',
-  id: -4323257707417377830,
+  id: int.parse('-4323257707417377830'),
   properties: {
     r'cropName': PropertySchema(
       id: 0,
@@ -49,7 +49,7 @@ const RfModelSchema = CollectionSchema(
   idName: r'id',
   indexes: {
     r'modelId': IndexSchema(
-      id: -1910745378942518156,
+      id: int.parse('-1910745378942518156'),
       name: r'modelId',
       unique: true,
       replace: true,

@@ -80,13 +80,16 @@ class ApiClient {
         print('[CloudAPI Verbose] Response Body: ${res.body}');
         if (res.statusCode == 200) {
           final body = jsonDecode(res.body);
-          if (body is Map)
+          if (body is Map) {
             return body['picos'] ??
                 body['devices'] ??
                 body['stations'] ??
                 body['records'] ??
                 [];
-          if (body is List) return body;
+          }
+          if (body is List) {
+            return body;
+          }
         }
       } catch (e) {
         print('[CloudAPI Verbose] GET $uri failed: $e');
@@ -139,8 +142,9 @@ class ApiClient {
       headers: _headers,
       body: jsonEncode({'records': records}),
     );
-    if (res.statusCode != 200)
+    if (res.statusCode != 200) {
       throw Exception('Push failed (${res.statusCode}): ${res.body}');
+    }
   }
 
   /// POST /api/predictions -> Bulk prediction records (Section 1.4.1)
@@ -150,10 +154,11 @@ class ApiClient {
       headers: _headers,
       body: jsonEncode({'records': records}),
     );
-    if (res.statusCode != 200)
+    if (res.statusCode != 200) {
       throw Exception(
         'Prediction push failed (${res.statusCode}): ${res.body}',
       );
+    }
   }
 
   /// POST /api/emulate/recommendation -> Triggers server-side recommendation emulation (Section 1.5)
@@ -209,8 +214,9 @@ class ApiClient {
     final res = await http
         .get(Uri.parse('$baseUrl/files'), headers: _headers)
         .timeout(const Duration(seconds: 4));
-    if (res.statusCode == 200)
+    if (res.statusCode == 200) {
       return List<String>.from(jsonDecode(res.body)['files'] ?? []);
+    }
     throw Exception('List files failed (${res.statusCode}): ${res.body}');
   }
 
@@ -236,8 +242,9 @@ class ApiClient {
           body: bytes,
         )
         .timeout(const Duration(seconds: 5));
-    if (res.statusCode != 200)
+    if (res.statusCode != 200) {
       throw Exception('Upload failed (${res.statusCode}): ${res.body}');
+    }
   }
 
   Future<void> deleteSharedFile(String name) async {
@@ -247,8 +254,9 @@ class ApiClient {
     final res = await http
         .post(uri, headers: _headers..['X-Confirm-Filename'] = name)
         .timeout(const Duration(seconds: 4));
-    if (res.statusCode != 200)
+    if (res.statusCode != 200) {
       throw Exception('Delete failed (${res.statusCode}): ${res.body}');
+    }
   }
 
   // ponytail: fast multi-endpoint ping test with strict 3s timeout per probe

@@ -8,7 +8,9 @@ import 'package:path_provider/path_provider.dart';
 
 import 'package:tfm_app/cli_routines.dart';
 import 'package:tfm_app/core/theme/app_styles.dart';
-import 'package:tfm_app/l10n/app_localizations.dart';
+import 'package:tfm_app/core/utils/date_formatter.dart';
+import 'package:tfm_app/core/utils/l10n/app_localizations.dart';
+import 'package:tfm_app/screens/widgets/inference_card.dart';
 
 class HomeScreen extends StatefulWidget {
   final CliRoutines routines;
@@ -132,9 +134,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String _formatDate(int ms) {
-    final date = DateTime.fromMillisecondsSinceEpoch(ms);
-    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year} '
-        '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}:${date.second.toString().padLeft(2, '0')}';
+    return AppDateFormatter.format(ms, showSeconds: true);
   }
 
   Future<void> _fetchDeviceStatus() async {
@@ -226,6 +226,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildDebugPanel(AppLocalizations l10n) {
+    final isLowMoistureActive = widget.routines.inferenceBridge.injectLowMoisture;
+
     return Container(
       margin: const EdgeInsets.only(top: AppStyles.spaceLG, bottom: AppStyles.spaceMD),
       padding: const EdgeInsets.all(AppStyles.spaceMD),
@@ -257,6 +259,34 @@ class _HomeScreenState extends State<HomeScreen> {
             spacing: AppStyles.spaceSM,
             runSpacing: AppStyles.spaceSM,
             children: [
+              // Inject Low Moisture Toggle Button
+              ElevatedButton.icon(
+                icon: Icon(isLowMoistureActive ? Icons.water_drop : Icons.water_drop_outlined),
+                label: Text(isLowMoistureActive ? 'Low Moisture: ON (15%)' : 'Inject Low Moisture'),
+                style: ElevatedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  backgroundColor: isLowMoistureActive ? AppStyles.errorAccent : AppStyles.techSecondaryAccent,
+                ),
+                onPressed: () async {
+                  setState(() {
+                    widget.routines.inferenceBridge.injectLowMoisture = !isLowMoistureActive;
+                  });
+                  final devId = widget.routines.bleService.connectedDevice?.remoteId.str ??
+                      (widget.routines.db.getSavedDevices().isNotEmpty
+                          ? widget.routines.db.getSavedDevices().first.deviceIdentifier
+                          : null);
+                  if (devId != null) {
+                    await _executeAction(
+                      'triggerStationInference',
+                      () => widget.routines.runLocalInference(
+                        devId,
+                        forceAllow: true,
+                        persistResults: false,
+                      ),
+                    );
+                  }
+                },
+              ),
               // Mock Data Button - High Contrast Amber
               ElevatedButton.icon(
                 icon: const Icon(Icons.science),
@@ -287,113 +317,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  String _translateVerdict(String v, AppLocalizations l10n) {
-    if (v.contains('IRRIGATE: Soil moisture threshold drop predicted')) return l10n.verdictLstmIrrigate;
-    if (v.contains('HEALTHY: Soil moisture level sufficient')) return l10n.verdictLstmHealthy;
-    
-    // Updated translation mappings based on the new logic
-    if (v.contains('IRRIGATION AVOIDABLE:')) return l10n.verdictRfAvoidable;
-    if (v.contains('IRRIGATION NEEDED:')) return l10n.verdictRfNeeded;
-    
-    if (v.startsWith('Verdict: ')) {
-      final sub = v.substring(9);
-      return 'Verdict: ${_translateVerdict(sub, l10n)}';
-    }
-    if (v.startsWith('Irrigation Avoidable')) return v.replaceFirst('Irrigation Avoidable', l10n.verdictEmuAvoidable);
-    if (v.startsWith('Irrigation Needed')) return v.replaceFirst('Irrigation Needed', l10n.verdictEmuNeeded);
-    return v;
-  }
-
   Widget _buildPredictionCard(AppLocalizations l10n) {
-    if (_predictionStats == null) return const SizedBox.shrink();
-
-    final verdict = _predictionStats!['verdict'] as String? ?? 'UNKNOWN';
-    final minHum = _predictionStats!['minHumidity'] as double?;
-    final minTs = _predictionStats!['minDateMs'] as int?;
-
-    final settings = widget.routines.db.getAppSettings();
-    final now = DateTime.now();
-    final h = now.hour;
-    final startH = settings.agronomicDayStart;
-    final endH = settings.agronomicDayEnd;
-
-    final bool isYellowZone = (endH < startH) 
-        ? (h >= endH && h < startH)
-        : (h >= endH || h < startH);
-
-    // FIX: Color trigger relies explicitly on 'NEEDED' or the LSTM 'IRRIGATE:' text
-    final bool isIrrigate = verdict.contains('NEEDED') || verdict.contains('IRRIGATE:');
-
-    final color = isYellowZone
-        ? AppStyles.warningAccent
-        : (isIrrigate ? AppStyles.waterActionAccent : AppStyles.successAccent);
-
-    final icon = isYellowZone
-        ? Icons.warning_amber_rounded
-        : (isIrrigate ? Icons.water_drop : Icons.eco);
-
-    int? effectiveMinTs = minTs;
-    if (effectiveMinTs != null) {
-      final dt = DateTime.fromMillisecondsSinceEpoch(effectiveMinTs);
-      if (dt.day == now.day && dt.month == now.month && dt.year == now.year) {
-        effectiveMinTs += 86400000; // Target following day
-      }
-    }
-
-    return Container(
-      margin: const EdgeInsets.only(top: AppStyles.spaceMD),
-      padding: const EdgeInsets.all(AppStyles.spaceMD),
-      decoration: AppStyles.aiRecommendationCard(color),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: color, size: 28),
-              const SizedBox(width: AppStyles.spaceSM),
-              Expanded(
-                child: Text(
-                  isYellowZone ? l10n.homeAiTitleYellow : l10n.homeAiTitle,
-                  style: AppStyles.sectionTitle.copyWith(color: color),
-                ),
-              ),
-            ],
-          ),
-          if (isYellowZone) ...[
-            const SizedBox(height: AppStyles.spaceXS),
-            Text(
-              l10n.homeAiYellowWarning(endH, startH),
-              style: AppStyles.captionStatus.copyWith(color: AppStyles.warningAccent),
-            ),
-          ],
-          const SizedBox(height: AppStyles.spaceSM),
-          Text(
-            _translateVerdict(verdict, l10n),
-            style: AppStyles.sectionTitle.copyWith(fontSize: 18),
-          ),
-          const SizedBox(height: AppStyles.spaceSM),
-          const Divider(color: AppStyles.dividerColor),
-          const SizedBox(height: AppStyles.spaceSM),
-          if (minHum != null && effectiveMinTs != null)
-            Row(
-              children: [
-                const Icon(Icons.show_chart, color: AppStyles.textSecondary, size: 16),
-                const SizedBox(width: AppStyles.spaceSM),
-                Expanded(
-                  child: Text(
-                    l10n.homeAiMinHum((minHum * 100).toStringAsFixed(1), _formatDate(effectiveMinTs)),
-                    style: AppStyles.consoleBody,
-                  ),
-                ),
-              ],
-            )
-          else
-            Text(
-              l10n.homeAiNoData,
-              style: AppStyles.bodyText,
-            ),
-        ],
-      ),
+    return InferenceCard(
+      data: _predictionStats,
+      l10n: l10n,
+      formatDate: _formatDate,
     );
   }
 

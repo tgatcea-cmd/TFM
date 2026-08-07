@@ -1,6 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'app_database.dart';
-import 'package:isar_community/isar.dart';
 import 'package:tfm_app/core/network/cloud_api.dart';
 import 'package:tfm_app/core/models/device.dart';
 
@@ -11,7 +12,7 @@ class SyncService {
   SyncService({required this.db, required this.api});
 
   Future<void> syncDirtyDevices() async {
-    final dirtyDevices = await db.isar.devices.filter().isSyncedEqualTo(false).findAll();
+    final dirtyDevices = await db.getDirtyDevices();
     if (dirtyDevices.isEmpty) return;
 
     final locSettings = db.getLocationSettings();
@@ -25,6 +26,18 @@ class SyncService {
       if (d.latitude == null || d.longitude == null) {
         d.latitude ??= locSettings.latitude;
         d.longitude ??= locSettings.longitude;
+      }
+
+      // If local device has coordinates but cloud record does not, push coordinates first
+      try {
+        final cloudStatus = await api.getStationStatus(d.deviceIdentifier);
+        final cloudLat = cloudStatus['lat'] ?? cloudStatus['latitude'];
+        final cloudLon = cloudStatus['lon'] ?? cloudStatus['longitude'];
+        if (d.latitude != null && d.longitude != null && (cloudLat == null || cloudLon == null)) {
+          await pushStationLocationToCloud(d.deviceIdentifier, d.latitude!, d.longitude!);
+        }
+      } catch (e) {
+        print("Failed to verify or push location to cloud for ${d.deviceIdentifier}: $e");
       }
 
       // Push station metadata to cloud server
@@ -75,16 +88,47 @@ class SyncService {
       }
 
       // Mark as synced locally
-      await db.isar.writeTxn(() async {
-        for (var d in dirtyDevices) {
-          d.isSynced = true;
-          await db.isar.devices.put(d);
-        }
-      });
+      for (var d in dirtyDevices) {
+        d.isSynced = true;
+      }
+      await db.saveDevices(dirtyDevices);
       print("Sync complete.");
     } catch (e) {
       print("Sync failed: $e");
       rethrow;
+    }
+  }
+
+  /// Routine: Push locally set coordinates to the Cloud API
+  Future<void> pushStationLocationToCloud(String deviceId, double lat, double lon) async {
+    final settings = db.getAppSettings();
+    final url = Uri.parse(
+      '${settings.tfmServerScheme}://${settings.tfmServerUrl}:${settings.tfmServerPort}/api/devices/$deviceId/location'
+    );
+
+    print('Pushing location update for $deviceId to Cloud...');
+
+    try {
+      final response = await http.put(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          if (settings.tfmServerApiKey.isNotEmpty)
+            'Authorization': 'Bearer ${settings.tfmServerApiKey}',
+        },
+        body: jsonEncode({
+          'lat': lat,
+          'lon': lon,
+        }),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        print('Successfully updated Cloud location for $deviceId.');
+      } else {
+        print('Failed to update Cloud location for $deviceId: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error updating Cloud location for $deviceId: $e');
     }
   }
 
@@ -99,8 +143,12 @@ class SyncService {
       final List<HistoricValue> parsedValues = [];
       for (var record in newRecords) {
         if (record is Map) {
+          int? ts = record['tsMs'] as int? ?? record['ts_ms'] as int? ?? record['timestamp'] as int?;
+          if (ts != null && ts < 100000000000) {
+            ts = ts * 1000;
+          }
           final hv = HistoricValue()
-            ..tsMs = record['tsMs'] as int?
+            ..tsMs = ts
             ..value = (record['value'] as num?)?.toDouble()
             ..depthCm = (record['depthCm'] as num?)?.toDouble()
             ..kind = 'soil_moisture'; // Assuming soil moisture if not specified
@@ -133,8 +181,12 @@ class SyncService {
       final List<Prediction> parsedPreds = [];
       for (var record in newRecords) {
         if (record is Map) {
+          int? ts = record['tsMs'] as int? ?? record['ts_ms'] as int? ?? record['timestamp'] as int?;
+          if (ts != null && ts < 100000000000) {
+            ts = ts * 1000;
+          }
           final p = Prediction()
-            ..tsMs = record['tsMs'] as int?
+            ..tsMs = ts
             ..value = (record['value'] as num?)?.toDouble()
             ..depthCm = (record['depthCm'] as num?)?.toDouble()
             ..kind = record['kind'] as String? ?? 'prediction'

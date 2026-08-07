@@ -10,30 +10,37 @@ import 'package:tfm_app/core/models/app_rf_model.dart';
 class DatabaseService {
   late final Isar isar;
 
+  // Web Fallbacks
+  late AppSettings _webSettings;
+  final List<Device> _webDevices = [];
+  final List<RfModel> _webRfModels = [];
+
   Future<void> init() async {
     if (!kIsWeb) {
       try {
         await Isar.initializeIsarCore(download: true);
       } catch (_) {}
-    }
 
-    String dirPath = '.';
-    try {
-      final dir = await getApplicationDocumentsDirectory();
-      dirPath = dir.path;
-    } catch (_) {}
+      String dirPath = '.';
+      try {
+        final dir = await getApplicationDocumentsDirectory();
+        dirPath = dir.path;
+      } catch (_) {}
 
-    isar = await Isar.open([
-      DeviceSchema,
-      AppSettingsSchema,
-      RfModelSchema,
-    ], directory: dirPath);
+      isar = await Isar.open([
+        DeviceSchema,
+        AppSettingsSchema,
+        RfModelSchema,
+      ], directory: dirPath);
 
-    // Initialize default settings if missing
-    if (isar.appSettings.countSync() == 0) {
-      isar.writeTxnSync(() {
-        isar.appSettings.putSync(AppSettings());
-      });
+      // Initialize default settings if missing
+      if (isar.appSettings.countSync() == 0) {
+        isar.writeTxnSync(() {
+          isar.appSettings.putSync(AppSettings());
+        });
+      }
+    } else {
+      _webSettings = AppSettings();
     }
   }
 
@@ -41,6 +48,16 @@ class DatabaseService {
   Future<void> saveDevice(Device device) async {
     device.updatedAt = DateTime.now();
     device.isSynced = false;
+
+    if (kIsWeb) {
+      final idx = _webDevices.indexWhere((d) => d.deviceIdentifier == device.deviceIdentifier);
+      if (idx != -1) {
+        _webDevices[idx] = device;
+      } else {
+        _webDevices.add(device);
+      }
+      return;
+    }
 
     await isar.writeTxn(() async {
       final existing = await isar.devices
@@ -59,6 +76,33 @@ class DatabaseService {
     double? lon,
     bool isFromCloud = false,
   }) {
+    if (kIsWeb) {
+      final existingIdx = _webDevices.indexWhere((d) => d.deviceIdentifier == id);
+      if (existingIdx != -1) {
+        final existing = _webDevices[existingIdx];
+        final isGenericExisting =
+            existing.name == "Unknown Station" ||
+            existing.name == id ||
+            existing.name.startsWith("Pico ");
+        if (isGenericExisting && name.isNotEmpty) {
+          existing.name = name;
+        }
+        if (lat != null) existing.latitude = lat;
+        if (lon != null) existing.longitude = lon;
+        if (isFromCloud) existing.isSynced = true;
+      } else {
+        final d = Device()
+          ..deviceIdentifier = id
+          ..name = name
+          ..latitude = lat
+          ..longitude = lon
+          ..handshakePassword = ''
+          ..isSynced = isFromCloud;
+        _webDevices.add(d);
+      }
+      return;
+    }
+
     isar.writeTxnSync(() {
       final existing = isar.devices
           .where()
@@ -90,9 +134,8 @@ class DatabaseService {
     });
   }
 
-  // Backwards compatibility methods for main.dart
-
   AppSettings getAppSettings() {
+    if (kIsWeb) return _webSettings;
     return isar.appSettings.getSync(1) ?? AppSettings();
   }
 
@@ -111,6 +154,32 @@ class DatabaseService {
     int? agronomicDayStart,
     int? agronomicDayEnd,
   }) {
+    if (kIsWeb) {
+      final s = _webSettings;
+      if (isFirstTime != null) s.isFirstTime = isFirstTime;
+      if (themeMode != null) s.themeMode = themeMode;
+      if (tfmServerScheme != null) s.tfmServerScheme = tfmServerScheme;
+      if (tfmServerUrl != null) s.tfmServerUrl = tfmServerUrl;
+      if (tfmServerPort != null) s.tfmServerPort = tfmServerPort;
+      if (tfmServerApiKey != null) s.tfmServerApiKey = tfmServerApiKey;
+      if (syncScheduleHours != null) s.syncScheduleHours = syncScheduleHours;
+      if (selectedTfliteModel != null) {
+        s.selectedTfliteModel = selectedTfliteModel;
+      }
+      if (invertModelOutput != null) {
+        s.invertModelOutput = invertModelOutput;
+      }
+      if (permitOpenMeteoFill != null) {
+        s.permitOpenMeteoFill = permitOpenMeteoFill;
+      }
+      if (alwaysForceInference != null) {
+        s.alwaysForceInference = alwaysForceInference;
+      }
+      if (agronomicDayStart != null) s.agronomicDayStart = agronomicDayStart;
+      if (agronomicDayEnd != null) s.agronomicDayEnd = agronomicDayEnd;
+      return;
+    }
+
     isar.writeTxnSync(() {
       final s = getAppSettings();
       if (isFirstTime != null) s.isFirstTime = isFirstTime;
@@ -120,13 +189,18 @@ class DatabaseService {
       if (tfmServerPort != null) s.tfmServerPort = tfmServerPort;
       if (tfmServerApiKey != null) s.tfmServerApiKey = tfmServerApiKey;
       if (syncScheduleHours != null) s.syncScheduleHours = syncScheduleHours;
-      if (selectedTfliteModel != null)
+      if (selectedTfliteModel != null) {
         s.selectedTfliteModel = selectedTfliteModel;
-      if (invertModelOutput != null) s.invertModelOutput = invertModelOutput;
-      if (permitOpenMeteoFill != null)
+      }
+      if (invertModelOutput != null) {
+        s.invertModelOutput = invertModelOutput;
+      }
+      if (permitOpenMeteoFill != null) {
         s.permitOpenMeteoFill = permitOpenMeteoFill;
-      if (alwaysForceInference != null)
+      }
+      if (alwaysForceInference != null) {
         s.alwaysForceInference = alwaysForceInference;
+      }
       if (agronomicDayStart != null) s.agronomicDayStart = agronomicDayStart;
       if (agronomicDayEnd != null) s.agronomicDayEnd = agronomicDayEnd;
       isar.appSettings.putSync(s);
@@ -139,6 +213,13 @@ class DatabaseService {
   }
 
   void saveLocationSettings(double lat, double lon, bool isGps) {
+    if (kIsWeb) {
+      final s = _webSettings;
+      s.manualLat = lat;
+      s.manualLon = lon;
+      s.isGpsEnabled = isGps;
+      return;
+    }
     isar.writeTxnSync(() {
       final s = getAppSettings();
       s.manualLat = lat;
@@ -154,6 +235,12 @@ class DatabaseService {
   }
 
   void saveGpsConfig(double lat, double lon) {
+    if (kIsWeb) {
+      final s = _webSettings;
+      s.gpsLat = lat;
+      s.gpsLon = lon;
+      return;
+    }
     isar.writeTxnSync(() {
       final s = getAppSettings();
       s.gpsLat = lat;
@@ -167,6 +254,10 @@ class DatabaseService {
   }
 
   void saveMinHumidity(double value) {
+    if (kIsWeb) {
+      _webSettings.minHumidity = value;
+      return;
+    }
     isar.writeTxnSync(() {
       final s = getAppSettings();
       s.minHumidity = value;
@@ -175,10 +266,15 @@ class DatabaseService {
   }
 
   List<Device> getSavedDevices() {
+    if (kIsWeb) return _webDevices;
     return isar.devices.where().findAllSync();
   }
 
   void deleteDevice(String id) {
+    if (kIsWeb) {
+      _webDevices.removeWhere((d) => d.deviceIdentifier == id);
+      return;
+    }
     isar.writeTxnSync(() {
       final dev = isar.devices
           .where()
@@ -197,6 +293,60 @@ class DatabaseService {
     List<HistoricValue> newValues, {
     bool isFromCloud = false,
   }) {
+    if (kIsWeb) {
+      bool hasChanges = false;
+      final devIdx = _webDevices.indexWhere((d) => d.deviceIdentifier == deviceId);
+      Device dev;
+      if (devIdx == -1) {
+        dev = Device()
+          ..deviceIdentifier = deviceId
+          ..name = deviceId
+          ..handshakePassword = ''
+          ..isSynced = isFromCloud;
+        _webDevices.add(dev);
+        hasChanges = true;
+      } else {
+        dev = _webDevices[devIdx];
+      }
+      final existingList = List<HistoricValue>.from(dev.historicValues);
+
+      // Build fast index map for O(1) duplicate checks: key = 'ts_depth_kind'
+      final Map<String, int> indexMap = {
+        for (int i = 0; i < existingList.length; i++)
+          '${existingList[i].tsMs}_${existingList[i].depthCm}_${existingList[i].kind}':
+              i,
+      };
+
+      for (var incoming in newValues) {
+        if (incoming.tsMs == null) continue;
+
+        final key = '${incoming.tsMs}_${incoming.depthCm}_${incoming.kind}';
+        final index = indexMap[key];
+
+        if (index != null) {
+          if (existingList[index].value != incoming.value) {
+            existingList[index].value = incoming.value;
+            existingList[index].kind =
+                incoming.kind ?? existingList[index].kind;
+            existingList[index].port =
+                incoming.port ?? existingList[index].port;
+            hasChanges = true;
+          }
+        } else {
+          existingList.add(incoming);
+          indexMap[key] = existingList.length - 1;
+          hasChanges = true;
+        }
+      }
+
+      if (hasChanges || isFromCloud) {
+        dev.historicValues = existingList;
+        dev.updatedAt = DateTime.now();
+        dev.isSynced = isFromCloud;
+      }
+      return hasChanges;
+    }
+
     bool hasChanges = false;
     isar.writeTxnSync(() {
       var dev = isar.devices
@@ -262,6 +412,18 @@ class DatabaseService {
     double? depthCm,
     int? sinceMs,
   }) {
+    if (kIsWeb) {
+      final devIdx = _webDevices.indexWhere((d) => d.deviceIdentifier == deviceId);
+      if (devIdx == -1) return [];
+      final dev = _webDevices[devIdx];
+      return dev.historicValues.where((v) {
+        if (kind != null && v.kind != kind) return false;
+        if (depthCm != null && v.depthCm != depthCm) return false;
+        if (sinceMs != null && v.tsMs != null && v.tsMs! < sinceMs) return false;
+        return true;
+      }).toList();
+    }
+
     final dev = isar.devices
         .where()
         .deviceIdentifierEqualTo(deviceId)
@@ -282,11 +444,42 @@ class DatabaseService {
   /// Uses the latest valid past telemetry timestamp from historicValues <= now,
   /// falling back to live time if connected or recently synced.
   DateTime getReferenceTime(String deviceId, {bool isConnected = false}) {
+    if (kIsWeb) {
+      final devIdx = _webDevices.indexWhere((d) => d.deviceIdentifier == deviceId);
+      if (devIdx == -1) return DateTime.now();
+      final dev = _webDevices[devIdx];
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+      int? maxValidPastTs;
+      for (var h in dev.historicValues) {
+        if (h.tsMs != null && h.tsMs! <= nowMs) {
+          if (maxValidPastTs == null || h.tsMs! > maxValidPastTs) {
+            maxValidPastTs = h.tsMs!;
+          }
+        }
+      }
+
+      if (maxValidPastTs != null) {
+        return DateTime.fromMillisecondsSinceEpoch(maxValidPastTs);
+      }
+
+      if (isConnected ||
+          (dev.latestSynchronizedTime != null &&
+              DateTime.now().difference(dev.latestSynchronizedTime!).inHours <
+                  2)) {
+        return DateTime.now();
+      }
+
+      return dev.latestSynchronizedTime ?? dev.updatedAt;
+    }
+
     final dev = isar.devices
         .where()
         .deviceIdentifierEqualTo(deviceId)
         .findFirstSync();
-    if (dev == null) return DateTime.now();
+    if (dev == null) {
+      return DateTime.now();
+    }
 
     final nowMs = DateTime.now().millisecondsSinceEpoch;
 
@@ -317,6 +510,24 @@ class DatabaseService {
 
   /// Automatically prunes any corrupted future telemetry entries (> DateTime.now())
   void sanitizeCorruptedFutureData(String deviceId) {
+    if (kIsWeb) {
+      final devIdx = _webDevices.indexWhere((d) => d.deviceIdentifier == deviceId);
+      if (devIdx != -1) {
+        final dev = _webDevices[devIdx];
+        final nowMs = DateTime.now().millisecondsSinceEpoch;
+        final cleanHistoric = dev.historicValues
+            .where((h) => h.tsMs != null && h.tsMs! <= nowMs)
+            .toList();
+        if (cleanHistoric.length != dev.historicValues.length) {
+          print(
+            '[DB Sanitizer] Pruned ${dev.historicValues.length - cleanHistoric.length} corrupted future telemetry entries.',
+          );
+          dev.historicValues = cleanHistoric;
+        }
+      }
+      return;
+    }
+
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     isar.writeTxnSync(() {
       final dev = isar.devices
@@ -339,6 +550,24 @@ class DatabaseService {
   }
 
   void markDeviceSynced(String deviceId) {
+    if (kIsWeb) {
+      final devIdx = _webDevices.indexWhere((d) => d.deviceIdentifier == deviceId);
+      Device dev;
+      if (devIdx == -1) {
+        dev = Device()
+          ..deviceIdentifier = deviceId
+          ..name = deviceId
+          ..handshakePassword = '';
+        _webDevices.add(dev);
+      } else {
+        dev = _webDevices[devIdx];
+      }
+      dev.isSynced = true;
+      dev.latestSynchronizedTime = DateTime.now();
+      dev.updatedAt = DateTime.now();
+      return;
+    }
+
     isar.writeTxnSync(() {
       var dev = isar.devices
           .where()
@@ -360,6 +589,31 @@ class DatabaseService {
     Map<String, dynamic> status, {
     bool isFromCloud = false,
   }) {
+    if (kIsWeb) {
+      final devIdx = _webDevices.indexWhere((d) => d.deviceIdentifier == deviceId);
+      Device dev;
+      if (devIdx == -1) {
+        dev = Device()
+          ..deviceIdentifier = deviceId
+          ..name = deviceId
+          ..handshakePassword = ''
+          ..isSynced = isFromCloud;
+        _webDevices.add(dev);
+      } else {
+        dev = _webDevices[devIdx];
+      }
+
+      final lat = (status['lat'] ?? status['latitude'] as num?)?.toDouble();
+      final lon = (status['lon'] ?? status['longitude'] as num?)?.toDouble();
+      if (lat != null) dev.latitude = lat;
+      if (lon != null) dev.longitude = lon;
+      dev.latestSynchronizedTime = DateTime.now();
+      if (isFromCloud) {
+        dev.isSynced = true;
+      }
+      return;
+    }
+
     isar.writeTxnSync(() {
       var dev = isar.devices
           .where()
@@ -384,6 +638,28 @@ class DatabaseService {
   }
 
   void updateDeviceConfig(String deviceId, Map<String, dynamic> config) {
+    if (kIsWeb) {
+      final devIdx = _webDevices.indexWhere((d) => d.deviceIdentifier == deviceId);
+      Device dev;
+      if (devIdx == -1) {
+        dev = Device()
+          ..deviceIdentifier = deviceId
+          ..name = deviceId
+          ..handshakePassword = ''
+          ..isSynced = false;
+        _webDevices.add(dev);
+      } else {
+        dev = _webDevices[devIdx];
+      }
+
+      dev.localInferenceCapabilities =
+          config['infer_dev'] == true || config['local_inference'] == true;
+      dev.loraEnabled = config['lora_enabled'] == true;
+      dev.updatedAt = DateTime.now();
+      dev.isSynced = false;
+      return;
+    }
+
     isar.writeTxnSync(() {
       var dev = isar.devices
           .where()
@@ -409,6 +685,28 @@ class DatabaseService {
     List<Prediction> predictions, {
     bool isFromCloud = false,
   }) {
+    if (kIsWeb) {
+      final devIdx = _webDevices.indexWhere((d) => d.deviceIdentifier == deviceId);
+      Device dev;
+      if (devIdx == -1) {
+        dev = Device()
+          ..deviceIdentifier = deviceId
+          ..name = deviceId
+          ..handshakePassword = ''
+          ..isSynced = isFromCloud;
+        _webDevices.add(dev);
+      } else {
+        dev = _webDevices[devIdx];
+      }
+
+      dev.previousPredictions = List.from(dev.newPredictions);
+      dev.newPredictions = predictions;
+      dev.latestInferenceTriggerDate = DateTime.now();
+      dev.updatedAt = DateTime.now();
+      dev.isSynced = isFromCloud;
+      return;
+    }
+
     isar.writeTxnSync(() {
       var dev = isar.devices
           .where()
@@ -462,22 +760,50 @@ class DatabaseService {
   }
 
   void clearAllData() {
+    if (kIsWeb) {
+      _webDevices.clear();
+      return;
+    }
     isar.writeTxnSync(() {
       isar.devices.clearSync();
     });
   }
 
   void close() {
+    if (kIsWeb) return;
     isar.close();
   }
 
   // --- ML Model Management Hooks ---
-  List<RfModel> getSavedRfModels() => isar.rfModels.where().findAllSync();
+  List<RfModel> getSavedRfModels() {
+    if (kIsWeb) return _webRfModels;
+    return isar.rfModels.where().findAllSync();
+  }
 
-  RfModel? getActiveRfModel() =>
-      isar.rfModels.filter().isActiveEqualTo(true).findFirstSync();
+  RfModel? getActiveRfModel() {
+    if (kIsWeb) {
+      for (var m in _webRfModels) {
+        if (m.isActive) return m;
+      }
+      return null;
+    }
+    return isar.rfModels.filter().isActiveEqualTo(true).findFirstSync();
+  }
 
   void saveRfModel(Map<String, dynamic> metadata, String treeDataJson) {
+    if (kIsWeb) {
+      final model = RfModel()
+        ..modelId = metadata['model_id']
+        ..cropName = metadata['crop_name'] ?? 'Unknown'
+        ..version = metadata['version'] ?? '1.0'
+        ..description = metadata['description'] ?? ''
+        ..treeDataJson = treeDataJson
+        ..updatedAt = DateTime.now()
+        ..isActive = false;
+      _webRfModels.add(model);
+      return;
+    }
+
     isar.writeTxnSync(() {
       final model = RfModel()
         ..modelId = metadata['model_id']
@@ -492,6 +818,13 @@ class DatabaseService {
   }
 
   void setActiveRfModel(String modelId) {
+    if (kIsWeb) {
+      for (var m in _webRfModels) {
+        m.isActive = (m.modelId == modelId);
+      }
+      return;
+    }
+
     isar.writeTxnSync(() {
       final all = isar.rfModels.where().findAllSync();
       for (var m in all) {
@@ -502,8 +835,77 @@ class DatabaseService {
   }
 
   void deleteRfModel(String modelId) {
+    if (kIsWeb) {
+      _webRfModels.removeWhere((m) => m.modelId == modelId);
+      return;
+    }
+
     isar.writeTxnSync(() {
       isar.rfModels.where().modelIdEqualTo(modelId).deleteAllSync();
+    });
+  }
+
+  // --- Web Native Helper Methods to encapsulate direct `.isar` accesses ---
+
+  Device? findDevice(String? deviceId) {
+    if (kIsWeb) {
+      if (deviceId != null) {
+        for (var d in _webDevices) {
+          if (d.deviceIdentifier == deviceId) return d;
+        }
+        return null;
+      }
+      return _webDevices.isNotEmpty ? _webDevices.first : null;
+    }
+    if (deviceId != null) {
+      return isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
+    }
+    return isar.devices.where().findFirstSync();
+  }
+
+  void updateDeviceSync(Device device) {
+    if (kIsWeb) {
+      final idx = _webDevices.indexWhere((d) => d.deviceIdentifier == device.deviceIdentifier);
+      if (idx != -1) {
+        _webDevices[idx] = device;
+      } else {
+        _webDevices.add(device);
+      }
+      return;
+    }
+    isar.writeTxnSync(() {
+      isar.devices.putSync(device);
+    });
+  }
+
+  Future<List<Device>> getDirtyDevices() async {
+    if (kIsWeb) {
+      return _webDevices.where((d) => !d.isSynced).toList();
+    }
+    return isar.devices.filter().isSyncedEqualTo(false).findAll();
+  }
+
+  Future<void> saveDevices(List<Device> devices) async {
+    if (kIsWeb) {
+      for (var device in devices) {
+        final idx = _webDevices.indexWhere((d) => d.deviceIdentifier == device.deviceIdentifier);
+        if (idx != -1) {
+          _webDevices[idx] = device;
+        } else {
+          _webDevices.add(device);
+        }
+      }
+      return;
+    }
+    await isar.writeTxn(() async {
+      for (var device in devices) {
+        final existing = await isar.devices
+            .where()
+            .deviceIdentifierEqualTo(device.deviceIdentifier)
+            .findFirst();
+        if (existing != null) device.id = existing.id;
+        await isar.devices.put(device);
+      }
     });
   }
 }

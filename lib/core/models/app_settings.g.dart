@@ -13,9 +13,9 @@ extension GetAppSettingsCollection on Isar {
   IsarCollection<AppSettings> get appSettings => this.collection();
 }
 
-const AppSettingsSchema = CollectionSchema(
+final AppSettingsSchema = CollectionSchema(
   name: r'AppSettings',
-  id: -5633561779022347008,
+  id: int.parse('-5633561779022347008'),
   properties: {
     r'agronomicDayEnd': PropertySchema(
       id: 0,

@@ -128,41 +128,17 @@ abstract class AppLocalizations {
   /// **'STATUS: {msg}'**
   String statusLabel(String msg);
 
-  /// No description provided for @verdictLstmIrrigate.
-  ///
-  /// In en, this message translates to:
-  /// **'IRRIGATE: Soil moisture threshold drop predicted'**
-  String get verdictLstmIrrigate;
-
-  /// No description provided for @verdictLstmHealthy.
-  ///
-  /// In en, this message translates to:
-  /// **'HEALTHY: Soil moisture level sufficient'**
-  String get verdictLstmHealthy;
-
-  /// No description provided for @verdictRfAvoidable.
+  /// No description provided for @verdictAvoidable.
   ///
   /// In en, this message translates to:
   /// **'IRRIGATION AVOIDABLE: Soil moisture stable.'**
-  String get verdictRfAvoidable;
+  String get verdictAvoidable;
 
-  /// No description provided for @verdictRfNeeded.
+  /// No description provided for @verdictNeeded.
   ///
   /// In en, this message translates to:
   /// **'IRRIGATION NEEDED: Soil moisture low. IRRIGATE to restore.'**
-  String get verdictRfNeeded;
-
-  /// No description provided for @verdictEmuAvoidable.
-  ///
-  /// In en, this message translates to:
-  /// **'Irrigation Avoidable'**
-  String get verdictEmuAvoidable;
-
-  /// No description provided for @verdictEmuNeeded.
-  ///
-  /// In en, this message translates to:
-  /// **'Irrigation Needed'**
-  String get verdictEmuNeeded;
+  String get verdictNeeded;
 
   /// No description provided for @mainScreenError.
   ///
@@ -449,7 +425,7 @@ abstract class AppLocalizations {
   /// No description provided for @homeBtnTriggerInference.
   ///
   /// In en, this message translates to:
-  /// **'Trigger Inference'**
+  /// **'Run Inference'**
   String get homeBtnTriggerInference;
 
   /// No description provided for @homeConsoleTitle.
@@ -623,7 +599,7 @@ abstract class AppLocalizations {
   /// No description provided for @dbBtnRunInference.
   ///
   /// In en, this message translates to:
-  /// **'Run RF Inference'**
+  /// **'Run Inference'**
   String get dbBtnRunInference;
 
   /// No description provided for @nbFoundDevices.
@@ -1109,19 +1085,19 @@ abstract class AppLocalizations {
   /// No description provided for @cloudSyncInitiating.
   ///
   /// In en, this message translates to:
-  /// **'Initiating Cloud Synchronization...'**
+  /// **'Syncing with Cloud API...'**
   String get cloudSyncInitiating;
 
   /// No description provided for @cloudSyncFinished.
   ///
   /// In en, this message translates to:
-  /// **'Cloud sync finished.'**
+  /// **'Cloud sync completed.'**
   String get cloudSyncFinished;
 
   /// No description provided for @cloudSyncError.
   ///
   /// In en, this message translates to:
-  /// **'Cloud sync error: {error}'**
+  /// **'Cloud Sync Error: Connection unavailable or failed ({error})'**
   String cloudSyncError(String error);
 
   /// No description provided for @cloudEmulationAbortedNoStation.
@@ -1139,19 +1115,19 @@ abstract class AppLocalizations {
   /// No description provided for @cloudEmulationExecuting.
   ///
   /// In en, this message translates to:
-  /// **'Executing Local RF Recommendation in RAM for [{name}] ({id})...'**
+  /// **'Running Random Forest Inference for {name} ({id})...'**
   String cloudEmulationExecuting(String name, String id);
 
   /// No description provided for @cloudEmulationFinished.
   ///
   /// In en, this message translates to:
-  /// **'In-Memory Cloud Emulation Finished: {verdict}'**
+  /// **'RF Inference Finished: {verdict}'**
   String cloudEmulationFinished(String verdict);
 
   /// No description provided for @cloudEmulationError.
   ///
   /// In en, this message translates to:
-  /// **'In-Memory Cloud Emulation Error: {error}'**
+  /// **'Inference Failed: {error}'**
   String cloudEmulationError(String error);
 
   /// No description provided for @cloudApiStatusTitle.
@@ -1283,7 +1259,7 @@ abstract class AppLocalizations {
   /// No description provided for @cloudBtnEmulateStation.
   ///
   /// In en, this message translates to:
-  /// **'Emulate Cloud Station'**
+  /// **'Run Inference'**
   String get cloudBtnEmulateStation;
 
   /// No description provided for @cloudValNA.
@@ -1291,6 +1267,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'N/A'**
   String get cloudValNA;
+
+  /// No description provided for @cloudEmuNoData.
+  ///
+  /// In en, this message translates to:
+  /// **'No emulation performed yet.'**
+  String get cloudEmuNoData;
 
   /// No description provided for @cloudValUnknown.
   ///
@@ -1351,6 +1333,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Grant Permissions'**
   String get nbBtnGrantPerms;
+
+  /// No description provided for @inferenceRestrictedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'INFERENCE RESTRICTED (YELLOW ZONE)'**
+  String get inferenceRestrictedTitle;
+
+  /// No description provided for @inferenceRestrictedDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Inference is restricted: current device data is in the gathering phase ({startI}:00 - {endI}:00). AI recommendations are only performed during the optimal prediction window ({startH}:00 - {endH}:00).'**
+  String inferenceRestrictedDesc(int startI, int endI, int startH, int endH);
+
+  /// No description provided for @inferenceUnrecommendedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'UNRECOMMENDED OUTPUT (OUTSIDE PREDICTION WINDOW)'**
+  String get inferenceUnrecommendedTitle;
+
+  /// No description provided for @inferenceUnrecommendedWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'Warning | Data outside the optimal prediction window: {startH}:00 - {endH}:00. Output is for observation/debugging only.'**
+  String inferenceUnrecommendedWarning(int startH, int endH);
+
+  /// No description provided for @inferenceRecommendedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'RECOMMENDED AI OUTPUT'**
+  String get inferenceRecommendedTitle;
+
+  /// No description provided for @inferenceInfoSource.
+  ///
+  /// In en, this message translates to:
+  /// **'Source: {source}'**
+  String inferenceInfoSource(String source);
 }
 
 class _AppLocalizationsDelegate

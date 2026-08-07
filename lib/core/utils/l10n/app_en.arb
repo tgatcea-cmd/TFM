@@ -11,12 +11,8 @@
       "msg": { "type": "String" }
     }
   },
-  "verdictLstmIrrigate": "IRRIGATE: Soil moisture threshold drop predicted",
-  "verdictLstmHealthy": "HEALTHY: Soil moisture level sufficient",
-  "verdictRfAvoidable": "IRRIGATION AVOIDABLE: Soil moisture stable.",
-  "verdictRfNeeded": "IRRIGATION NEEDED: Soil moisture low. IRRIGATE to restore.",
-  "verdictEmuAvoidable": "Irrigation Avoidable",
-  "verdictEmuNeeded": "Irrigation Needed",
+  "verdictAvoidable": "IRRIGATION AVOIDABLE: Soil moisture stable.",
+  "verdictNeeded": "IRRIGATION NEEDED: Soil moisture low. IRRIGATE to restore.",
   "mainScreenError": "Unknown Screen",
   "mainStatusReady": "Ready",
   "mainStatusBleConnected": "Connected to Savia station",
@@ -86,7 +82,7 @@
   "@homeGapLabel": { "placeholders": { "gap": { "type": "String" } } },
   "homeBtnReadStatus": "Read Status",
   "homeBtnRequestData": "Request Data",
-  "homeBtnTriggerInference": "Trigger Inference",
+  "homeBtnTriggerInference": "Run Inference",
   "homeConsoleTitle": "Console Output:",
   "homeTooltipCopy": "Copy to Clipboard",
   "homeTooltipDownload": "Download JSON",
@@ -125,7 +121,7 @@
   "@dbTelemetryInfo": { "placeholders": { "records": { "type": "int" }, "predictions": { "type": "int" } } },
   "dbLocationInfo": "  |  Lat: {lat}, Lon: {lon}",
   "@dbLocationInfo": { "placeholders": { "lat": { "type": "String" }, "lon": { "type": "String" } } },
-  "dbBtnRunInference": "Run RF Inference",
+  "dbBtnRunInference": "Run Inference",
   "@@_NEARBY_SCREEN": "",
   "nbFoundDevices": "Found {count} devices...",
   "@nbFoundDevices": { "placeholders": { "count": { "type": "int" } } },
@@ -235,9 +231,9 @@
       "error": { "type": "String" }
     }
   },
-  "cloudSyncInitiating": "Initiating Cloud Synchronization...",
-  "cloudSyncFinished": "Cloud sync finished.",
-  "cloudSyncError": "Cloud sync error: {error}",
+  "cloudSyncInitiating": "Syncing with Cloud API...",
+  "cloudSyncFinished": "Cloud sync completed.",
+  "cloudSyncError": "Cloud Sync Error: Connection unavailable or failed ({error})",
   "@cloudSyncError": {
     "placeholders": {
       "error": { "type": "String" }
@@ -245,20 +241,20 @@
   },
   "cloudEmulationAbortedNoStation": "Emulation Aborted: No registered station found on Cloud server.",
   "cloudEmulationNoSelection": "No station selected! Please select a cloud station first.",
-  "cloudEmulationExecuting": "Executing Local RF Recommendation in RAM for [{name}] ({id})...",
+  "cloudEmulationExecuting": "Running Random Forest Inference for {name} ({id})...",
   "@cloudEmulationExecuting": {
     "placeholders": {
       "name": { "type": "String" },
       "id": { "type": "String" }
     }
   },
-  "cloudEmulationFinished": "In-Memory Cloud Emulation Finished: {verdict}",
+  "cloudEmulationFinished": "RF Inference Finished: {verdict}",
   "@cloudEmulationFinished": {
     "placeholders": {
       "verdict": { "type": "String" }
     }
   },
-  "cloudEmulationError": "In-Memory Cloud Emulation Error: {error}",
+  "cloudEmulationError": "Inference Failed: {error}",
   "@cloudEmulationError": {
     "placeholders": {
       "error": { "type": "String" }
@@ -338,8 +334,9 @@
       "name": { "type": "String" }
     }
   },
-  "cloudBtnEmulateStation": "Emulate Cloud Station",
+  "cloudBtnEmulateStation": "Run Inference",
   "cloudValNA": "N/A",
+  "cloudEmuNoData": "No emulation performed yet.",
   "cloudValUnknown": "UNKNOWN",
   "nbWarningBtOff": "Bluetooth is Disabled",
   "nbWarningBtOffDesc": "Bluetooth must be enabled to scan for and connect to nearby Savia hardware.",
@@ -349,5 +346,30 @@
   "nbBtnTurnOnLoc": "Enable Location",
   "nbWarningPerms": "Permissions Required",
   "nbWarningPermsDesc": "Please grant the necessary Bluetooth and Location permissions to communicate with the hardware.",
-  "nbBtnGrantPerms": "Grant Permissions"
+  "nbBtnGrantPerms": "Grant Permissions",
+  "inferenceRestrictedTitle": "INFERENCE RESTRICTED (YELLOW ZONE)",
+  "inferenceRestrictedDesc": "Inference is restricted: current device data is in the gathering phase ({startI}:00 - {endI}:00). AI recommendations are only performed during the optimal prediction window ({startH}:00 - {endH}:00).",
+  "@inferenceRestrictedDesc": {
+    "placeholders": {
+      "startI": { "type": "int" },
+      "endI": { "type": "int" },
+      "startH": { "type": "int" },
+      "endH": { "type": "int" }
+    }
+  },
+  "inferenceUnrecommendedTitle": "UNRECOMMENDED OUTPUT (OUTSIDE PREDICTION WINDOW)",
+  "inferenceUnrecommendedWarning": "Warning | Data outside the optimal prediction window: {startH}:00 - {endH}:00. Output is for observation/debugging only.",
+  "@inferenceUnrecommendedWarning": {
+    "placeholders": {
+      "startH": { "type": "int" },
+      "endH": { "type": "int" }
+    }
+  },
+  "inferenceRecommendedTitle": "RECOMMENDED AI OUTPUT",
+  "inferenceInfoSource": "Source: {source}",
+  "@inferenceInfoSource": {
+    "placeholders": {
+      "source": { "type": "String" }
+    }
+  }
 }

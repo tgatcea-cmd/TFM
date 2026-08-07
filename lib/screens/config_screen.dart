@@ -1,14 +1,14 @@
 import 'dart:async';
-import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:tfm_app/cli_routines.dart';
 import 'package:tfm_app/core/theme/app_styles.dart';
+import 'package:tfm_app/core/utils/date_formatter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:tfm_app/core/models/app_rf_model.dart';
-import 'package:tfm_app/l10n/app_localizations.dart';
+import 'package:tfm_app/core/utils/l10n/app_localizations.dart';
 
 class ConfigScreen extends StatefulWidget {
   final CliRoutines routines;
@@ -34,8 +34,9 @@ class _ConfigScreenState extends State<ConfigScreen> {
   
   late int _agronomicDayStart; // Prediction start
   late int _agronomicDayEnd;   // Prediction end / Irrigation start - 1
-  late int _baseDayStart;
-  late int _baseDayEnd;
+
+  static const int _defaultDayStart = 19; // Default 19hrs prediction start
+  static const int _defaultDayEnd = 10;   // Default 10hrs irrigation start
 
   String? _openMeteoStatus;
   String? _cloudPingStatus;
@@ -47,15 +48,13 @@ class _ConfigScreenState extends State<ConfigScreen> {
   @override
   void initState() {
     super.initState();
-    final settings = widget.routines.db.getAppSettings();
+    final settings = widget.routines.getAppSettings();
     _cloudScheme = settings.tfmServerScheme;
     _cloudUrl = settings.tfmServerUrl;
     _cloudPort = settings.tfmServerPort;
     _cloudApiKey = settings.tfmServerApiKey;
     _agronomicDayStart = settings.agronomicDayStart;
     _agronomicDayEnd = settings.agronomicDayEnd;
-    _baseDayStart = settings.agronomicDayStart;
-    _baseDayEnd = settings.agronomicDayEnd;
 
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _now = DateTime.now());
@@ -98,7 +97,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
       if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) throw Exception('Location permission denied');
       
       final pos = await Geolocator.getCurrentPosition();
-      widget.routines.db.saveLocationSettings(pos.latitude, pos.longitude, true);
+      widget.routines.saveLocationSettings(pos.latitude, pos.longitude, true);
       setState(() {});
       widget.onStatusChange(
         l10n.cfgGpsUpdated(pos.latitude.toStringAsFixed(4), pos.longitude.toStringAsFixed(4))
@@ -110,7 +109,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
 
   Future<void> _openMapPickerDialog() async {
     final l10n = AppLocalizations.of(context)!;
-    final locSettings = widget.routines.db.getLocationSettings();
+    final locSettings = widget.routines.getLocationSettings();
     LatLng selectedPoint = LatLng(
       (locSettings.latitude != 0.0) ? locSettings.latitude : 40.4168,
       (locSettings.longitude != 0.0) ? locSettings.longitude : -3.7038,
@@ -185,7 +184,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
                   label: Text(l10n.cfgBtnConfirmLoc),
                   onPressed: () {
                     Navigator.pop(context);
-                    widget.routines.db.saveLocationSettings(
+                    widget.routines.saveLocationSettings(
                       selectedPoint.latitude,
                       selectedPoint.longitude,
                       false,
@@ -251,7 +250,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
   void _adjustDayStart(int delta) {
     final l10n = AppLocalizations.of(context)!;
     final newVal = (_agronomicDayStart + delta) % 24;
-    final diff = ((newVal - _baseDayStart + 36) % 24) - 12;
+    final diff = ((newVal - _defaultDayStart + 36) % 24) - 12;
     
     if (diff.abs() <= 3) {
       setState(() {
@@ -264,7 +263,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
       widget.onStatusChange(l10n.cfgPredStartUpdated(_agronomicDayStart));
     } else {
       setState(() {
-        _scheduleWarning = l10n.cfgPredLimit(_baseDayStart);
+        _scheduleWarning = l10n.cfgPredLimit(_defaultDayStart);
       });
     }
   }
@@ -272,7 +271,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
   void _adjustDayEnd(int delta) {
     final l10n = AppLocalizations.of(context)!;
     final newVal = (_agronomicDayEnd + delta) % 24;
-    final diff = ((newVal - _baseDayEnd + 36) % 24) - 12;
+    final diff = ((newVal - _defaultDayEnd + 36) % 24) - 12;
     
     if (diff.abs() <= 3) {
       setState(() {
@@ -285,7 +284,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
       widget.onStatusChange(l10n.cfgIrrEndUpdated(_agronomicDayEnd));
     } else {
       setState(() {
-        _scheduleWarning = l10n.cfgIrrLimit(_baseDayEnd);
+        _scheduleWarning = l10n.cfgIrrLimit(_defaultDayEnd);
       });
     }
   }
@@ -294,46 +293,39 @@ class _ConfigScreenState extends State<ConfigScreen> {
   Future<void> _checkOpenMeteo() async {
     final l10n = AppLocalizations.of(context)!;
     setState(() => _openMeteoStatus = l10n.cfgChecking);
-    try {
-      final res = await http.get(
-        Uri.parse('https://api.open-meteo.com/v1/forecast?latitude=40.4168&longitude=-3.7038&current_weather=true'),
-      ).timeout(const Duration(seconds: 4));
-      
-      if (mounted) {
-        setState(() {
-          _openMeteoStatus = (res.statusCode == 200) ? l10n.cfgMeteoOk : l10n.cfgMeteoError(res.statusCode);
-        });
-      }
-    } catch (_) {
-      if (mounted) setState(() => _openMeteoStatus = l10n.cfgMeteoOffline);
+    
+    final res = await widget.routines.testWeatherConnection();
+    if (mounted) {
+      setState(() {
+        if (res['success'] == true) {
+          _openMeteoStatus = l10n.cfgMeteoOk;
+        } else if (res['statusCode'] != 0) {
+          _openMeteoStatus = l10n.cfgMeteoError(res['statusCode']);
+        } else {
+          _openMeteoStatus = l10n.cfgMeteoOffline;
+        }
+      });
     }
   }
 
   Future<void> _checkCloudPing() async {
     final l10n = AppLocalizations.of(context)!;
     setState(() => _cloudPingStatus = l10n.cfgPingTesting);
-    final sw = Stopwatch()..start();
-
-    for (final path in ['/health', '/api/ping']) {
-      try {
-        final res = await http.get(Uri.parse('$_cloudScheme://$_cloudUrl:$_cloudPort$path'), headers: {
-          if (_cloudApiKey.isNotEmpty) 'Authorization': 'Bearer $_cloudApiKey',
-        }).timeout(const Duration(seconds: 3));
-        if (res.statusCode == 200) {
-          final data = jsonDecode(res.body);
-          if (mounted) setState(() => _cloudPingStatus = l10n.cfgPingRes(data['status']?.toString().toUpperCase() ?? 'OK', sw.elapsedMilliseconds));
-          return;
-        }
-      } catch (_) {}
+    
+    final res = await widget.routines.testCloudPing();
+    if (mounted) {
+      if (res['success'] == true) {
+        setState(() => _cloudPingStatus = l10n.cfgPingRes(res['status'], res['ms']));
+      } else {
+        setState(() => _cloudPingStatus = l10n.cfgPingFailed);
+      }
     }
-
-    if (mounted) setState(() => _cloudPingStatus = l10n.cfgPingFailed);
   }
 
   // --- Core Persistence ---
   void _saveConfiguration() {
     final l10n = AppLocalizations.of(context)!;
-    widget.routines.db.saveAppSettings(
+    widget.routines.saveAppSettings(
       tfmServerScheme: _cloudScheme,
       tfmServerUrl: _cloudUrl,
       tfmServerPort: _cloudPort,
@@ -341,8 +333,8 @@ class _ConfigScreenState extends State<ConfigScreen> {
       agronomicDayStart: _agronomicDayStart,
       agronomicDayEnd: _agronomicDayEnd,
     );
-    widget.routines.cloudApi.updateEndpoint(_cloudScheme, _cloudUrl, _cloudPort);
-    widget.routines.cloudApi.apiKey = _cloudApiKey; // Make sure runtime gets it
+    widget.routines.updateCloudEndpoint(_cloudScheme, _cloudUrl, _cloudPort);
+    widget.routines.setCloudApiKey(_cloudApiKey); // Make sure runtime gets it
     widget.onStatusChange(l10n.cfgSavedStatus);
   }
 
@@ -454,13 +446,12 @@ class _ConfigScreenState extends State<ConfigScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final dateStr = '${_now.day.toString().padLeft(2, '0')}/${_now.month.toString().padLeft(2, '0')}/${_now.year.toString().substring(2)} '
-        '${_now.hour.toString().padLeft(2, '0')}:${_now.minute.toString().padLeft(2, '0')}';
+    final dateStr = AppDateFormatter.format(_now, showSeconds: true);
 
-    final locSettings = widget.routines.db.getLocationSettings();
+    final locSettings = widget.routines.getLocationSettings();
     final locStr = l10n.cfgLocString(locSettings.latitude.toStringAsFixed(4), locSettings.longitude.toStringAsFixed(4), locSettings.isGps ? 'GPS' : 'Manual');
-    final activeModel = widget.routines.db.getActiveRfModel();
-    final savedModels = widget.routines.db.getSavedRfModels();
+    final activeModel = widget.routines.getActiveRfModel();
+    final savedModels = widget.routines.getSavedRfModels();
 
     final irrStart = (_agronomicDayEnd + 1) % 24;
     final irrEnd = (_agronomicDayStart - 1 + 24) % 24;
@@ -927,8 +918,8 @@ class _MlModelManagerSheetState extends State<MlModelManagerSheet> {
       _errorMsg = null;
     });
     try {
-      final cloudRes = await widget.routines.cloudApi.getAvailableRfModels();
-      final localRes = widget.routines.db.getSavedRfModels();
+      final cloudRes = await widget.routines.getAvailableRfModels();
+      final localRes = widget.routines.getSavedRfModels();
       if (mounted) {
         setState(() {
           _cloudModels = cloudRes;
@@ -950,9 +941,9 @@ class _MlModelManagerSheetState extends State<MlModelManagerSheet> {
     final mId = metadata['model_id'];
     setState(() => _processingIds.add(mId));
     try {
-      final jsonPayload = await widget.routines.cloudApi.downloadRfModel(mId);
-      widget.routines.db.saveRfModel(metadata, jsonPayload);
-      _localModels = widget.routines.db.getSavedRfModels();
+      final jsonPayload = await widget.routines.downloadRfModel(mId);
+      widget.routines.saveRfModel(metadata, jsonPayload);
+      _localModels = widget.routines.getSavedRfModels();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Downloaded ${metadata['crop_name']}')),
@@ -970,16 +961,16 @@ class _MlModelManagerSheetState extends State<MlModelManagerSheet> {
   }
 
   void _handleSetActive(String modelId) {
-    widget.routines.db.setActiveRfModel(modelId);
+    widget.routines.setActiveRfModel(modelId);
     setState(() {
-      _localModels = widget.routines.db.getSavedRfModels();
+      _localModels = widget.routines.getSavedRfModels();
     });
   }
 
   void _handleDelete(String modelId, String name) {
-    widget.routines.db.deleteRfModel(modelId);
+    widget.routines.deleteRfModel(modelId);
     setState(() {
-      _localModels = widget.routines.db.getSavedRfModels();
+      _localModels = widget.routines.getSavedRfModels();
     });
     ScaffoldMessenger.of(
       context,
@@ -1061,71 +1052,74 @@ class _MlModelManagerSheetState extends State<MlModelManagerSheet> {
                           isSelected: isActive,
                           borderAccent: AppStyles.dividerColor,
                         ),
-                        child: ListTile(
-                          leading: Icon(
-                            Icons.psychology,
-                            color: isActive
-                                ? AppStyles.successAccent
-                                : (isDownloaded
-                                      ? AppStyles.textSecondary
-                                      : AppStyles.textMuted),
-                          ),
-                          title: Text(
-                            meta['crop_name'] ?? mId,
-                            style: AppStyles.sectionTitle.copyWith(
+                        child: Material(
+                          color: Colors.transparent,
+                          child: ListTile(
+                            leading: Icon(
+                              Icons.psychology,
                               color: isActive
                                   ? AppStyles.successAccent
-                                  : Colors.white,
+                                  : (isDownloaded
+                                        ? AppStyles.textSecondary
+                                        : AppStyles.textMuted),
                             ),
-                          ),
-                          subtitle: Text(
-                            'Version: ${meta['version'] ?? 'N/A'} | ${meta['size_kb'] ?? '?'} KB\n${meta['description'] ?? ''}',
-                            style: AppStyles.captionStatus,
-                          ),
-                          isThreeLine: true,
-                          // REPLACED LONG PRESS WITH EXPLICIT ROW BUTTONS
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (isDownloaded && !isActive)
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline, color: AppStyles.errorAccent),
-                                  tooltip: 'Delete Model',
-                                  onPressed: () => _handleDelete(mId, meta['crop_name'] ?? mId),
-                                ),
-                              if (isDownloaded && !isActive)
-                                const SizedBox(width: AppStyles.spaceSM),
-                              
-                              if (isProcessing)
-                                const SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
+                            title: Text(
+                              meta['crop_name'] ?? mId,
+                              style: AppStyles.sectionTitle.copyWith(
+                                color: isActive
+                                    ? AppStyles.successAccent
+                                    : Colors.white,
+                              ),
+                            ),
+                            subtitle: Text(
+                              'Version: ${meta['version'] ?? 'N/A'} | ${meta['size_kb'] ?? '?'} KB\n${meta['description'] ?? ''}',
+                              style: AppStyles.captionStatus,
+                            ),
+                            isThreeLine: true,
+                            // REPLACED LONG PRESS WITH EXPLICIT ROW BUTTONS
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (isDownloaded && !isActive)
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline, color: AppStyles.errorAccent),
+                                    tooltip: 'Delete Model',
+                                    onPressed: () => _handleDelete(mId, meta['crop_name'] ?? mId),
                                   ),
-                                )
-                              else if (isDownloaded)
-                                (isActive
-                                    ? const Chip(
-                                        label: Text('ACTIVE'),
-                                        backgroundColor: AppStyles.successAccent,
-                                        labelStyle: TextStyle(
-                                          color: Colors.black,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 10,
-                                        ),
-                                      )
-                                    : OutlinedButton(
-                                        onPressed: () => _handleSetActive(mId),
-                                        child: const Text('Set Active'),
-                                      ))
-                              else
-                                ElevatedButton.icon(
-                                  icon: const Icon(Icons.download, size: 16),
-                                  label: const Text('Download'),
-                                  onPressed: () => _handleDownload(meta),
-                                ),
-                            ],
+                                if (isDownloaded && !isActive)
+                                  const SizedBox(width: AppStyles.spaceSM),
+                                
+                                if (isProcessing)
+                                  const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                else if (isDownloaded)
+                                  (isActive
+                                      ? const Chip(
+                                          label: Text('ACTIVE'),
+                                          backgroundColor: AppStyles.successAccent,
+                                          labelStyle: TextStyle(
+                                            color: Colors.black,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 10,
+                                          ),
+                                        )
+                                      : OutlinedButton(
+                                          onPressed: () => _handleSetActive(mId),
+                                          child: const Text('Set Active'),
+                                        ))
+                                else
+                                  ElevatedButton.icon(
+                                    icon: const Icon(Icons.download, size: 16),
+                                    label: const Text('Download'),
+                                    onPressed: () => _handleDownload(meta),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
                       );

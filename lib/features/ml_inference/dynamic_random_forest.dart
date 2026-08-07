@@ -2,7 +2,7 @@
 class DynamicRandomForest {
   final String modelId;
   final int numTrees;
-  final List<List<_TreeNode>> trees;
+  final List<List<TreeNode>> trees;
 
   DynamicRandomForest._({
     required this.modelId,
@@ -14,7 +14,7 @@ class DynamicRandomForest {
     final rawTrees = (json['trees'] as List? ?? []);
     final parsedTrees = rawTrees.map((t) {
       final nodesRaw = (t['nodes'] as List? ?? []);
-      return nodesRaw.map((n) => _TreeNode.fromJson(n)).toList();
+      return nodesRaw.map((n) => TreeNode.fromJson(n)).toList();
     }).toList();
 
     return DynamicRandomForest._(
@@ -41,7 +41,7 @@ class DynamicRandomForest {
     return classScores.map((s) => s / trees.length).toList();
   }
 
-  _TreeNode _traverse(List<_TreeNode> nodes, int nodeId, List<double> features) {
+  TreeNode _traverse(List<TreeNode> nodes, int nodeId, List<double> features) {
     final node = nodes.firstWhere((n) => n.nodeId == nodeId);
     if (node.isLeaf) return node;
 
@@ -51,7 +51,7 @@ class DynamicRandomForest {
   }
 }
 
-class _TreeNode {
+class TreeNode {
   final int nodeId;
   final bool isLeaf;
   final int featureIndex;
@@ -60,7 +60,7 @@ class _TreeNode {
   final int rightChild;
   final List<double> value;
 
-  _TreeNode({
+  TreeNode({
     required this.nodeId,
     required this.isLeaf,
     required this.featureIndex,
@@ -70,8 +70,8 @@ class _TreeNode {
     required this.value,
   });
 
-  factory _TreeNode.fromJson(Map<String, dynamic> json) {
-    return _TreeNode(
+  factory TreeNode.fromJson(Map<String, dynamic> json) {
+    return TreeNode(
       nodeId: json['node_id'] as int? ?? 0,
       isLeaf: json['is_leaf'] as bool? ?? false,
       featureIndex: json['feature_index'] as int? ?? 0,

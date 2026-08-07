@@ -2,7 +2,6 @@
 // Off-Device / App-side implementation matching Savia C firmware specs (scaler.c, lstm_input.c, inference.c)
 
 import 'dart:math';
-import 'package:isar_community/isar.dart';
 import 'package:tfm_app/core/database/app_database.dart';
 import 'package:tfm_app/core/models/device.dart';
 import 'package:tfm_app/features/weather/open_meteo_api.dart';
@@ -72,7 +71,7 @@ class SaviaLstmInferenceEngine {
     print('[Savia LSTM Engine] === START OFF-DEVICE LSTM INFERENCE ===');
     print('[Savia LSTM Engine] Target Device: $deviceId');
 
-    final device = db.isar.devices.where().deviceIdentifierEqualTo(deviceId).findFirstSync();
+    final device = db.findDevice(deviceId);
     if (device == null) {
       return {
         'code': SaviaLstmErrorCode.executionError,
@@ -116,9 +115,7 @@ class SaviaLstmInferenceEngine {
     final int minDateMs = refDate.millisecondsSinceEpoch + ((minIndex + 1) * 3600000);
     final double maxHs30 = unscaledPredictions.reduce(max);
     final double meanHs30 = unscaledPredictions.reduce((a, b) => a + b) / unscaledPredictions.length;
-    final String verdict = minHs30 < 0.75
-        ? 'IRRIGATE: Soil moisture threshold drop predicted'
-        : 'HEALTHY: Soil moisture level sufficient';
+    final String verdict = 'LSTM Forecast: 24h soil moisture curve generated (Min: ${(minHs30 * 100).toStringAsFixed(1)}%)';
 
     print('[Savia LSTM Engine] Forecast Persisted: 24h predictions created.');
     print('[Savia LSTM Engine] Summary -> Min HS30: ${minHs30.toStringAsFixed(4)} (Expected at ${DateTime.fromMillisecondsSinceEpoch(minDateMs)}), Max HS30: ${maxHs30.toStringAsFixed(4)}, Mean: ${meanHs30.toStringAsFixed(4)}');
@@ -271,24 +268,22 @@ class SaviaLstmInferenceEngine {
   /// Persist 24-hour prediction forecast into local DB
   /// Matches storage_clear_predictions() & storage_append_prediction()
   void _persistPredictions(Device device, DateTime refDate, List<double> predictions) {
-    db.isar.writeTxnSync(() {
-      final baseMs = refDate.millisecondsSinceEpoch;
-      final List<Prediction> updatedList = [];
+    final baseMs = refDate.millisecondsSinceEpoch;
+    final List<Prediction> updatedList = [];
 
-      for (int i = 0; i < predictions.length; i++) {
-        final predMs = baseMs + ((i + 1) * 3600000);
-        updatedList.add(Prediction()
-          ..tsMs = predMs
-          ..value = predictions[i]
-          ..kind = 'hs30_pred'
-          ..model = 'LSTM'
-        );
-      }
+    for (int i = 0; i < predictions.length; i++) {
+      final predMs = baseMs + ((i + 1) * 3600000);
+      updatedList.add(Prediction()
+        ..tsMs = predMs
+        ..value = predictions[i]
+        ..kind = 'hs30_pred'
+        ..model = 'LSTM'
+      );
+    }
 
-      device.newPredictions = updatedList;
-      device.updatedAt = DateTime.now();
-      device.isSynced = false;
-      db.isar.devices.putSync(device);
-    });
+    device.newPredictions = updatedList;
+    device.updatedAt = DateTime.now();
+    device.isSynced = false;
+    db.updateDeviceSync(device);
   }
 }

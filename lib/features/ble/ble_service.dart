@@ -250,6 +250,20 @@ class BleService {
       onConnectingProgress?.call(0.1, 'Connecting to device...');
       await device.connect(autoConnect: false, license: License.nonprofit);
 
+      // Protocol Robustness: Wait for connection state to be connected
+      print('Waiting for device connection state to stabilize...');
+      try {
+        await device.connectionState
+            .firstWhere((state) => state == BluetoothConnectionState.connected)
+            .timeout(const Duration(seconds: 5));
+        print('Device state confirmed: connected');
+      } catch (e) {
+        print('Timeout or error waiting for connection state stream: $e');
+      }
+
+      // Stabilization delay to allow BLE stack to handle handles/channels
+      await Future.delayed(const Duration(milliseconds: 600));
+
       // Protocol Robustness: Negotiate MTU (Android only)
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
         try {
@@ -266,7 +280,29 @@ class BleService {
 
       print('Discovering services...');
       onConnectingProgress?.call(0.7, 'Discovering services...');
-      final List<BluetoothService> services = await device.discoverServices();
+      
+      List<BluetoothService> services = [];
+      int serviceDiscoveryRetries = 0;
+      while (true) {
+        try {
+          if (!device.isConnected) {
+            print('Device dropped connection prior to service discovery. Re-establishing connection...');
+            await device.connect(autoConnect: false, license: License.nonprofit).timeout(const Duration(seconds: 5));
+            await Future.delayed(const Duration(milliseconds: 600));
+          }
+          services = await device.discoverServices();
+          break;
+        } catch (e) {
+          serviceDiscoveryRetries++;
+          if (serviceDiscoveryRetries >= 3) {
+            print('Service discovery failed after $serviceDiscoveryRetries retries: $e');
+            await device.disconnect();
+            return false;
+          }
+          print('Service discovery failed, retrying ($serviceDiscoveryRetries/3) in 1s... Error: $e');
+          await Future.delayed(const Duration(seconds: 1));
+        }
+      }
 
       print('Caching characteristics...');
       onConnectingProgress?.call(0.9, 'Caching characteristics...');
