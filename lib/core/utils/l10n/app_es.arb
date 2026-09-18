@@ -158,7 +158,7 @@
   "cfgTooltipEditEnd": "Editar Endpoint",
   "cfgAgroSection": "HORARIO AGRONÓMICO (24H)",
   "cfgIrrPeriod": "Período de Riego",
-  "cfgPeriodRange": "De {start}hrs a {end}hrs",
+  "cfgPeriodRange": "De {start} a {end}",
   "cfgShiftBtn": "Desplazar",
   "cfgPredPeriod": "Período de Predicción",
   "@@_CLOUD_SCREEN": "",

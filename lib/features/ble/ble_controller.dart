@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:tfm_app/features/ble/ble_service.dart';
 import 'package:tfm_app/core/database/app_database.dart';
@@ -15,6 +15,10 @@ class BleDataProcessor {
 
   void startListening() {
     // Dummy implementation to satisfy the compiler
+  }
+
+  void dispose() {
+    _streamController.close();
   }
 }
 

@@ -38,12 +38,14 @@ class _HomeScreenState extends State<HomeScreen> {
   void _copyConsoleToClipboard() {
     final l10n = AppLocalizations.of(context)!;
     Clipboard.setData(ClipboardData(text: _consoleOutput ?? l10n.homeConsoleInit));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(l10n.homeConsoleCopiedSnack),
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(l10n.homeConsoleCopiedSnack),
+          duration: const Duration(seconds: 2),
+        ),
+      );
     widget.onStatusChange(l10n.homeConsoleCopiedStatus);
   }
 
@@ -66,12 +68,14 @@ class _HomeScreenState extends State<HomeScreen> {
       
       await file.writeAsString(jsonString);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(l10n.homeExportJsonSnack(fileName)),
-            duration: const Duration(seconds: 4),
-          ),
-        );
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(l10n.homeExportJsonSnack(fileName)),
+              duration: const Duration(seconds: 4),
+            ),
+          );
       }
       widget.onStatusChange(l10n.homeExportJsonStatus(file.path));
     } catch (e) {

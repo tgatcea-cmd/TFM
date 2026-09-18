@@ -748,12 +748,14 @@ class _ConfigScreenState extends State<ConfigScreen> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(l10n.cfgIrrPeriod, style: AppStyles.bodyText.copyWith(color: AppStyles.techSecondaryAccent, fontWeight: FontWeight.bold)),
-                                Text(l10n.cfgPeriodRange(irrStart.toString().padLeft(2, '0'), irrEnd.toString().padLeft(2, '0')), style: AppStyles.consoleBody),
-                              ],
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(l10n.cfgIrrPeriod, style: AppStyles.bodyText.copyWith(color: AppStyles.techSecondaryAccent, fontWeight: FontWeight.bold)),
+                                  Text(l10n.cfgPeriodRange('${irrStart.toString().padLeft(2, '0')}:00', '${irrEnd.toString().padLeft(2, '0')}:00'), style: AppStyles.consoleBody),
+                                ],
+                              ),
                             ),
                             Row(
                               children: [
@@ -778,12 +780,14 @@ class _ConfigScreenState extends State<ConfigScreen> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(l10n.cfgPredPeriod, style: AppStyles.bodyText.copyWith(color: AppStyles.warningAccent, fontWeight: FontWeight.bold)),
-                                Text(l10n.cfgPeriodRange(predStart.toString().padLeft(2, '0'), predEnd.toString().padLeft(2, '0')), style: AppStyles.consoleBody),
-                              ],
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(l10n.cfgPredPeriod, style: AppStyles.bodyText.copyWith(color: AppStyles.warningAccent, fontWeight: FontWeight.bold)),
+                                  Text(l10n.cfgPeriodRange('${predStart.toString().padLeft(2, '0')}:00', '${predEnd.toString().padLeft(2, '0')}:00'), style: AppStyles.consoleBody),
+                                ],
+                              ),
                             ),
                             Row(
                               children: [
@@ -945,15 +949,17 @@ class _MlModelManagerSheetState extends State<MlModelManagerSheet> {
       widget.routines.saveRfModel(metadata, jsonPayload);
       _localModels = widget.routines.getSavedRfModels();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Downloaded ${metadata['crop_name']}')),
-        );
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            SnackBar(content: Text('Downloaded ${metadata['crop_name']}')),
+          );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Download failed: $e')));
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(SnackBar(content: Text('Download failed: $e')));
       }
     } finally {
       if (mounted) setState(() => _processingIds.remove(mId));
@@ -972,9 +978,9 @@ class _MlModelManagerSheetState extends State<MlModelManagerSheet> {
     setState(() {
       _localModels = widget.routines.getSavedRfModels();
     });
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Deleted $name from device.')));
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text('Deleted $name from device.')));
   }
 
   @override

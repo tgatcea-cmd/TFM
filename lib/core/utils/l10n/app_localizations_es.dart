@@ -583,7 +583,7 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String cfgPeriodRange(String start, String end) {
-    return 'De ${start}hrs a ${end}hrs';
+    return 'De $start a $end';
   }
 
   @override

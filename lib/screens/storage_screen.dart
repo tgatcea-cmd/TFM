@@ -241,7 +241,7 @@ class _StorageScreenState extends State<StorageScreen> {
       final res = await widget.routines.runLocalInference(
         station.id,
         forceAllow: true,
-        persistResults: false,
+        persistResults: true,
       );
       final verdict = widget.routines.inferenceBridge.status;
       
@@ -484,9 +484,11 @@ class _StorageScreenState extends State<StorageScreen> {
             ],
           ),
           const SizedBox(height: AppStyles.spaceSM),
-          Row(
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(l10n.cloudConnectionStateLabel, style: AppStyles.consoleBody),
+              const SizedBox(width: 4),
               Text(
                 _cloudConnStatus,
                 style: AppStyles.consoleBody.copyWith(

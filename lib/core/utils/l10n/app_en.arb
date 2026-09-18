@@ -212,7 +212,7 @@
   "cfgTooltipEditEnd": "Edit Endpoint",
   "cfgAgroSection": "AGRONOMIC SCHEDULE (24H)",
   "cfgIrrPeriod": "Irrigation Period",
-  "cfgPeriodRange": "{start}hrs to {end}hrs",
+  "cfgPeriodRange": "{start} to {end}",
   "@cfgPeriodRange": { "placeholders": { "start": { "type": "String" }, "end": { "type": "String" } } },
   "cfgShiftBtn": "Shift",
   "cfgPredPeriod": "Prediction Period",

@@ -411,6 +411,8 @@ class BleService {
   Future<void> dispose() async {
     await _bgScanResultsSubscription?.cancel();
     await disconnect();
+    await _dataController.close();
+    await _connectionStateController.close();
   }
 
   /// Synchronize RTC clock with Pico

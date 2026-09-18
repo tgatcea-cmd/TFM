@@ -30,6 +30,10 @@ class SaviaLstmScaler {
   static const double hs10Mean = 0.7902161245631403;
   static const double hs10Std = 0.04550010247318015;
 
+  // Random Forest Feature: 48h Radiation Sum (radiacion_sum_t0)
+  static const double radSumMean = 4191.1622;
+  static const double radSumStd = 1443.3734;
+
   static double scaleHs30(double val) => (val - hs30Mean) / hs30Std;
   static double unscaleHs30(double val) => (val * hs30Std) + hs30Mean;
 
@@ -38,6 +42,9 @@ class SaviaLstmScaler {
 
   static double scaleHs10(double val) => (val - hs10Mean) / hs10Std;
   static double unscaleHs10(double val) => (val * hs10Std) + hs10Mean;
+
+  /// Standardize 48h Radiation Sum (Z-Score)
+  static double scaleRadiation(double val) => (val - radSumMean) / radSumStd;
 }
 
 /// Structure representing a 1-hour input sample: [TA, HS10, HS30]
@@ -154,8 +161,9 @@ class SaviaLstmInferenceEngine {
 
     print('[Savia LSTM Engine] Historical samples in 48h window: ${recentHistory.length}');
 
-    // If we have fewer than 12 raw data points in 48h, return INSUFFICIENT_HISTORY
-    if (recentHistory.length < 12 && history.length < 48) {
+    // If we have fewer than 12 raw data points in 48h (excluding weather), return INSUFFICIENT_HISTORY
+    final soilHistory = recentHistory.where((h) => h.kind == 'soil_moisture' || h.kind == 'hs10' || h.kind == 'hs30').toList();
+    if (soilHistory.length < 12) {
       return {
         'code': SaviaLstmErrorCode.insufficientHistory,
         'message': 'LSTM_INPUT_INSUFFICIENT_HISTORY: Less than 48 hours of soil moisture aggregates available.',

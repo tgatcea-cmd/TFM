@@ -1013,7 +1013,7 @@ abstract class AppLocalizations {
   /// No description provided for @cfgPeriodRange.
   ///
   /// In en, this message translates to:
-  /// **'{start}hrs to {end}hrs'**
+  /// **'{start} to {end}'**
   String cfgPeriodRange(String start, String end);
 
   /// No description provided for @cfgShiftBtn.

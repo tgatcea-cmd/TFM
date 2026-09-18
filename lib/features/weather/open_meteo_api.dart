@@ -20,10 +20,20 @@ class OpenMeteoClient {
 
     // ponytail: timezone=auto ensures hourly weather arrays match local solar time at (lat, lon)
     if (referenceDate != null) {
-      final startDate = referenceDate.subtract(const Duration(days: 2)).toIso8601String().split('T')[0];
-      final endDate = referenceDate.add(const Duration(days: 1)).toIso8601String().split('T')[0];
+      final start = referenceDate.subtract(const Duration(days: 2));
+      final end = referenceDate.add(const Duration(days: 1));
+      final startDate = start.toIso8601String().split('T')[0];
+      final endDate = end.toIso8601String().split('T')[0];
+
+      // The forecast API only supports up to ~90 days in the past.
+      // For older dates, we must use the archive API.
+      final isHistorical = start.isBefore(DateTime.now().subtract(const Duration(days: 90)));
+      final baseUrlToUse = isHistorical 
+          ? 'https://archive-api.open-meteo.com/v1/archive' 
+          : _baseUrl;
+
       url = Uri.parse(
-        '$_baseUrl?latitude=$latitude&longitude=$longitude'
+        '$baseUrlToUse?latitude=$latitude&longitude=$longitude'
         '&start_date=$startDate&end_date=$endDate'
         '&hourly=temperature_2m,relative_humidity_2m,shortwave_radiation,precipitation'
         '&timezone=auto'

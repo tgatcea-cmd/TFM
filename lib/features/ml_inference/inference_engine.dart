@@ -80,9 +80,9 @@ class InferenceBridge {
     final Device? device = _db.findDevice(deviceId);
 
     if (device == null || (device.newPredictions.isEmpty && !injectLowMoisture)) {
-      status = "Error: No Prediction Found for device";
+      status = "Error: No prediction or telemetry data found. Request data first.";
       isRunning = false;
-      return {'code': -3, 'message': 'No device found'};
+      return {'code': -3, 'message': 'No data found'};
     }
 
     // ponytail: using last predicted value (T_24) as predHum because current LSTM models soil moisture evaporation
@@ -146,9 +146,18 @@ class InferenceBridge {
           referenceDate: refDate,
         );
         _db.saveWeatherForecast(device.deviceIdentifier, weatherData);
-        radSum = weatherData.shortwaveRadiation.isNotEmpty
-            ? weatherData.shortwaveRadiation.reduce((a, b) => a + b)
-            : 0.0;
+        
+        final targetStart = refDate.subtract(const Duration(hours: 24));
+        final targetEnd = refDate.add(const Duration(hours: 24));
+        double calculatedRadSum = 0.0;
+        
+        for (int i = 0; i < weatherData.time.length; i++) {
+          final t = weatherData.time[i];
+          if (t.isAfter(targetStart) && t.isBefore(targetEnd.add(const Duration(seconds: 1)))) {
+             calculatedRadSum += weatherData.shortwaveRadiation[i];
+          }
+        }
+        radSum = calculatedRadSum;
       } catch (e) {
         print('[LocalDB Inference Verbose] Network call failed ($e). Attempting offline weather fallback...');
         // Offline Fallback 1: Query database for cached radiation telemetry in [refDate - 48h, refDate]
@@ -243,13 +252,11 @@ class InferenceBridge {
     final double normalizedPredHum = rawHum > 1.0 ? rawHum / 100.0 : rawHum;
     final double scaledPredHum = SaviaLstmScaler.scaleHs30(normalizedPredHum);
 
-    // Scale raw solar radiation (W/m²) to normalized feature space expected by RF tree splits [0.0, 3.0]
-    double normalizedRad = radSum;
-    if (normalizedRad > 10.0) {
-      normalizedRad = 0.27;
-    }
+    // Scale raw solar radiation (W/m²) to normalized feature space expected by RF tree splits
+    double normalizedRad = SaviaLstmScaler.scaleRadiation(radSum);
+    
     if (injectLowMoisture) {
-      normalizedRad = 0.27;
+      normalizedRad = 0.27; // Keep hack strictly for debug injection mode
     }
 
     print('$verbosePrefix === START RF INFERENCE EVALUATION ===');
@@ -257,7 +264,7 @@ class InferenceBridge {
       '$verbosePrefix Raw predHum Input: $predHum | Normalized: $normalizedPredHum | Scaled (HS30): $scaledPredHum',
     );
     print(
-      '$verbosePrefix Raw 48h Radiation Sum Input: $radSum W/m² | Normalized: $normalizedRad',
+      '$verbosePrefix Raw 48h Radiation Sum Input: $radSum W/m² | Scaled (Z-Score): $normalizedRad',
     );
 
     // --- NEW DYNAMIC MODEL INJECTION HOOK ---

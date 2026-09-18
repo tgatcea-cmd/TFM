@@ -437,11 +437,19 @@ class CliRoutines {
       db.saveWeatherForecast(devId, weatherData);
 
       final lstmResult = await inferenceBridge.runLocalLstmInference(devId);
+      if (lstmResult['code'] != 0) { // 0 is success
+        throw Exception('LSTM Inference failed: ${lstmResult['message']}');
+      }
       modeMessage = 'Forward Inference Executed';
       rawPayload = lstmResult;
     } else {
       // --- LOCAL MODE ---
       print('=== LOCAL MODE INFERENCE ===');
+      
+      final rawCheck = await requestStationData('raw', limit: 1);
+      if (rawCheck is List && rawCheck.isEmpty) {
+        throw Exception('Aborting inference: Station storage is empty. No sensor telemetry available.');
+      }
       try {
         await sendHourlyForecast();
       } catch (e) {
@@ -676,9 +684,16 @@ class CliRoutines {
     );
     final weatherClient = OpenMeteoClient(latitude: lat, longitude: lon);
     final weather = await weatherClient.fetchForecast(referenceDate: refDate);
-    final double radSum = weather.shortwaveRadiation.isNotEmpty
-        ? weather.shortwaveRadiation.reduce((a, b) => a + b)
-        : 0.0;
+    final targetStart = refDate.subtract(const Duration(hours: 24));
+    final targetEnd = refDate.add(const Duration(hours: 24));
+    double radSum = 0.0;
+    
+    for (int i = 0; i < weather.time.length; i++) {
+      final t = weather.time[i];
+      if (t.isAfter(targetStart) && t.isBefore(targetEnd.add(const Duration(seconds: 1)))) {
+         radSum += weather.shortwaveRadiation[i];
+      }
+    }
 
     print(
       '[Cloud Emulation RAM Verbose] Calculated 48h Shortwave Radiation Sum: $radSum J/m²',
