@@ -15,7 +15,7 @@ import 'package:tfm_app/features/ml_inference/dynamic_random_forest.dart';
 class HistoricalSolarModel {
   static double estimateRadSum({required double lat, required DateTime date}) {
     final dayOfYear = date.difference(DateTime(date.year, 1, 1)).inDays + 1;
-    final declination = 23.45 * sin((284 + dayOfYear) * 3.14159 / 365 * 3.14159 / 180);
+    final declination = 23.45 * sin((284 + dayOfYear) * 360 / 365 * 3.14159 / 180);
     final latRad = lat * 3.14159 / 180;
     final decRad = declination * 3.14159 / 180;
     final cosZenith = max(0.2, cos(latRad) * cos(decRad) + sin(latRad) * sin(decRad));

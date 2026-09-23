@@ -2,7 +2,7 @@
 class DynamicRandomForest {
   final String modelId;
   final int numTrees;
-  final List<List<TreeNode>> trees;
+  final List<Map<int, TreeNode>> trees;
 
   DynamicRandomForest._({
     required this.modelId,
@@ -14,7 +14,12 @@ class DynamicRandomForest {
     final rawTrees = (json['trees'] as List? ?? []);
     final parsedTrees = rawTrees.map((t) {
       final nodesRaw = (t['nodes'] as List? ?? []);
-      return nodesRaw.map((n) => TreeNode.fromJson(n)).toList();
+      final map = <int, TreeNode>{};
+      for (final n in nodesRaw) {
+        final node = TreeNode.fromJson(n);
+        map[node.nodeId] = node;
+      }
+      return map;
     }).toList();
 
     return DynamicRandomForest._(
@@ -28,11 +33,11 @@ class DynamicRandomForest {
   /// Returns average probabilities across all trees.
   List<double> predict(List<double> features) {
     if (trees.isEmpty) return [0.0];
-    final int numClasses = trees.first.firstWhere((n) => n.isLeaf).value.length;
+    final int numClasses = trees.first.values.firstWhere((n) => n.isLeaf).value.length;
     final List<double> classScores = List.filled(numClasses, 0.0);
 
-    for (final treeNodes in trees) {
-      final leaf = _traverse(treeNodes, 0, features);
+    for (final treeNodesMap in trees) {
+      final leaf = _traverse(treeNodesMap, 0, features);
       for (int i = 0; i < numClasses && i < leaf.value.length; i++) {
         classScores[i] += leaf.value[i];
       }
@@ -41,13 +46,13 @@ class DynamicRandomForest {
     return classScores.map((s) => s / trees.length).toList();
   }
 
-  TreeNode _traverse(List<TreeNode> nodes, int nodeId, List<double> features) {
-    final node = nodes.firstWhere((n) => n.nodeId == nodeId);
+  TreeNode _traverse(Map<int, TreeNode> nodesMap, int nodeId, List<double> features) {
+    final node = nodesMap[nodeId]!;
     if (node.isLeaf) return node;
 
     final featVal = features[node.featureIndex];
     final nextId = (featVal <= node.threshold) ? node.leftChild : node.rightChild;
-    return _traverse(nodes, nextId, features);
+    return _traverse(nodesMap, nextId, features);
   }
 }
 

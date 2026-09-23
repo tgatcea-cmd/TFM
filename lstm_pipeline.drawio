@@ -1,0 +1,320 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="Electron" modified="2024-05-20T10:00:00.000Z" agent="Mozilla/5.0" version="21.2.8" type="device">
+  <diagram id="lstm_pipeline" name="LSTM_Pipeline">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="1653" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Nodes -->
+        <!-- Trigger Inference -->
+        <mxCell id="start" value="Start: Trigger Inference&#10;(CliRoutines)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="400" y="40" width="160" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Check Agronomic Window -->
+        <mxCell id="check_window" value="Check Agronomic Window&#10;(Yellow Zone?)" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="380" y="140" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="state_restricted" value="State: Restricted&#10;(Amber Card, End)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcc99;strokeColor=#36393d;" vertex="1" parent="1">
+          <mxGeometry x="660" y="150" width="140" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Load Device -->
+        <mxCell id="load_device" value="Load Device from Local DB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="400" y="260" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="state_no_device" value="Error: Device Not Found&#10;(End)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="660" y="260" width="140" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- LSTM Stage 1 Header -->
+        <mxCell id="stage1_group" value="Stage 1: LSTM Soil Moisture Forecast Pipeline" style="group" vertex="1" connectable="0" parent="1">
+          <mxGeometry x="250" y="340" width="460" height="580" as="geometry" />
+        </mxCell>
+        <mxCell id="stage1_bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;dashed=1;" vertex="1" parent="stage1_group">
+          <mxGeometry x="0" y="0" width="460" height="580" as="geometry" />
+        </mxCell>
+        <mxCell id="stage1_label" value="&lt;b&gt;Stage 1: LSTM Forecasting&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;" vertex="1" parent="stage1_group">
+          <mxGeometry x="10" y="10" width="200" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Gather Inputs -->
+        <mxCell id="gather_inputs" value="Gather 48h Telemetry&#10;(HS10, HS30)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="400" y="380" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="check_history" value="&gt;= 12 Samples?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="380" y="470" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="state_insuff" value="Error: INSUFFICIENT_HISTORY&#10;(End)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="660" y="480" width="180" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Fetch Weather -->
+        <mxCell id="fetch_weather" value="Fetch Weather (Open-Meteo)&#10;for 72h TA Array" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="400" y="580" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="preprocess" value="Preprocessing:&#10;- LOCF Gap Filling&#10;- SaviaLstmScaler (Z-Score)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="400" y="680" width="160" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="execute_lstm" value="LSTM Neural Network&#10;(24-step unrolled execution)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="400" y="780" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="persist_lstm" value="Unscale &amp; Persist&#10;24h Predictions to DB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="400" y="870" width="160" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Stage 2 Header -->
+        <mxCell id="stage2_group" value="Stage 2: Random Forest Decision Pipeline" style="group" vertex="1" connectable="0" parent="1">
+          <mxGeometry x="250" y="960" width="600" height="520" as="geometry" />
+        </mxCell>
+        <mxCell id="stage2_bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;dashed=1;" vertex="1" parent="stage2_group">
+          <mxGeometry x="0" y="0" width="600" height="520" as="geometry" />
+        </mxCell>
+        <mxCell id="stage2_label" value="&lt;b&gt;Stage 2: RF Agronomic Classification&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;" vertex="1" parent="stage2_group">
+          <mxGeometry x="10" y="10" width="250" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="extract_min" value="Extract Minimum Humidity&#10;over 24h (minHs30)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="400" y="1000" width="160" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Calculate Solar Radiation (4-Tier) -->
+        <mxCell id="calc_solar" value="4-Tier Solar Radiation Fallback&#10;1. Weather Context Reuse&#10;2. Open-Meteo Fetch&#10;3. Local DB Cached Rad&#10;4. HistoricalSolarModel" style="shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="360" y="1090" width="240" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="model_select" value="Select RF Model" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="380" y="1220" width="200" height="80" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="eval_dynamic" value="DynamicRandomForest&#10;(JSON Parser)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="300" y="1330" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eval_compiled" value="CompiledRandomForest&#10;(Hardcoded Fallback)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="500" y="1330" width="160" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="eval_verdict" value="Evaluate Recommendation&#10;Output: [Class 0 / 1]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="400" y="1420" width="160" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Presentation / FSM States -->
+        <mxCell id="fsm_group" value="Presentation &amp; UI States (FSM)" style="group" vertex="1" connectable="0" parent="1">
+          <mxGeometry x="250" y="1520" width="600" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="fsm_bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;dashed=1;" vertex="1" parent="fsm_group">
+          <mxGeometry x="0" y="0" width="600" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="fsm_label" value="&lt;b&gt;UI Presentation FSM (InferenceCard)&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;" vertex="1" parent="fsm_group">
+          <mxGeometry x="10" y="10" width="250" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="fsm_unrec" value="State: Unrecommended Window&#10;(Amber Card)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcc99;strokeColor=#36393d;" vertex="1" parent="1">
+          <mxGeometry x="270" y="1570" width="150" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="fsm_avoid" value="State: Irrigation Avoidable&#10;(Green Card)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="430" y="1570" width="140" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="fsm_needed" value="State: Irrigation Needed&#10;(Blue Card)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="580" y="1570" width="140" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="end" value="End Inference" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="400" y="1670" width="160" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Edges -->
+        <!-- Start to Check Window -->
+        <mxCell id="edge1" edge="1" parent="1" source="start" target="check_window">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Check Window Yes -> Restricted -->
+        <mxCell id="edge2" edge="1" parent="1" source="check_window" target="state_restricted">
+          <mxGeometry relative="1" as="geometry" />
+          <mxCell value="Yes" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="edge2">
+            <mxGeometry x="0" y="0" relative="0.5" as="geometry" />
+          </mxCell>
+        </mxCell>
+
+        <!-- Check Window No -> Load Device -->
+        <mxCell id="edge3" edge="1" parent="1" source="check_window" target="load_device">
+          <mxGeometry relative="1" as="geometry" />
+          <mxCell value="No" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="edge3">
+            <mxGeometry x="0" y="0" relative="0.5" as="geometry" />
+          </mxCell>
+        </mxCell>
+
+        <!-- Load Device -> Device Not Found -->
+        <mxCell id="edge4" edge="1" parent="1" source="load_device" target="state_no_device">
+          <mxGeometry relative="1" as="geometry" />
+          <mxCell value="Not Found" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="edge4">
+            <mxGeometry x="0" y="0" relative="0.5" as="geometry" />
+          </mxCell>
+        </mxCell>
+
+        <!-- Load Device -> Gather Inputs -->
+        <mxCell id="edge5" edge="1" parent="1" source="load_device" target="gather_inputs">
+          <mxGeometry relative="1" as="geometry" />
+          <mxCell value="Found" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="edge5">
+            <mxGeometry x="0" y="0" relative="0.5" as="geometry" />
+          </mxCell>
+        </mxCell>
+
+        <!-- Gather Inputs -> Check History -->
+        <mxCell id="edge6" edge="1" parent="1" source="gather_inputs" target="check_window">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge6_fixed" edge="1" parent="1" source="gather_inputs" target="check_history">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Check History No -> Insufficient -->
+        <mxCell id="edge7" edge="1" parent="1" source="check_history" target="state_insuff">
+          <mxGeometry relative="1" as="geometry" />
+          <mxCell value="No (&lt; 12)" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="edge7">
+            <mxGeometry x="0" y="0" relative="0.5" as="geometry" />
+          </mxCell>
+        </mxCell>
+
+        <!-- Check History Yes -> Fetch Weather -->
+        <mxCell id="edge8" edge="1" parent="1" source="check_history" target="fetch_weather">
+          <mxGeometry relative="1" as="geometry" />
+          <mxCell value="Yes" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="edge8">
+            <mxGeometry x="0" y="0" relative="0.5" as="geometry" />
+          </mxCell>
+        </mxCell>
+
+        <!-- Fetch Weather -> Preprocess -->
+        <mxCell id="edge9" edge="1" parent="1" source="fetch_weather" target="preprocess">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Preprocess -> Execute LSTM -->
+        <mxCell id="edge10" edge="1" parent="1" source="preprocess" target="execute_lstm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Execute LSTM -> Persist -->
+        <mxCell id="edge11" edge="1" parent="1" source="execute_lstm" target="persist_lstm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Persist -> Extract Min (Stage 2) -->
+        <mxCell id="edge12" edge="1" parent="1" source="persist_lstm" target="extract_min">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Extract Min -> Calc Solar -->
+        <mxCell id="edge13" edge="1" parent="1" source="extract_min" target="calc_solar">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Calc Solar -> Model Select -->
+        <mxCell id="edge14" edge="1" parent="1" source="calc_solar" target="model_select">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Model Select -> Dynamic -->
+        <mxCell id="edge15" edge="1" parent="1" source="model_select" target="eval_dynamic">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="380" y="1290" />
+            </Array>
+          </mxGeometry>
+          <mxCell value="Dynamic DB Model" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="edge15">
+            <mxGeometry x="0" y="0" relative="0.5" as="geometry" />
+          </mxCell>
+        </mxCell>
+
+        <!-- Model Select -> Compiled (Fallback) -->
+        <mxCell id="edge16" edge="1" parent="1" source="model_select" target="eval_compiled">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="580" y="1290" />
+            </Array>
+          </mxGeometry>
+          <mxCell value="JSON Missing/Failed" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="edge16">
+            <mxGeometry x="0" y="0" relative="0.5" as="geometry" />
+          </mxCell>
+        </mxCell>
+        
+        <!-- Eval -> Verdict -->
+        <mxCell id="edge17" edge="1" parent="1" source="eval_dynamic" target="eval_verdict">
+          <mxGeometry relative="1" as="geometry">
+             <Array as="points">
+              <mxPoint x="380" y="1400" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge18" edge="1" parent="1" source="eval_compiled" target="eval_verdict">
+          <mxGeometry relative="1" as="geometry">
+             <Array as="points">
+              <mxPoint x="580" y="1400" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Verdict -> FSM Branching -->
+        <mxCell id="edge19" edge="1" parent="1" source="eval_verdict" target="fsm_unrec">
+          <mxGeometry relative="1" as="geometry" />
+          <mxCell value="Outside Window" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="edge19">
+            <mxGeometry x="-0.2" y="0" relative="1" as="geometry" />
+          </mxCell>
+        </mxCell>
+        <mxCell id="edge20" edge="1" parent="1" source="eval_verdict" target="fsm_avoid">
+          <mxGeometry relative="1" as="geometry" />
+          <mxCell value="Class 1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="edge20">
+            <mxGeometry x="-0.1" y="0" relative="1" as="geometry" />
+          </mxCell>
+        </mxCell>
+        <mxCell id="edge21" edge="1" parent="1" source="eval_verdict" target="fsm_needed">
+          <mxGeometry relative="1" as="geometry" />
+          <mxCell value="Class 0" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="edge21">
+            <mxGeometry x="-0.2" y="0" relative="1" as="geometry" />
+          </mxCell>
+        </mxCell>
+
+        <!-- States to End -->
+        <mxCell id="edge22" edge="1" parent="1" source="fsm_unrec" target="end">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge23" edge="1" parent="1" source="fsm_avoid" target="end">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge24" edge="1" parent="1" source="fsm_needed" target="end">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge25" edge="1" parent="1" source="state_restricted" target="end">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="840" y="180" />
+              <mxPoint x="840" y="1700" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge26" edge="1" parent="1" source="state_no_device" target="end">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="820" y="290" />
+              <mxPoint x="820" y="1700" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge27" edge="1" parent="1" source="state_insuff" target="end">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="800" y="510" />
+              <mxPoint x="800" y="1700" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
