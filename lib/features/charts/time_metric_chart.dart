@@ -12,17 +12,37 @@ import 'package:tfm_app/core/models/chart_data_point.dart';
 /// - Background zone coloring based on Gathering vs Forecasting stages.
 /// - Seamless truncation of timestamps to perfectly align data on the hour.
 class TimeMetricChart extends StatefulWidget {
+  /// The display title of the chart.
   final String title;
+  
+  /// The unit of measurement for the chart's data.
   final String unit;
+  
+  /// A list of historical data points to plot on the chart.
   final List<ChartDataPoint> history;
+  
+  /// A list of forecasted data points to plot on the chart.
   final List<ChartDataPoint> forecast;
+  
+  /// The color used to stroke the historical data line.
   final Color historyColor;
+  
+  /// The color used to stroke the forecasted data line (often styled as dashed).
   final Color forecastColor;
+  
+  /// An optional fixed minimum value for the Y-axis. If null, calculated dynamically.
   final double? minY;
+  
+  /// An optional fixed maximum value for the Y-axis. If null, calculated dynamically.
   final double? maxY;
   
-  final int forecastZoneStartHour; // e.g. 19
-  final int forecastZoneEndHour;   // e.g. 9
+  /// The hour of the day (0-23) when the forecasting zone typically begins.
+  final int forecastZoneStartHour;
+  
+  /// The hour of the day (0-23) when the forecasting zone typically ends.
+  final int forecastZoneEndHour;
+  
+  /// An optional offset in hours applied to the current time, useful for testing or simulation.
   final int timeOffsetHours;
 
   const TimeMetricChart({
@@ -45,13 +65,25 @@ class TimeMetricChart extends StatefulWidget {
 }
 
 class _TimeMetricChartState extends State<TimeMetricChart> {
+  /// The current minimum timestamp (in milliseconds) visible on the X-axis.
   late double minX;
+  
+  /// The current maximum timestamp (in milliseconds) visible on the X-axis.
   late double maxX;
   
+  /// A cached list of FlSpot coordinates derived from historical data.
   List<FlSpot>? _cachedHistorySpots;
+  
+  /// A cached list of FlSpot coordinates derived from forecasting data.
   List<FlSpot>? _cachedForecastSpots;
+  
+  /// A cached list combining forecast spots and the last history spot to create a seamless visual bridge.
   List<FlSpot>? _cachedBridgeSpots;
+  
+  /// Reference to the last built history list to detect data changes and invalidate caches.
   List<ChartDataPoint>? _lastHistoryRef;
+  
+  /// Reference to the last built forecast list to detect data changes and invalidate caches.
   List<ChartDataPoint>? _lastForecastRef;
   
   @override
@@ -67,17 +99,27 @@ class _TimeMetricChartState extends State<TimeMetricChart> {
     if (oldWidget.forecast != widget.forecast) _cachedForecastSpots = null;
   }
 
+  /// Resets the chart's viewing window to center around the current time.
+  /// 
+  /// Sets [minX] to 48 hours ago and [maxX] to 24 hours into the future,
+  /// accounting for the [widget.timeOffsetHours].
   void _resetView() {
     final nowMs = DateTime.now().add(Duration(hours: widget.timeOffsetHours)).millisecondsSinceEpoch.toDouble();
     minX = nowMs - 48 * 3600000.0;
     maxX = nowMs + 24 * 3600000.0;
   }
 
+  /// Truncates a given [DateTime] to its hour precision.
+  /// 
+  /// Returns a new [DateTime] with minutes, seconds, and milliseconds set to zero.
   DateTime _truncateToHour(DateTime dt) {
     return DateTime(dt.year, dt.month, dt.day, dt.hour);
   }
 
-  /// Builds background zones ONLY for the current active agronomic day
+  /// Builds vertical range background annotations indicating distinct phases 
+  /// of the agronomic day (e.g., gathering vs. forecasting).
+  /// 
+  /// Returns a list of [VerticalRangeAnnotation] representing the visual zones.
   List<VerticalRangeAnnotation> _buildZones() {
     final now = DateTime.now().add(Duration(hours: widget.timeOffsetHours));
     final startH = widget.forecastZoneStartHour; // e.g. 19
@@ -110,6 +152,10 @@ class _TimeMetricChartState extends State<TimeMetricChart> {
     ];
   }
 
+  /// Converts a raw list of [ChartDataPoint] into a list of plottable [FlSpot]s.
+  /// 
+  /// Deduplicates and sorts the points based on their hour-truncated timestamps 
+  /// to ensure a clean rendering of the line chart.
   List<FlSpot> _buildSpots(List<ChartDataPoint> data) {
     final Map<int, double> hourlyMap = {};
     for (var point in data) {
@@ -120,6 +166,11 @@ class _TimeMetricChartState extends State<TimeMetricChart> {
     return sortedKeys.map((ms) => FlSpot(ms.toDouble(), hourlyMap[ms]!)).toList();
   }
 
+  /// Builds the visual representation of the interactive time metric chart.
+  /// 
+  /// Manages cache validation for [FlSpot] data, dynamically calculates the Y-axis 
+  /// boundaries, determines optimal X-axis step intervals based on zoom level, 
+  /// and constructs the core [LineChart] widget wrapped in a pan-aware [Listener].
   @override
   Widget build(BuildContext context) {
     if (_cachedHistorySpots == null || _lastHistoryRef != widget.history) {

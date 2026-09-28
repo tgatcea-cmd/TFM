@@ -11,10 +11,25 @@ import 'chunk_assembler.dart';
 export 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show BluetoothDevice, ScanResult, BluetoothConnectionState;
 
+/// Handles the cryptographic handshake and authentication with the Pico device.
 class PicoHandshakeModule {
+  /// The shared secret (password) used to authenticate with the device.
   final String sharedSecret;
+  
+  /// Creates a new instance of [PicoHandshakeModule] with an optional [sharedSecret].
   PicoHandshakeModule({this.sharedSecret = ""});
 
+  /// Performs the authentication handshake with the given [device].
+  ///
+  /// Reads the device's challenge nonce, computes a SHA-256 cryptographic proof using the [sharedSecret],
+  /// and sends the proof back to authenticate. If the device is unprovisioned, it sets up the initial password.
+  ///
+  /// [device] is the connected Bluetooth device.
+  /// [statusChar] is the characteristic for reading device status.
+  /// [authChar] is the dedicated characteristic for authentication (0x14).
+  /// [onProgress] is an optional callback to report progress updates.
+  ///
+  /// Returns `true` if authentication is successful; otherwise `false`.
   Future<bool> performHandshake(
     BluetoothDevice device,
     BluetoothCharacteristic? statusChar,
@@ -122,9 +137,17 @@ class PicoHandshakeModule {
   }
 }
 
+/// A service class for managing Bluetooth Low Energy (BLE) connections and data exchange.
+///
+/// This class handles scanning for devices, establishing connections, performing handshakes,
+/// and communicating with various BLE characteristics to send and receive data.
 class BleService {
+  /// The singleton instance of [BleService].
   static BleService? instance;
+  
+  /// The module used for performing cryptographic handshakes with the device.
   PicoHandshakeModule handshakeModule;
+  
   BluetoothDevice? _connectedDevice;
   StreamSubscription<BluetoothConnectionState>? _stateSubscription;
   StreamSubscription<List<ScanResult>>? _scanSubscription;
@@ -141,6 +164,8 @@ class BleService {
   final BleChunkAssembler _chunkAssembler = BleChunkAssembler();
 
   final _dataController = StreamController<Object>.broadcast();
+  
+  /// A broadcast stream of complete data payloads received from the device.
   Stream<Object> get dataStream => _dataController.stream;
 
   final _connectionStateController = StreamController<bool>.broadcast();

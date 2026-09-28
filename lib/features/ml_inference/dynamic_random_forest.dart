@@ -1,7 +1,16 @@
-/// Zero-dependency JSON RF tree parser
+/// A zero-dependency parser and evaluator for Random Forest models stored in JSON format.
+///
+/// This class enables dynamic loading and execution of Random Forest models
+/// without relying on external machine learning libraries.
 class DynamicRandomForest {
+  /// The unique identifier for this model.
   final String modelId;
+
+  /// The total number of decision trees in the forest.
   final int numTrees;
+
+  /// The collection of decision trees, where each tree is represented as a
+  /// map of node IDs to [TreeNode] objects.
   final List<Map<int, TreeNode>> trees;
 
   DynamicRandomForest._({
@@ -10,6 +19,14 @@ class DynamicRandomForest {
     required this.trees,
   });
 
+  /// Constructs a [DynamicRandomForest] from a JSON map.
+  ///
+  /// Parameters:
+  /// - [json]: A map containing the serialized model structure, including
+  ///   the trees and their constituent nodes.
+  ///
+  /// Returns:
+  /// A fully initialized [DynamicRandomForest] instance.
   factory DynamicRandomForest.fromJson(Map<String, dynamic> json) {
     final rawTrees = (json['trees'] as List? ?? []);
     final parsedTrees = rawTrees.map((t) {
@@ -29,8 +46,18 @@ class DynamicRandomForest {
     );
   }
 
-  /// Evaluates input feature vector [Radiation, Humidity, ...]
-  /// Returns average probabilities across all trees.
+  /// Evaluates an input feature vector against the Random Forest.
+  ///
+  /// Traverses each decision tree in the forest using the provided [features]
+  /// and calculates the average probability scores across all trees.
+  ///
+  /// Parameters:
+  /// - [features]: A list of double values representing the input variables
+  ///   (e.g., Radiation, Humidity).
+  ///
+  /// Returns:
+  /// A list of double values representing the averaged probability scores for
+  /// each possible class.
   List<double> predict(List<double> features) {
     if (trees.isEmpty) return [0.0];
     final int numClasses = trees.first.values.firstWhere((n) => n.isLeaf).value.length;
@@ -56,6 +83,7 @@ class DynamicRandomForest {
   }
 }
 
+/// Represents a single node within a decision tree of a [DynamicRandomForest].
 class TreeNode {
   final int nodeId;
   final bool isLeaf;

@@ -9,14 +9,27 @@ import 'package:tfm_app/core/theme/app_styles.dart';
 import 'package:tfm_app/core/utils/l10n/app_localizations.dart';
 import 'package:tfm_app/screens/widgets/inference_card.dart';
 
-/// DATA MODEL: Represents a merged view of local and cloud data.
-/// Kept distinct from the UI Widget to preserve architectural integrity.
+/// Represents a unified model of a station, combining data from local database storage
+/// and the cloud platform.
+///
+/// This separation of concerns preserves architectural integrity by keeping data
+/// logic isolated from the UI layer. It allows the system to seamlessly handle
+/// devices that exist only locally, only in the cloud, or in both locations simultaneously.
 class UnifiedStation {
+  /// The unique identifier of the station/device.
   final String id;
+  
+  /// The human-readable name of the station.
   final String name;
+  
+  /// The local device record from the SQLite database, if it exists.
   final Device? localDevice;
+  
+  /// The remote device record fetched from the cloud API, if it exists.
   final Map<String, dynamic>? cloudDevice;
 
+  /// Creates a [UnifiedStation] linking an [id] and [name] with optional
+  /// [localDevice] and [cloudDevice] data sources.
   UnifiedStation({
     required this.id,
     required this.name,
@@ -49,12 +62,25 @@ class UnifiedStation {
   }
 }
 
-/// UI WIDGET: The actual Storage Screen.
+/// A stateful widget that displays a dashboard for managing stored telemetry and station data.
+///
+/// It allows users to view synchronized and unsynchronized stations, test cloud API connectivity,
+/// force synchronization of local telemetry to the cloud, and run local AI inferences
+/// or cloud emulations on available data.
 class StorageScreen extends StatefulWidget {
+  /// The CLI routines interface used for database operations, API requests, and inference.
   final CliRoutines routines;
+  
+  /// Callback triggered when the user initiates a back navigation.
   final VoidCallback onBack;
+  
+  /// Callback used to report status updates to the parent layout.
   final Function(String) onStatusChange;
 
+  /// Creates a [StorageScreen].
+  ///
+  /// Requires [routines] for underlying system logic, [onBack] for navigation,
+  /// and [onStatusChange] for emitting UI notifications.
   const StorageScreen({
     super.key,
     required this.routines,
@@ -66,19 +92,37 @@ class StorageScreen extends StatefulWidget {
   State<StorageScreen> createState() => _StorageScreenState();
 }
 
+/// The state class for [StorageScreen], managing UI logic for data synchronization,
+/// list selections, and orchestrating API/database commands.
 class _StorageScreenState extends State<StorageScreen> {
+  /// A unified list of all discovered stations from local storage and the cloud.
   List<UnifiedStation> _stations = [];
+  
+  /// The index of the currently selected station in the [_stations] list, if any.
   int? _selectedIndex;
 
+  /// Indicates if a database-to-cloud synchronization process is actively running.
   bool _isSyncing = false;
+  
+  /// Indicates if a local AI inference process is actively running.
   bool _isInferring = false;
+  
+  /// Indicates if a cloud AI emulation process is actively running.
   bool _isEmulating = false;
+  
+  /// Indicates if a cloud connectivity test is actively running.
   bool _isTestingApi = false;
 
+  /// The current state of connection to the cloud backend (e.g., 'CONNECTED', 'UNREACHABLE', 'UNKNOWN').
   String _cloudConnStatus = 'UNKNOWN';
+  
+  /// The number of local devices that contain telemetry not yet synced to the cloud.
   int _unsyncedCount = 0;
 
+  /// The most recent result generated from an AI inference or cloud emulation.
   Map<String, dynamic>? _activeAiResult;
+  
+  /// Flag to prevent setting state or calling routines if the widget is removed from the tree.
   bool _isDisposed = false;
 
   @override

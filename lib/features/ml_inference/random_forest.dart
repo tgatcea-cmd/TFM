@@ -1,3 +1,17 @@
+/// Evaluates the random forest model on the given [input] feature vector.
+///
+/// This function executes a compiled representation of a Random Forest
+/// classifier, aggregating the predictions from multiple decision trees.
+///
+/// Parameters:
+/// - [input]: A list of floating-point numbers representing the scaled
+///   input features. The first element typically corresponds to solar
+///   radiation, and the second element corresponds to scaled soil moisture.
+///
+/// Returns:
+/// A list of double values representing the aggregated probabilities for
+/// each class. Index 0 contains the probability for class 0, and index 1
+/// contains the probability for class 1.
 List<double> score(List<double> input) {
     List<double> var0;
     if (input[0] <= -0.7938601970672607) {

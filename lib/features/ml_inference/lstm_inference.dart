@@ -7,7 +7,10 @@ import 'package:tfm_app/core/models/device.dart';
 import 'package:tfm_app/features/weather/open_meteo_api.dart';
 import 'package:tfm_app/features/weather/weather_data.dart';
 
-/// Error & Diagnostic Codes as defined in Savia C firmware (inference.h)
+/// Defines error and diagnostic codes used by the LSTM inference engine.
+///
+/// These codes align with the Savia C firmware specifications for consistent
+/// error reporting across platforms.
 class SaviaLstmErrorCode {
   static const int success = 0;
   static const int insufficientHistory = -1; // LSTM_INPUT_INSUFFICIENT_HISTORY
@@ -15,8 +18,12 @@ class SaviaLstmErrorCode {
   static const int executionError = -3;
 }
 
-/// StandardScaler parameters derived from scaler_params.json (scikit-learn 1.6.1)
-/// Matches src/system/scaler.c
+/// Provides standard scaling utilities for LSTM input features.
+///
+/// This class contains pre-computed mean and standard deviation values derived
+/// from the training dataset (via scikit-learn). It offers methods to scale
+/// raw feature values into the normalized space expected by the ML models, and
+/// to unscale normalized predictions back to physical units.
 class SaviaLstmScaler {
   // Feature 0: HS30 (Soil Moisture 30cm, Volumetric Water Content VWC)
   static const double hs30Mean = 0.7712527688624472;
@@ -47,7 +54,10 @@ class SaviaLstmScaler {
   static double scaleRadiation(double val) => (val - radSumMean) / radSumStd;
 }
 
-/// Structure representing a 1-hour input sample: [TA, HS10, HS30]
+/// Represents a single 1-hour input sample for the LSTM model.
+///
+/// Encapsulates the air temperature and soil moisture readings at two depths
+/// required for a single time step in the LSTM sequence.
 class LstmInputSample {
   final double ta;   // Air Temperature (°C)
   final double hs10; // Soil Moisture 10cm (VWC)
@@ -55,8 +65,12 @@ class LstmInputSample {
 
   LstmInputSample({required this.ta, required this.hs10, required this.hs30});
 
-  /// Scale inputs into StandardScaler space for model tensor
-  /// Note: Model row order is [TA, HS10, HS30]
+  /// Scales inputs into the StandardScaler space for the model tensor.
+  ///
+  /// Note: Model row order is [TA, HS10, HS30].
+  ///
+  /// Returns:
+  /// A list of double values representing the scaled [TA, HS10, HS30] features.
   List<double> toScaledTensorRow() {
     return [
       SaviaLstmScaler.scaleTa(ta),
@@ -66,14 +80,26 @@ class LstmInputSample {
   }
 }
 
-/// Off-Device LSTM Inference Execution Pipeline
+/// Executes the off-device LSTM inference pipeline for soil moisture prediction.
+///
+/// This engine is responsible for gathering historical telemetry and future
+/// weather forecasts, preparing the data tensors, executing the physical/ML
+/// hybrid moisture forecasting model, and persisting the results.
 class SaviaLstmInferenceEngine {
   final DatabaseService db;
 
   SaviaLstmInferenceEngine(this.db);
 
-  /// Executes the complete 24-hour LSTM Soil Moisture ($HS_{30}$) Inference procedure
-  /// Matching Savia firmware inference_run_daily()
+  /// Executes the complete 24-hour LSTM Soil Moisture ($HS_{30}$) Inference procedure.
+  ///
+  /// This implementation matches the Savia firmware `inference_run_daily()` spec.
+  ///
+  /// Parameters:
+  /// - [deviceId]: The identifier of the device to execute inference for.
+  /// - [targetRefDate]: An optional reference date to compute the forecast from.
+  ///
+  /// Returns:
+  /// A map containing the execution status code, generated forecast predictions, and summary statistics.
   Future<Map<String, dynamic>> runDailyInference(String deviceId, {DateTime? targetRefDate}) async {
     print('[Savia LSTM Engine] === START OFF-DEVICE LSTM INFERENCE ===');
     print('[Savia LSTM Engine] Target Device: $deviceId');
@@ -142,8 +168,16 @@ class SaviaLstmInferenceEngine {
     };
   }
 
-  /// Input Gathering with LOCF (Last Observation Carried Forward) and leading backfill
-  /// Matching src/system/lstm_input.c
+  /// Gathers inputs with LOCF (Last Observation Carried Forward) and leading backfill.
+  ///
+  /// This implementation matches `src/system/lstm_input.c`.
+  ///
+  /// Parameters:
+  /// - [device]: The target device to pull historical data for.
+  /// - [refDate]: The reference date around which inputs are queried.
+  ///
+  /// Returns:
+  /// A map containing the past 48h samples and the future 24h temperature forecast.
   Future<Map<String, dynamic>> _gatherInputs(Device device, DateTime refDate) async {
     final history = device.historicValues;
 
@@ -243,8 +277,16 @@ class SaviaLstmInferenceEngine {
   }
 
 
-  /// 24-step Unrolled LSTM Forecast Procedure
-  /// Calculates the 24-hour ahead $HS_{30}$ soil moisture curve
+  /// Executes the 24-step Unrolled LSTM Forecast Procedure.
+  ///
+  /// Calculates the 24-hour ahead $HS_{30}$ soil moisture curve.
+  ///
+  /// Parameters:
+  /// - [pastTensor]: A 2D list of scaled historical features over the past 48 hours.
+  /// - [futureTensor]: A list of scaled forecasted temperatures for the next 24 hours.
+  ///
+  /// Returns:
+  /// A list of 24 predicted soil moisture values representing the forecast curve.
   List<double> _executeLstmModel(List<List<double>> pastTensor, List<double> futureTensor) {
     final List<double> predictions = [];
 
@@ -273,8 +315,15 @@ class SaviaLstmInferenceEngine {
     return predictions;
   }
 
-  /// Persist 24-hour prediction forecast into local DB
-  /// Matches storage_clear_predictions() & storage_append_prediction()
+  /// Persists the 24-hour prediction forecast into the local database.
+  ///
+  /// This operation corresponds to `storage_clear_predictions()` & `storage_append_prediction()`
+  /// in the C firmware.
+  ///
+  /// Parameters:
+  /// - [device]: The target device to persist predictions for.
+  /// - [refDate]: The reference date the prediction was computed from.
+  /// - [predictions]: The list of 24 predicted unscaled soil moisture values.
   void _persistPredictions(Device device, DateTime refDate, List<double> predictions) {
     final baseMs = refDate.millisecondsSinceEpoch;
     final List<Prediction> updatedList = [];

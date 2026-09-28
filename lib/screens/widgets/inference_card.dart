@@ -3,11 +3,23 @@ import 'package:tfm_app/core/theme/app_styles.dart';
 import 'package:tfm_app/core/utils/date_formatter.dart';
 import 'package:tfm_app/core/utils/l10n/app_localizations.dart';
 
+/// A reusable visual component that displays the result of an AI inference
+/// or cloud emulation process for agricultural telemetry data.
+///
+/// It visually interprets verdicts (e.g., whether irrigation is needed),
+/// warns users if the current time falls outside recommended agronomic schedules,
+/// and presents minimum predicted humidity data.
 class InferenceCard extends StatelessWidget {
+  /// The inference result payload containing keys like 'verdict', 'minHumidity', etc.
   final Map<String, dynamic>? data;
+  
+  /// The localization bundle used to translate UI text.
   final AppLocalizations l10n;
+  
+  /// An optional custom formatter for displaying timestamps. If omitted, a default format is used.
   final String Function(int dateMs)? formatDate;
 
+  /// Creates an [InferenceCard] to visually present [data] using [l10n] strings.
   const InferenceCard({
     super.key,
     required this.data,

@@ -2,14 +2,22 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:cbor/cbor.dart';
 
+/// Assembles chunked data payloads received over Bluetooth Low Energy (BLE).
+///
+/// Because BLE has payload size limits, large data structures (like CBOR objects)
+/// are split into smaller chunks. This class tracks incoming chunks by sequence index,
+/// waits until all chunks are received, and concatenates them into the original full payload.
 class BleChunkAssembler {
   final Map<int, List<int>> _chunks = {};
   int _totalChunks = 0;
   bool _isAssembled = false;
 
   final _completedController = StreamController<List<int>>.broadcast();
+  
+  /// A stream that emits the fully assembled payload (as a byte array) once all chunks arrive.
   Stream<List<int>> get completedStream => _completedController.stream;
 
+  /// Resets the internal state to prepare for receiving a new set of chunks.
   void reset() {
     _chunks.clear();
     _totalChunks = 0;

@@ -11,8 +11,20 @@ import 'lstm_inference.dart';
 import 'dart:convert';
 import 'package:tfm_app/features/ml_inference/dynamic_random_forest.dart';
 
-/// Offline fallback model for estimating 48h shortwave solar radiation sum (W/m²)
+/// An offline fallback model for estimating the 48-hour shortwave solar radiation sum.
+///
+/// This model calculates an estimated solar radiation value based on the
+/// geographic location and the time of year, to be used when live weather
+/// data is unavailable.
 class HistoricalSolarModel {
+  /// Estimates the 48-hour shortwave solar radiation sum in Watts per square meter (W/m²).
+  ///
+  /// Parameters:
+  /// - [lat]: The latitude of the location in degrees.
+  /// - [date]: The reference date for the calculation.
+  ///
+  /// Returns:
+  /// The estimated solar radiation sum (W/m²).
   static double estimateRadSum({required double lat, required DateTime date}) {
     final dayOfYear = date.difference(DateTime(date.year, 1, 1)).inDays + 1;
     final declination = 23.45 * sin((284 + dayOfYear) * 360 / 365 * 3.14159 / 180);
@@ -23,6 +35,12 @@ class HistoricalSolarModel {
   }
 }
 
+/// Bridges the database and ML inference models to execute predictions.
+///
+/// The [InferenceBridge] orchestrates the fetching of necessary data (e.g.,
+/// weather, telemetry), prepares the input features, and runs either the LSTM
+/// or Random Forest models to generate soil moisture forecasts and irrigation
+/// recommendations.
 class InferenceBridge {
   final DatabaseService _db;
   final VoidCallback? onDbUpdated;
@@ -35,7 +53,13 @@ class InferenceBridge {
 
   InferenceBridge(this._db, {this.onDbUpdated});
 
-  /// Executes the Savia Off-Device/App-side 24-hour LSTM Soil Moisture Inference procedure
+  /// Executes the Savia Off-Device/App-side 24-hour LSTM Soil Moisture Inference procedure.
+  ///
+  /// Parameters:
+  /// - [deviceId]: The optional ID of the device to run inference for.
+  ///
+  /// Returns:
+  /// A map containing the results of the LSTM inference execution.
   Future<Map<String, dynamic>> runLocalLstmInference([String? deviceId]) async {
     isRunning = true;
     progress = 0.1;
@@ -63,6 +87,15 @@ class InferenceBridge {
 
   Future<void> _loadModelFromSettings() async {}
 
+  /// Executes the RF model to generate an irrigation recommendation based on predicted soil moisture and weather.
+  ///
+  /// Parameters:
+  /// - [deviceId]: The optional ID of the device to evaluate.
+  /// - [preloadedWeatherData]: Optional pre-fetched weather forecast data to avoid network calls.
+  /// - [persistResults]: Whether to save the generated prediction back to the database. Defaults to true.
+  ///
+  /// Returns:
+  /// A map containing the recommendation verdict, model details, and related parameters.
   Future<Map<String, dynamic>> runIrrigationRecommendation({
     String? deviceId,
     WeatherData? preloadedWeatherData,
@@ -240,7 +273,19 @@ class InferenceBridge {
     }
   }
 
-  /// ponytail: Single unified RF inference engine method (used for both Local DB & RAM Emulation)
+  /// Core RF inference evaluation logic used for both Local DB and RAM Emulation.
+  ///
+  /// Evaluates whether irrigation is needed based on solar radiation and predicted humidity.
+  ///
+  /// Parameters:
+  /// - [radSum]: The 48-hour shortwave radiation sum (W/m²).
+  /// - [predHum]: The raw predicted soil moisture value.
+  /// - [refDate]: The reference date for the evaluation context.
+  /// - [invertModelOutput]: A flag to artificially invert the resulting recommendation.
+  /// - [verbosePrefix]: A prefix string for verbose debug logging.
+  ///
+  /// Returns:
+  /// A map containing the calculated result class, verdict string, and inference metadata.
   Map<String, dynamic> evaluateRecommendation({
     required double radSum,
     required double predHum,

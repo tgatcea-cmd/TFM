@@ -1,6 +1,10 @@
+/// Utility class for formatting dates across the application.
 class AppDateFormatter {
-  /// Format a DateTime, int timestamp (ms), or ISO string into uniform app-wide format:
-  /// `YYYY-MM-DD HH:mm:ss` (or `YYYY-MM-DD HH:mm` if showSeconds is false)
+  /// Formats a date value into a uniform app-wide string representation.
+  /// 
+  /// Accepts a [DateTime], an integer timestamp in milliseconds, or an ISO 8601 string in [value].
+  /// Returns `YYYY-MM-DD HH:mm:ss` by default, or `YYYY-MM-DD HH:mm` if [showSeconds] is false.
+  /// Returns 'N/A' if the value is null, or the string representation of the value if it cannot be parsed.
   static String format(dynamic value, {bool showSeconds = true}) {
     if (value == null) return 'N/A';
     DateTime dt;
@@ -30,8 +34,12 @@ class AppDateFormatter {
   }
 }
 
+/// Extension on [DateTime] providing utility methods for manipulating date components.
 extension DateTimeFloor on DateTime {
-  /// Snaps a DateTime down to the floor hour (:00:00.000)
+  /// Snaps the [DateTime] down to the floor of the current hour.
+  /// 
+  /// For example, `14:45:30` becomes `14:00:00.000`.
+  /// Returns a new [DateTime] instance.
   DateTime floorToHour() {
     return DateTime(year, month, day, hour);
   }

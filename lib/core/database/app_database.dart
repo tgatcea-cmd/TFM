@@ -7,14 +7,24 @@ import 'package:tfm_app/features/location/location_settings.dart';
 import 'package:tfm_app/features/weather/weather_data.dart';
 import 'package:tfm_app/core/models/app_rf_model.dart';
 
+/// Service class responsible for managing local database operations using Isar.
+/// It provides an abstraction over database interactions, including web support fallbacks.
 class DatabaseService {
+  /// The underlying Isar database instance.
   late final Isar isar;
 
   // Web Fallbacks
+  /// In-memory application settings used when running on the web.
   late AppSettings _webSettings;
+  /// In-memory list of devices used when running on the web.
   final List<Device> _webDevices = [];
+  /// In-memory list of RF models used when running on the web.
   final List<RfModel> _webRfModels = [];
 
+  /// Initializes the local database.
+  /// 
+  /// For non-web platforms, it initializes Isar, registers schemas, and ensures default
+  /// settings are created. For web platforms, it initializes in-memory fallbacks.
   Future<void> init() async {
     if (!kIsWeb) {
       try {
@@ -44,7 +54,12 @@ class DatabaseService {
     }
   }
 
-  // Helper method: Write with auto-retry for unique IDs
+  /// Saves or updates a full [Device] entity in the database.
+  /// 
+  /// Updates the device's `updatedAt` timestamp and marks it as not synchronized (`isSynced = false`).
+  /// Automatically resolves unique identifier conflicts by updating the existing record if found.
+  /// 
+  /// [device]: The device instance to save.
   Future<void> saveDevice(Device device) async {
     device.updatedAt = DateTime.now();
     device.isSynced = false;
@@ -69,6 +84,16 @@ class DatabaseService {
     });
   }
 
+  /// Saves or updates basic device information.
+  /// 
+  /// Used for lightweight updates like naming or location. Preserves user-customized names 
+  /// (ignores new name if existing is non-generic).
+  /// 
+  /// [id]: The unique identifier of the device.
+  /// [name]: The name to assign (if generic or new).
+  /// [lat]: Optional latitude to update.
+  /// [lon]: Optional longitude to update.
+  /// [isFromCloud]: Indicates if the update originates from a remote sync (sets `isSynced = true`).
   void saveDeviceBasic(
     String id,
     String name, {
@@ -134,11 +159,17 @@ class DatabaseService {
     });
   }
 
+  /// Retrieves the current application settings.
+  /// 
+  /// Returns the existing settings or a default [AppSettings] object if none exist.
   AppSettings getAppSettings() {
     if (kIsWeb) return _webSettings;
     return isar.appSettings.getSync(1) ?? AppSettings();
   }
 
+  /// Updates specific fields in the application settings.
+  /// 
+  /// Only provided non-null parameters will be updated. The changes are saved synchronously.
   void saveAppSettings({
     bool? isFirstTime,
     String? themeMode,
@@ -207,11 +238,13 @@ class DatabaseService {
     });
   }
 
+  /// Retrieves the manual location settings configured by the user.
   LocationSettings getLocationSettings() {
     final s = getAppSettings();
     return LocationSettings(s.manualLat, s.manualLon, s.isGpsEnabled);
   }
 
+  /// Saves the manual location settings provided by the user.
   void saveLocationSettings(double lat, double lon, bool isGps) {
     if (kIsWeb) {
       final s = _webSettings;
@@ -229,11 +262,13 @@ class DatabaseService {
     });
   }
 
+  /// Retrieves the device's actual GPS location.
   LocationSettings getGpsConfig() {
     final s = getAppSettings();
     return LocationSettings(s.gpsLat, s.gpsLon, true);
   }
 
+  /// Saves the device's actual GPS location.
   void saveGpsConfig(double lat, double lon) {
     if (kIsWeb) {
       final s = _webSettings;
@@ -249,10 +284,12 @@ class DatabaseService {
     });
   }
 
+  /// Retrieves the minimum humidity threshold setting.
   double getMinHumidity() {
     return getAppSettings().minHumidity;
   }
 
+  /// Saves the minimum humidity threshold setting.
   void saveMinHumidity(double value) {
     if (kIsWeb) {
       _webSettings.minHumidity = value;
@@ -265,11 +302,13 @@ class DatabaseService {
     });
   }
 
+  /// Retrieves all devices saved in the database.
   List<Device> getSavedDevices() {
     if (kIsWeb) return _webDevices;
     return isar.devices.where().findAllSync();
   }
 
+  /// Deletes a device from the database by its [id].
   void deleteDevice(String id) {
     if (kIsWeb) {
       _webDevices.removeWhere((d) => d.deviceIdentifier == id);
@@ -286,8 +325,14 @@ class DatabaseService {
 
   // --- Telemetry & Prediction Helpers for New Architecture ---
 
-  /// Upserts telemetry records by (tsMs, depthCm, kind).
-  /// Prevents duplicates and updates existing values if modified.
+  /// Upserts telemetry records for a specific device based on a composite key: `(tsMs, depthCm, kind)`.
+  /// 
+  /// Prevents duplicates and updates existing values if modified. 
+  /// Returns `true` if any new data was inserted or existing data was modified.
+  /// 
+  /// [deviceId]: The target device's identifier.
+  /// [newValues]: The list of [HistoricValue] records to upsert.
+  /// [isFromCloud]: Flag to determine if the update is from remote sync.
   bool upsertTelemetry(
     String deviceId,
     List<HistoricValue> newValues, {
@@ -402,10 +447,19 @@ class DatabaseService {
     return hasChanges;
   }
 
+  /// Appends telemetry data to a device's historic values.
+  /// 
+  /// Wraps [upsertTelemetry] assuming it is locally sourced (`isFromCloud = false`).
   void appendTelemetry(String deviceId, List<HistoricValue> newValues) {
     upsertTelemetry(deviceId, newValues, isFromCloud: false);
   }
 
+  /// Retrieves filtered telemetry data for a specific device.
+  /// 
+  /// [deviceId]: The identifier of the device.
+  /// [kind]: Optional filter by telemetry kind (e.g. 'temperature').
+  /// [depthCm]: Optional filter by depth measurement.
+  /// [sinceMs]: Optional filter for values after this timestamp (milliseconds).
   List<HistoricValue> getDeviceTelemetry(
     String deviceId, {
     String? kind,
@@ -430,7 +484,7 @@ class DatabaseService {
         .findFirstSync();
     if (dev == null) return [];
 
-    // ponytail: filter in-memory since lists are small enough (YAGNI complex Isar relations)
+    // Filter in-memory since lists are small enough (YAGNI complex Isar relations)
     return dev.historicValues.where((v) {
       if (kind != null && v.kind != kind) return false;
       if (depthCm != null && v.depthCm != depthCm) return false;
@@ -549,6 +603,9 @@ class DatabaseService {
     });
   }
 
+  /// Marks a device as synchronized with the cloud.
+  /// 
+  /// Creates the device if it doesn't exist, and sets its synchronization flag and timestamp.
   void markDeviceSynced(String deviceId) {
     if (kIsWeb) {
       final devIdx = _webDevices.indexWhere((d) => d.deviceIdentifier == deviceId);
@@ -584,6 +641,9 @@ class DatabaseService {
     });
   }
 
+  /// Updates a device's runtime status, specifically its location.
+  /// 
+  /// Optionally updates the sync status if [isFromCloud] is `true`.
   void updateDeviceStatus(
     String deviceId,
     Map<String, dynamic> status, {
@@ -637,6 +697,7 @@ class DatabaseService {
     });
   }
 
+  /// Updates a device's configuration capabilities (e.g., local inference, LoRa).
   void updateDeviceConfig(String deviceId, Map<String, dynamic> config) {
     if (kIsWeb) {
       final devIdx = _webDevices.indexWhere((d) => d.deviceIdentifier == deviceId);
@@ -680,6 +741,9 @@ class DatabaseService {
     });
   }
 
+  /// Updates the ML model predictions for a device.
+  /// 
+  /// Moves current predictions to `previousPredictions` and saves the new ones.
   void updatePredictions(
     String deviceId,
     List<Prediction> predictions, {
@@ -727,6 +791,7 @@ class DatabaseService {
     });
   }
 
+  /// Saves OpenMeteo or external weather forecast data as telemetry values.
   void saveWeatherForecast(String deviceId, WeatherData weatherData) {
     final List<HistoricValue> values = [];
     for (int i = 0; i < weatherData.time.length; i++) {
@@ -759,6 +824,7 @@ class DatabaseService {
     upsertTelemetry(deviceId, values, isFromCloud: false);
   }
 
+  /// Clears all stored device data from the local database.
   void clearAllData() {
     if (kIsWeb) {
       _webDevices.clear();
@@ -769,17 +835,21 @@ class DatabaseService {
     });
   }
 
+  /// Closes the database connection.
   void close() {
     if (kIsWeb) return;
     isar.close();
   }
 
   // --- ML Model Management Hooks ---
+
+  /// Retrieves all saved Random Forest (RF) models.
   List<RfModel> getSavedRfModels() {
     if (kIsWeb) return _webRfModels;
     return isar.rfModels.where().findAllSync();
   }
 
+  /// Retrieves the currently active Random Forest model, if any.
   RfModel? getActiveRfModel() {
     if (kIsWeb) {
       for (var m in _webRfModels) {
@@ -790,6 +860,9 @@ class DatabaseService {
     return isar.rfModels.filter().isActiveEqualTo(true).findFirstSync();
   }
 
+  /// Saves a new Random Forest model from its metadata and JSON tree data.
+  /// 
+  /// The newly saved model defaults to inactive.
   void saveRfModel(Map<String, dynamic> metadata, String treeDataJson) {
     if (kIsWeb) {
       final model = RfModel()
@@ -817,6 +890,7 @@ class DatabaseService {
     });
   }
 
+  /// Sets the specified RF model as active, and deactivates all others.
   void setActiveRfModel(String modelId) {
     if (kIsWeb) {
       for (var m in _webRfModels) {
@@ -834,6 +908,7 @@ class DatabaseService {
     });
   }
 
+  /// Deletes a Random Forest model by its [modelId].
   void deleteRfModel(String modelId) {
     if (kIsWeb) {
       _webRfModels.removeWhere((m) => m.modelId == modelId);
@@ -847,6 +922,9 @@ class DatabaseService {
 
   // --- Web Native Helper Methods to encapsulate direct `.isar` accesses ---
 
+  /// Finds a specific device by its [deviceId].
+  /// 
+  /// If [deviceId] is null, returns the first device found.
   Device? findDevice(String? deviceId) {
     if (kIsWeb) {
       if (deviceId != null) {
@@ -863,6 +941,7 @@ class DatabaseService {
     return isar.devices.where().findFirstSync();
   }
 
+  /// Synchronously updates a device record.
   void updateDeviceSync(Device device) {
     if (kIsWeb) {
       final idx = _webDevices.indexWhere((d) => d.deviceIdentifier == device.deviceIdentifier);
@@ -878,6 +957,7 @@ class DatabaseService {
     });
   }
 
+  /// Retrieves a list of devices that have local changes not yet synchronized to the cloud.
   Future<List<Device>> getDirtyDevices() async {
     if (kIsWeb) {
       return _webDevices.where((d) => !d.isSynced).toList();
@@ -885,6 +965,9 @@ class DatabaseService {
     return isar.devices.filter().isSyncedEqualTo(false).findAll();
   }
 
+  /// Bulk saves multiple devices.
+  /// 
+  /// Resolves conflicts automatically by matching identifiers.
   Future<void> saveDevices(List<Device> devices) async {
     if (kIsWeb) {
       for (var device in devices) {

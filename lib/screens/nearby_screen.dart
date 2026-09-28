@@ -7,11 +7,25 @@ import 'package:tfm_app/cli_routines.dart';
 import 'package:tfm_app/core/theme/app_styles.dart';
 import 'package:tfm_app/core/utils/l10n/app_localizations.dart';
 
+/// A stateful widget that provides a user interface for discovering and connecting to nearby
+/// Bluetooth Low Energy (BLE) devices.
+///
+/// This screen handles system permissions (like Bluetooth and Location), discovers
+/// nearby compatible devices, and allows the user to authenticate and establish a connection.
 class NearbyScreen extends StatefulWidget {
+  /// The CLI routines interface used for BLE scanning, secret management, and device connections.
   final CliRoutines routines;
+  
+  /// Callback triggered when the user initiates a back navigation.
   final VoidCallback onBack;
+  
+  /// Callback used to report status messages (e.g., connection progress) to the parent layout.
   final void Function(String msg) onStatusChange;
 
+  /// Creates a new instance of [NearbyScreen].
+  ///
+  /// Requires [routines] for BLE operations, [onBack] for navigation, and
+  /// [onStatusChange] for status updates.
   const NearbyScreen({
     super.key,
     required this.routines,
@@ -23,16 +37,30 @@ class NearbyScreen extends StatefulWidget {
   State<NearbyScreen> createState() => _NearbyScreenState();
 }
 
+/// The state class for [NearbyScreen], responsible for managing BLE scanning,
+/// handling connections, and checking system hardware and permission states.
 class _NearbyScreenState extends State<NearbyScreen> with WidgetsBindingObserver {
+  /// The list of discovered BLE devices from the most recent scan.
   List<ScanResult> _devices = [];
+  
+  /// Indicates whether an active connection attempt is currently in progress.
   bool _isConnecting = false;
   
   // Hardware & Permission States
+  
+  /// The current state of the device's Bluetooth adapter.
   BluetoothAdapterState _adapterState = BluetoothAdapterState.unknown;
+  
+  /// Indicates if location services are enabled globally on the device.
   bool _locationEnabled = true;
+  
+  /// The current location permission status granted to the app.
   LocationPermission _locationPerm = LocationPermission.always;
   
+  /// Subscription for real-time stream of BLE scan results.
   StreamSubscription<List<ScanResult>>? _scanSub;
+  
+  /// Subscription for monitoring Bluetooth adapter state changes.
   StreamSubscription<BluetoothAdapterState>? _adapterStateSub;
 
   @override

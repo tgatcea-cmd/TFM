@@ -30,8 +30,15 @@ response_queue = asyncio.Queue()
 
 def notification_handler(sender, data):
     """
-    Handles chunked responses from the SAVIA_CHR_DATA_RESP_UUID characteristic.
-    Reassembles them and puts the full response in an asyncio queue.
+    Handles chunked responses from the data response characteristic.
+    
+    Reassembles the incoming chunks by monitoring the sequence index and total count.
+    Once all chunks are received, it concatenates them and decodes the CBOR payload,
+    then puts the resulting full response into the global asyncio queue for further processing.
+
+    Parameters:
+        sender: The characteristic that sent the notification.
+        data (bytes): The raw CBOR-encoded chunk payload.
     """
     global chunks_dict
     payload = cbor2.loads(data)
@@ -67,9 +74,19 @@ def notification_handler(sender, data):
 
 def make_weather_cbor(past, future):
     """
-    Manually creates a CBOR payload for the weather update using 32-bit floats (0xfa).
-    This keeps the payload around 412 bytes, safely under the device's 512-byte buffer limit,
-    because Python's cbor2 library defaults to 64-bit floats (which exceed 600 bytes).
+    Constructs a CBOR payload for weather updates using 32-bit floats.
+    
+    This function manually builds the CBOR byte string to ensure that floating-point
+    numbers are encoded as 32-bit floats (0xfa). This optimization keeps the payload size
+    under the device's 512-byte buffer limit, avoiding the default 64-bit float encoding
+    used by standard Python libraries.
+
+    Parameters:
+        past (list of float): A list of historical temperature values (e.g., past 48 hours).
+        future (list of float): A list of forecast temperature values (e.g., future 24 hours).
+
+    Returns:
+        bytes: The manually constructed CBOR-encoded payload.
     """
     out = b'\xa3' # Map of 3 items
     out += b'\x61\x76\x01' # "v": 1
@@ -92,7 +109,19 @@ def make_weather_cbor(past, future):
 
 async def wait_for_data(client, request_payload, description):
     """
-    Helper function to send a data request and wait for the reassembled response via queue.
+    Sends a data request to the device and waits for the reassembled response.
+    
+    This helper function writes a CBOR-encoded request to the data request characteristic
+    and waits on the global response queue for the full, reassembled answer. It will timeout
+    after 10 seconds if no response is received.
+
+    Parameters:
+        client (BleakClient): The connected BLE client instance.
+        request_payload (dict): The dictionary payload to send as a request.
+        description (str): A string describing the request for logging purposes.
+
+    Returns:
+        dict or list or None: The decoded response payload, or None if a timeout occurred.
     """
     await client.write_gatt_char(SAVIA_CHR_DATA_REQ_UUID, cbor2.dumps(request_payload))
     try:
@@ -103,6 +132,20 @@ async def wait_for_data(client, request_payload, description):
         return None
 
 async def main():
+    """
+    Main execution loop for demonstrating BLE communication with the Savia device.
+    
+    The script performs the following steps:
+    1. Scans and connects to the Savia BLE device.
+    2. Performs the authentication handshake, provisioning the device if necessary.
+    3. Checks inference capabilities and sets the mode to local if supported.
+    4. Synchronizes the real-time clock.
+    5. Requests the generation of mock history data and retrieves it.
+    6. Sends a mock weather forecast to the device.
+    7. Requests the latest inference predictions.
+    8. Triggers a new inference run and polls for the updated results.
+    9. Plots the historical and predicted data using matplotlib.
+    """
     print("Scanning for Savia device...")
     device = await BleakScanner.find_device_by_filter(
         lambda d, ad: SAVIA_SVC_UUID.lower() in [u.lower() for u in ad.service_uuids]

@@ -10,16 +10,37 @@ import 'package:tfm_app/core/models/device.dart';
 /// "ETAPA DATOS LISTOS") based on the current time and the configured 
 /// [forecastZoneStartHour] and [forecastZoneEndHour], displaying a synchronized header.
 class UnifiedChart extends StatelessWidget {
+  /// The list of historical soil humidity records.
   final List<SoilHumidityRecord> history;
+  
+  /// The list of predicted soil humidity records for forecasting.
   final List<PredictionRecord> predictions;
+  
+  /// The list of predicted hourly radiation values for forecasting.
   final List<double> radiationForecast;
+  
+  /// The list of predicted hourly temperature values for forecasting.
   final List<double> temperatureForecast;
+  
+  /// The list of historical weather records (used for past radiation and temperature).
   final List<WeatherRecord> weatherHistory;
+  
+  /// The complete list of historical telemetry data for generic custom metrics.
   final List<HistoricValue> deviceHistory;
+  
+  /// A list of identifiers for custom metrics that should be rendered as additional charts.
   final List<String> customMetrics;
+  
+  /// An optional offset in hours applied to the current time, useful for testing or simulation.
   final int timeOffsetHours;
+  
+  /// The minimum acceptable humidity threshold (e.g., for setting alert lines).
   final double minHumidity;
+  
+  /// The hour of the day (0-23) when the forecasting zone typically begins.
   final int forecastZoneStartHour;
+  
+  /// The hour of the day (0-23) when the forecasting zone typically ends.
   final int forecastZoneEndHour;
 
   const UnifiedChart({
@@ -37,6 +58,13 @@ class UnifiedChart extends StatelessWidget {
     this.forecastZoneEndHour = 9,
   });
 
+  /// Builds the aggregated chart dashboard widget tree.
+  ///
+  /// Evaluates whether the current time falls inside the "waiting data" period
+  /// to display the appropriate status header. Then renders the [RadiationChart],
+  /// [HumidityChart], and dynamically builds [CustomMetricChart]s based on [customMetrics].
+  /// 
+  /// Returns a vertically scrolling [Column] of charts.
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now().add(Duration(hours: timeOffsetHours));

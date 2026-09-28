@@ -10,11 +10,25 @@ import 'package:geolocator/geolocator.dart';
 import 'package:tfm_app/core/models/app_rf_model.dart';
 import 'package:tfm_app/core/utils/l10n/app_localizations.dart';
 
+/// A stateful widget that provides the configuration interface for the TFM application.
+/// 
+/// This screen allows the user to configure system settings such as location (GPS or manual),
+/// cloud API endpoint and key, and the agronomic schedules (irrigation and prediction periods).
+/// It also provides utilities to test connectivity to the cloud backend and the weather service,
+/// and allows the user to manage Machine Learning (Random Forest) models.
 class ConfigScreen extends StatefulWidget {
+  /// The collection of CLI routines utilized for business logic and backend operations.
   final CliRoutines routines;
+  
+  /// Callback triggered when the user requests to navigate back.
   final VoidCallback onBack;
+  
+  /// Callback invoked to update the status message displayed to the user.
+  /// 
+  /// Takes a [String] parameter [msg] representing the new status.
   final void Function(String msg) onStatusChange;
 
+  /// Creates a [ConfigScreen] with the required dependencies.
   const ConfigScreen({
     super.key,
     required this.routines,
@@ -26,23 +40,48 @@ class ConfigScreen extends StatefulWidget {
   State<ConfigScreen> createState() => _ConfigScreenState();
 }
 
+/// The state associated with [ConfigScreen].
+/// 
+/// Manages local state for cloud settings, agronomic schedule periods,
+/// network status results, and real-time clock updates.
 class _ConfigScreenState extends State<ConfigScreen> {
+  /// The scheme (e.g., HTTP or HTTPS) used for connecting to the cloud server.
   late String _cloudScheme;
+  
+  /// The base URL or IP address of the cloud server.
   late String _cloudUrl;
+  
+  /// The port number used to connect to the cloud server.
   late int _cloudPort;
+  
+  /// The authentication key used for cloud server API requests.
   late String _cloudApiKey;
   
-  late int _agronomicDayStart; // Prediction start
-  late int _agronomicDayEnd;   // Prediction end / Irrigation start - 1
+  /// The start hour for the agronomic prediction cycle (0-23).
+  late int _agronomicDayStart;
+  
+  /// The end hour for the agronomic prediction cycle, representing the start of irrigation minus one hour (0-23).
+  late int _agronomicDayEnd;
 
-  static const int _defaultDayStart = 19; // Default 19hrs prediction start
-  static const int _defaultDayEnd = 10;   // Default 10hrs irrigation start
+  /// The default start hour (19:00) for the prediction cycle.
+  static const int _defaultDayStart = 19;
+  
+  /// The default start hour (10:00) for the irrigation cycle.
+  static const int _defaultDayEnd = 10;
 
+  /// Holds the current status of the connection to the Open-Meteo service.
   String? _openMeteoStatus;
+  
+  /// Holds the current status or latency result of the ping test to the cloud server.
   String? _cloudPingStatus;
+  
+  /// Holds any validation warnings regarding the agronomic schedule configuration.
   String? _scheduleWarning;
 
+  /// A timer used to periodically update the UI with the current local time.
   Timer? _clockTimer;
+  
+  /// The current local timestamp, updated periodically by [_clockTimer].
   DateTime _now = DateTime.now();
 
   @override
@@ -73,6 +112,10 @@ class _ConfigScreenState extends State<ConfigScreen> {
     super.dispose();
   }
 
+  /// Displays a modal bottom sheet for managing the available Machine Learning models.
+  /// 
+  /// Allows the user to view, download, activate, or delete Random Forest classifiers 
+  /// tailored for specific crops. Updates the state upon closure.
   void _showMlModelManager() {
     showModalBottomSheet(
       context: context,
@@ -87,6 +130,10 @@ class _ConfigScreenState extends State<ConfigScreen> {
     });
   }
 
+  /// Automatically retrieves and saves the device's current GPS location.
+  /// 
+  /// Requests the required location permissions if they haven't been granted.
+  /// Once retrieved, it updates the application's location configuration and broadcasts the status.
   Future<void> _handleAutoGpsLocation() async {
     final l10n = AppLocalizations.of(context)!;
     widget.onStatusChange(l10n.cfgAcquiringGps);
@@ -107,6 +154,10 @@ class _ConfigScreenState extends State<ConfigScreen> {
     }
   }
 
+  /// Opens an interactive map dialog allowing the user to select their location manually.
+  /// 
+  /// Displays a map centering on the currently saved location (or a default coordinate).
+  /// The user can tap the map to place a marker and confirm the new geographic coordinates.
   Future<void> _openMapPickerDialog() async {
     final l10n = AppLocalizations.of(context)!;
     final locSettings = widget.routines.getLocationSettings();
@@ -203,6 +254,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
     );
   }
 
+  /// Presents a bottom sheet giving the user a choice between automatic GPS or manual map location entry.
   void _showLocationSettingsChoice() {
     final l10n = AppLocalizations.of(context)!;
     showModalBottomSheet(
@@ -247,6 +299,12 @@ class _ConfigScreenState extends State<ConfigScreen> {
   }
 
   // --- Business Logic for Agronomic Schedule ---
+  
+  /// Adjusts the start hour for the agronomic prediction cycle by a given [delta].
+  /// 
+  /// Handles wrapping around the 24-hour clock. Checks against predefined bounds to 
+  /// ensure the start time remains within a logical range relative to the default.
+  /// Dynamically adjusts the irrigation end time if the intervals overlap improperly.
   void _adjustDayStart(int delta) {
     final l10n = AppLocalizations.of(context)!;
     final newVal = (_agronomicDayStart + delta) % 24;
@@ -268,6 +326,11 @@ class _ConfigScreenState extends State<ConfigScreen> {
     }
   }
 
+  /// Adjusts the end hour for the agronomic prediction cycle by a given [delta].
+  /// 
+  /// The prediction end hour corresponds inversely to the irrigation start hour.
+  /// Handles wrapping around the 24-hour clock and ensures the scheduled time
+  /// stays within allowed bounds. Adjusts the prediction start time to prevent overlaps.
   void _adjustDayEnd(int delta) {
     final l10n = AppLocalizations.of(context)!;
     final newVal = (_agronomicDayEnd + delta) % 24;

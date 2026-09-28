@@ -10,6 +10,10 @@ import 'package:tfm_app/screens/config_screen.dart';
 import 'package:tfm_app/screens/storage_screen.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+/// Entry point of the TFM App.
+///
+/// Initializes Flutter bindings, starts the background routines (`CliRoutines`),
+/// and runs the root [MaterialApp] containing theme and localization setup.
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -35,6 +39,10 @@ void main() async {
   );
 }
 
+/// The main shell/container widget for the application's dashboard.
+///
+/// It handles navigation between different screens (Home, Nearby, Storage, Config)
+/// and displays a responsive layout adapting to mobile or desktop screen sizes.
 class DashboardShell extends StatefulWidget {
   final CliRoutines routines;
   const DashboardShell({super.key, required this.routines});
@@ -43,6 +51,10 @@ class DashboardShell extends StatefulWidget {
   State<DashboardShell> createState() => _DashboardShellState();
 }
 
+/// State for [DashboardShell].
+///
+/// Manages the currently selected tab, listens to BLE connection state changes
+/// to update the global status bar, and builds the responsive UI structure.
 class _DashboardShellState extends State<DashboardShell> {
   int _selectedIndex = 0;
   late String _statusMsg = AppLocalizations.of(context)!.mainStatusReady;

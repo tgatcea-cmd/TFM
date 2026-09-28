@@ -4,6 +4,8 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+/// HTTP client wrapper for communicating with the Cloud API.
+/// Handles endpoint configuration, authentication, and structured requests for telemetry, predictions, and file sharing.
 class ApiClient {
   String baseUrl;
   String? apiKey;
@@ -43,7 +45,13 @@ class ApiClient {
   // 1. READ ENDPOINTS
   // ==========================================
 
-  /// GET /api/sync?deviceIdentifier=<ID>&since=<tsMs>
+  /// Pulls telemetry data for a specific device from the server.
+  /// 
+  /// Parameters:
+  /// - [deviceId]: The unique identifier of the station.
+  /// - [sinceMs]: Fetch records logged after this timestamp (in milliseconds).
+  /// 
+  /// Returns a list of telemetry records as JSON objects.
   Future<List<dynamic>> syncTelemetryPull(String deviceId, int sinceMs) async {
     final uri = Uri.parse('$baseUrl/sync').replace(
       queryParameters: {
@@ -56,7 +64,9 @@ class ApiClient {
     throw Exception('Pull failed (${res.statusCode}): ${res.body}');
   }
 
-  /// GET /api/picos (Aliases: GET /api/devices, GET /api/stations) -> returns list of registered stations
+  /// Retrieves the list of all registered stations from the cloud server.
+  /// 
+  /// Returns a list of station metadata objects.
   Future<List<dynamic>> getRegisteredDevices() async {
     print(
       '[CloudAPI Verbose] Starting Pico station discovery from Cloud server...',
@@ -102,8 +112,12 @@ class ApiClient {
     return [];
   }
 
-  /// GET /api/station/status?deviceIdentifier=<ID>
-  /// Returns { lat, lon, utcOffset, updatedAt, pendingDownlinks }
+  /// Retrieves the current status and metadata of a specific station.
+  /// 
+  /// Parameters:
+  /// - [deviceId]: The unique identifier of the station.
+  /// 
+  /// Returns a map containing station details like location, timezone, and pending downlinks.
   Future<Map<String, dynamic>> getStationStatus(String deviceId) async {
     final uri = Uri.parse(
       '$baseUrl/station/status',
@@ -115,7 +129,13 @@ class ApiClient {
     );
   }
 
-  /// GET /api/predictions?deviceIdentifier=<ID>&since=<tsMs> (Section 1.4.2)
+  /// Pulls prediction records for a specific device from the server.
+  /// 
+  /// Parameters:
+  /// - [deviceId]: The unique identifier of the station.
+  /// - [sinceMs]: Fetch records logged after this timestamp (in milliseconds).
+  /// 
+  /// Returns a list of prediction records.
   Future<List<dynamic>> syncPredictionsPull(
     String deviceId,
     int sinceMs,
@@ -135,7 +155,10 @@ class ApiClient {
   // 2. WRITE ENDPOINTS
   // ==========================================
 
-  /// POST /api/sync -> Bulk telemetry records [{ deviceIdentifier, tsMs, value, depthCm }]
+  /// Pushes a batch of telemetry records to the cloud server.
+  /// 
+  /// Parameters:
+  /// - [records]: A list of telemetry data maps to upload.
   Future<void> syncTelemetryPush(List<Map<String, dynamic>> records) async {
     final res = await http.post(
       Uri.parse('$baseUrl/sync'),
@@ -147,7 +170,10 @@ class ApiClient {
     }
   }
 
-  /// POST /api/predictions -> Bulk prediction records (Section 1.4.1)
+  /// Pushes a batch of prediction records to the cloud server.
+  /// 
+  /// Parameters:
+  /// - [records]: A list of prediction data maps to upload.
   Future<void> syncPredictionsPush(List<Map<String, dynamic>> records) async {
     final res = await http.post(
       Uri.parse('$baseUrl/predictions'),
@@ -161,7 +187,13 @@ class ApiClient {
     }
   }
 
-  /// POST /api/emulate/recommendation -> Triggers server-side recommendation emulation (Section 1.5)
+  /// Triggers a server-side emulation for recommendations.
+  /// 
+  /// Parameters:
+  /// - [deviceId]: The unique identifier of the station.
+  /// - [useHistoricalDate]: Whether to use historical data for the emulation.
+  /// 
+  /// Returns the emulation result as a map.
   Future<Map<String, dynamic>> emulateCloudRecommendation(
     String deviceId, {
     bool useHistoricalDate = true,
@@ -180,7 +212,13 @@ class ApiClient {
     );
   }
 
-  /// POST /api/station/update -> Update station metadata (name, lat, lon)
+  /// Updates metadata for a specific station on the cloud server.
+  /// 
+  /// Parameters:
+  /// - [deviceId]: The unique identifier of the station.
+  /// - [name]: The new name of the station (optional).
+  /// - [lat]: The new latitude of the station (optional).
+  /// - [lon]: The new longitude of the station (optional).
   Future<void> updateStationMetadata(
     String deviceId, {
     String? name,

@@ -5,12 +5,16 @@ import 'app_database.dart';
 import 'package:tfm_app/core/network/cloud_api.dart';
 import 'package:tfm_app/core/models/device.dart';
 
+/// Service responsible for synchronizing local database records with the cloud API.
+/// It handles pushing dirty local records to the cloud and pulling new remote telemetry and predictions.
 class SyncService {
   final DatabaseService db;
   final ApiClient api;
 
   SyncService({required this.db, required this.api});
 
+  /// Pushes all locally modified (dirty) devices to the cloud server.
+  /// This includes uploading new telemetry records, new predictions, and any updated metadata (e.g., location coordinates).
   Future<void> syncDirtyDevices() async {
     final dirtyDevices = await db.getDirtyDevices();
     if (dirtyDevices.isEmpty) return;
@@ -99,7 +103,12 @@ class SyncService {
     }
   }
 
-  /// Routine: Push locally set coordinates to the Cloud API
+  /// Updates the station's geographical location on the cloud server.
+  /// 
+  /// Parameters:
+  /// - [deviceId]: The unique identifier of the station/device.
+  /// - [lat]: The latitude coordinate.
+  /// - [lon]: The longitude coordinate.
   Future<void> pushStationLocationToCloud(String deviceId, double lat, double lon) async {
     final settings = db.getAppSettings();
     final url = Uri.parse(
@@ -132,7 +141,11 @@ class SyncService {
     }
   }
 
-  /// Pull new telemetry from the server and merge into local database
+  /// Pulls new telemetry data from the server and merges it into the local database.
+  /// 
+  /// Parameters:
+  /// - [deviceId]: The unique identifier of the station.
+  /// - [sinceMs]: The timestamp (in milliseconds) to fetch records from.
   Future<void> pullTelemetry(String deviceId, int sinceMs) async {
     try {
       final newRecords = await api.syncTelemetryPull(deviceId, sinceMs);
@@ -170,7 +183,11 @@ class SyncService {
     }
   }
 
-  /// Pull new predictions from the server and merge into local database (Section 1.4.2)
+  /// Pulls new prediction records from the server and merges them into the local database.
+  /// 
+  /// Parameters:
+  /// - [deviceId]: The unique identifier of the station.
+  /// - [sinceMs]: The timestamp (in milliseconds) to fetch records from.
   Future<void> pullPredictions(String deviceId, int sinceMs) async {
     try {
       final newRecords = await api.syncPredictionsPull(deviceId, sinceMs);
@@ -205,8 +222,9 @@ class SyncService {
     }
   }
 
-  /// Discovers registered picos / stations from Cloud API (Section 1.3: GET /api/picos)
-  /// and repopulates local Isar DB with station metadata, location, and telemetry history.
+  /// Discovers registered picos/stations from the Cloud API and repopulates the local Isar database.
+  /// 
+  /// This fetches station metadata, location, and full telemetry history for newly discovered devices.
   Future<void> discoverAndSyncCloudDevices() async {
     print('[SyncService Verbose] Starting Pico station repopulation routine...');
     try {

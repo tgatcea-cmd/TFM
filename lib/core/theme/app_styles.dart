@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+/// Centralized styling definitions and tokens for the application.
+/// Contains colors, typography, spacing, and component themes.
 class AppStyles {
   // --- SPACING TOKENS (8dp Grid) ---
   static const double spaceXS = 4.0;
@@ -49,6 +51,11 @@ class AppStyles {
   );
 
   // --- REUSABLE CONTAINER DECORATIONS ---
+
+  /// Creates a standard card decoration with an optional selection state.
+  /// 
+  /// [isSelected] highlights the border with [successAccent] when true.
+  /// [borderAccent] defines the default border color when not selected.
   static BoxDecoration cardShell({bool isSelected = false, Color borderAccent = dividerColor}) {
     return BoxDecoration(
       color: surfaceColor,
@@ -60,6 +67,10 @@ class AppStyles {
     );
   }
 
+  /// Creates a specialized card decoration for AI recommendations.
+  /// 
+  /// Uses [stateAccent] to define the background and border color scheme,
+  /// typically reflecting the urgency or status of the recommendation.
   static BoxDecoration aiRecommendationCard(Color stateAccent) {
     return BoxDecoration(
       color: stateAccent.withValues(alpha: 0.1),
@@ -68,6 +79,9 @@ class AppStyles {
     );
   }
 
+  /// A pre-configured [ButtonStyle] for destructive or high-risk actions.
+  /// 
+  /// Uses [errorAccent] to clearly indicate the button's destructive nature.
   static ButtonStyle destructiveButtonStyle = OutlinedButton.styleFrom(
     foregroundColor: errorAccent,
     side: const BorderSide(color: errorAccent, width: 1.0),
@@ -77,6 +91,9 @@ class AppStyles {
   );
 
   // --- MAIN THEME DATA ---
+
+  /// Provides the global dark theme configuration for the application.
+  /// Includes color schemes, text themes, and component styles.
   static ThemeData get darkTheme {
     return ThemeData(
       useMaterial3: true,

@@ -1,4 +1,0 @@
-=== Execution Speed Benchmark (10000 runs) ===
-Compiled Model (random_forest.dart): 68 ms
-Dynamic Model (dynamic_random_forest.dart): 99 ms
-Overhead Ratio: Dynamic is 1.46x slower than Compiled

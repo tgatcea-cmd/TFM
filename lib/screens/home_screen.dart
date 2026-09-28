@@ -12,10 +12,21 @@ import 'package:tfm_app/core/utils/date_formatter.dart';
 import 'package:tfm_app/core/utils/l10n/app_localizations.dart';
 import 'package:tfm_app/screens/widgets/inference_card.dart';
 
+/// A stateful widget that displays the main dashboard and device connection status.
+///
+/// Provides an interface for interacting with a connected BLE device,
+/// reviewing the synchronized real-time clock, executing commands,
+/// reviewing inference metrics, and viewing a simulated console output.
 class HomeScreen extends StatefulWidget {
+  /// The collection of CLI routines utilized for handling BLE and inference interactions.
   final CliRoutines routines;
+  
+  /// Callback invoked to report system state changes or operation status back to the parent.
+  /// 
+  /// Takes a [String] parameter representing the status message.
   final Function(String) onStatusChange;
 
+  /// Creates a [HomeScreen] with the required dependencies.
   const HomeScreen({
     super.key,
     required this.routines,
@@ -26,15 +37,35 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
+/// The state associated with [HomeScreen].
+///
+/// Manages asynchronous BLE streams, real-time clock synchronization, UI states
+/// for data fetching, and holds the current prediction statistics.
 class _HomeScreenState extends State<HomeScreen> {
+  /// The text content presented in the virtual console output area.
   String? _consoleOutput;
+  
+  /// Subscription to the BLE device's incoming data stream.
   StreamSubscription<Object>? _dataSub;
+  
+  /// The calculated offset in milliseconds between the local device time and the connected hardware's RTC.
   int? _clockOffsetMs;
+  
+  /// A periodic timer used to update the estimated device clock UI smoothly.
   Timer? _clockTickTimer;
+  
+  /// A value notifier used to trigger UI refreshes for the estimated clock without rebuilding the entire screen.
   final ValueNotifier<int> _clockNotifier = ValueNotifier<int>(0);
+  
+  /// Indicates whether the system is currently retrieving the status from the connected device.
   bool _isFetchingStatus = false;
+  
+  /// Holds statistics and results from the most recent agronomic prediction/inference run.
   Map<String, dynamic>? _predictionStats;
 
+  /// Copies the virtual console's output to the system clipboard.
+  /// 
+  /// Displays a SnackBar upon successful copy and updates the parent status.
   void _copyConsoleToClipboard() {
     final l10n = AppLocalizations.of(context)!;
     Clipboard.setData(ClipboardData(text: _consoleOutput ?? l10n.homeConsoleInit));
@@ -49,6 +80,10 @@ class _HomeScreenState extends State<HomeScreen> {
     widget.onStatusChange(l10n.homeConsoleCopiedStatus);
   }
 
+  /// Exports the current virtual console output to a JSON file.
+  /// 
+  /// Saves the file in the application's document directory with a timestamped filename,
+  /// capturing the device name and raw output. Notifies the user on success or failure.
   Future<void> _downloadConsoleJson() async {
     final l10n = AppLocalizations.of(context)!;
     try {
@@ -116,11 +151,13 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  /// Gets the estimated current time of the connected hardware device in milliseconds.
   int? get _estimatedDeviceMs {
     if (_clockOffsetMs == null) return null;
     return DateTime.now().millisecondsSinceEpoch - _clockOffsetMs!;
   }
 
+  /// Returns a localized, human-readable string representing the time gap between local and device clocks.
   String _getPrettifiedGap(int offsetMs, AppLocalizations l10n) {
     final diff = Duration(milliseconds: offsetMs.abs());
     if (diff.inDays >= 365) {
@@ -137,10 +174,14 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Formats a UNIX timestamp in milliseconds to a human-readable date string.
   String _formatDate(int ms) {
     return AppDateFormatter.format(ms, showSeconds: true);
   }
 
+  /// Retrieves the current operational status from the connected BLE device.
+  /// 
+  /// Upon successful retrieval, recalculates the [_clockOffsetMs] for time synchronization UI.
   Future<void> _fetchDeviceStatus() async {
     setState(() => _isFetchingStatus = true);
     try {
@@ -159,6 +200,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Synchronizes the connected hardware device's Real Time Clock (RTC) with the local system time.
   Future<void> _handleSyncTime() async {
     final l10n = AppLocalizations.of(context)!;
     widget.onStatusChange(l10n.homeExecutingSync);
